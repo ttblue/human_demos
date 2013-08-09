@@ -1,16 +1,12 @@
 #!/usr/bin/env python
+from rapprentice import berkeley_pr2, clouds
+import phasespace as ph
 
-
-from rapprentice import PR2, berkeley_pr2, clouds
 import cloudprocpy, cv, cv2, numpy as np
-import subprocess 
-import sys
-from OWL import *
+import subprocess, sys
 
+import OWL as owl
 
-MARKER_COUNT = 4
-SERVER_NAME = "192.168.1.126"
-INIT_FLAGS = 0
 
 def get_sensor_coordinates_kinect():
     subprocess.call("sudo killall XnSensorServer", shell=True)
@@ -45,16 +41,18 @@ def get_sensor_coordinates_kinect():
         r = 5
         for (x,y), point in zip(clicks,points):
             avg = np.array([0,0,0])
-            num = 0
+            num = 0.0
             for i in range(-r,r+1):
                 for j in range(-r,r+1):
-                    cloudPt = cloud[y+i, x+j];
+                    cloudPt = cloud[y+i, x+j,:];
                     if not np.isnan(cloudPt).any() and np.linalg.norm(point - cloudPt) < rad:
-                        avg += cloudPt
-                        num += 1
-            if num == 0:
+                        avg = avg + cloudPt
+                        num += 1.0
+            if num == 0.0:
+                print "not found"
                 avgPoints.append(point)
             else:
+                print "found"
                 avgPoints.append(avg / num)
         return avgPoints       
     
@@ -66,14 +64,9 @@ def get_sensor_coordinates_kinect():
     v = hsv[:,:,2]
 
     red_mask = ((h<10) | (h>150)) & (s > 100) & (v > 100)
-    valid = depth*(depth > 0)
-    xyz_k = clouds.depth_to_xyz(valid, berkeley_pr2.f)
-    
-    clickPoints = []
-    #get click points
-    for (x, y) in clicks:
-        clickPoints.append(xyz_k[y][x])
-        
+    #valid = depth*(depth > 0)
+    xyz_k = clouds.depth_to_xyz(depth, berkeley_pr2.f)
+            
     #cv2.imshow("red",red_mask.astype('uint8')*255)
     cv2.imshow("red", red_mask.astype('uint8')*255)
     cv2.imshow("rgb", rgb)
@@ -81,51 +74,63 @@ def get_sensor_coordinates_kinect():
     print "press enter to continue"
     cv2.waitKey()
     
-    red_mask3d = np.tile(np.atleast_3d(red_mask), [1,1,3])
-    np.putmask (xyz_k, red_mask3d != 1, np.NAN) 
-
+    clickPoints = []
+    #get click points
+    for (x, y) in clicks:
+        clickPoints.append(np.copy(xyz_k[y][x]))
     
+#     import IPython
+#     IPython.embed()
+    red_mask3d = np.tile(np.atleast_3d(red_mask), [1,1,3])
+    np.putmask (xyz_k, red_mask3d != 1, np.NAN)     
 
-    avgPoints = find_avg(clicks, clickPoints, xyz_k)
     print clicks
     print clickPoints
+    avgPoints = find_avg(clickPoints, clicks, xyz_k)
     print avgPoints
     return avgPoints
     
-
-def turn_phasespace_on():
-    if(owlInit(SERVER_NAME, INIT_FLAGS) < 0):
-        print "init error: ", owlGetError()
-        sys.exit(0)
-
-    # create tracker 0
-    tracker = 0
-    owlTrackeri(tracker, OWL_CREATE, OWL_POINT_TRACKER)
-
-    # set markers
-    for i in range(MARKER_COUNT):
-        owlMarkeri(MARKER(tracker, i), OWL_SET_LED, i)
-
-    # activate tracker
-    owlTracker(tracker, OWL_ENABLE)
+def find_rigid_tfm (kin_points, ps_points, homogeneous=True):
+    kin_points = np.asarray(kin_points)
+    ps_points = np.asarray(ps_points.values())
     
-    #return
-    if(owlGetStatus() == 0):
-        owl_print_error("error in point tracker setup", owlGetError())
-        sys.exit(0)
-    owlSetFloat(OWL_FREQUENCY, OWL_MAX_FREQUENCY)
-    owlSetInteger(OWL_STREAMING, OWL_ENABLE)
+    if kin_points.shape != ps_points.shape:
+        print "Not the same number of points"
+        return
+    elif len(kin_points) < 3:
+        print "Not enough points"
+        return
+    
+    kin_center = kin_points.sum(axis=0)/kin_points.shape[0]
+    ps_center = ps_points.sum(axis=0)/ps_points.shape[0]
+    
+    X = kin_points - kin_center
+    Y = ps_points - ps_center
+    
+    S = X.T.dot(Y)
+    U, Sig, V = np.linalg.svd(S, full_matrices=True)
 
-def turn_phasespace_off():
-    owlDone()
-
+    ref_rot = np.eye(3,3)
+    ref_rot[2,2] = np.round(np.linalg.det(V.dot(U.T)))   
+    
+    R = V.dot(ref_rot.dot(U.T))
+    t = ps_center - R.dot(kin_center)
+    
+    if homogeneous:
+        Tfm = np.zeros(4,4)
+        Tfm[0:3,0:3] = R
+        Tfm[3,3] = t
+        return Tfm
+    else:
+        return R,t
+    
 def get_sensor_coordinates_phasespace():
     sensor_locations = []
     while(1):
         markers = []
-        n = owlGetMarkers(markers, 50)
-        err = owlGetError()
-        if (err != OWL_NO_ERROR):
+        n = owl.owlGetMarkers(markers, 50)
+        err = owl.owlGetError()
+        if (err != owl.OWL_NO_ERROR):
             break
         if(n==0): continue
         if(n == 4):
@@ -137,17 +142,15 @@ def get_sensor_coordinates_phasespace():
 
     return sensor_locations
 
-def main():    
-    turn_phasespace_on()
-    kinect = get_sensor_coordinates_kinect()
-    phasespace = get_sensor_coordinates_phasespace()
-    turn_phasespace_off()
-    print kinect
-    print phasespace
 
+def main():    
+    ph.turn_phasespace_on()
+    #kinect = get_sensor_coordinates_kinect()
+    #phs = ph.get_marker_positions()
+    phs = get_sensor_coordinates_phasespace()
+    ph.turn_phasespace_off()
+    #print kinect
+    print phs
 
 
 main()
-
-
-
