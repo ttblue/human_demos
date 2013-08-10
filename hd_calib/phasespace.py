@@ -32,10 +32,11 @@ def turn_phasespace_off():
     
 def get_marker_positions():
     
+    SCALE = 1000.0
     marker_pos = {}
     while(1):
         markers = []
-        n = owl.owlGetMarkers(markers, 50)
+        n = owl.owlGetMarkers(markers, 32)
         err = owl.owlGetError()
         
         if (err != owl.OWL_NO_ERROR):
@@ -44,7 +45,7 @@ def get_marker_positions():
         
         for marker in markers:
             #print "%d) %.2f %.2f %.2f" % (i, markers[i].x, markers[i].y, markers[i].z)
-            marker_pos[marker.id] = [marker.x, marker.y, marker.z]
+            marker_pos[marker.id] = [marker.x*1/SCALE, marker.y*1/SCALE, marker.z*1/SCALE]
         break
 
     return marker_pos
