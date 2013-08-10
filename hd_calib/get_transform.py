@@ -101,25 +101,29 @@ def find_rigid_tfm (kin_points, ps_points, homogeneous=True):
         print "Not enough points"
         return
     
-    kin_center = kin_points.sum(axis=0)/kin_points.shape[0]
-    ps_center = ps_points.sum(axis=0)/ps_points.shape[0]
+    kin_center = kin_points.sum(axis=0)/float(kin_points.shape[0])
+    ps_center = ps_points.sum(axis=0)/float(ps_points.shape[0])
     
     X = kin_points - kin_center
     Y = ps_points - ps_center
     
     S = X.T.dot(Y)
+    # svd gives U, Sigma and V.T
     U, Sig, V = np.linalg.svd(S, full_matrices=True)
 
     ref_rot = np.eye(3,3)
-    ref_rot[2,2] = np.round(np.linalg.det(V.dot(U.T)))   
+    ref_rot[2,2] = np.round(np.linalg.det(V.dot(U.T)))
     
-    R = V.dot(ref_rot.dot(U.T))
+    import IPython
+    IPython.embed()   
+    
+    R = V.T.dot(ref_rot.dot(U.T))
     t = ps_center - R.dot(kin_center)
     
     if homogeneous:
-        Tfm = np.zeros(4,4)
+        Tfm = np.eye(4,4)
         Tfm[0:3,0:3] = R
-        Tfm[3,3] = t
+        Tfm[0:3,3] = t
         return Tfm
     else:
         return R,t
@@ -153,4 +157,14 @@ def main():
     print phs
 
 
-main()
+def test_rigidtfm():
+    X = np.array([[1,0,0],[0,2,0],[0,0,3],[1,1,1]])
+    Y = np.copy(X)
+    Y_d = {}
+    i = 0
+    for y in Y:
+        Y_d[i] = y
+        i += 1
+    
+    print find_rigid_tfm(X,Y_d)
+#main()
