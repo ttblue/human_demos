@@ -33,7 +33,7 @@ def playback_log (log_file):
     import yaml, os.path as osp
     
     log_loc = "/home/sibi/sandbox/human_demos/hd_data/phasespace_logs" 
-    with open(osp.join(log_loc,log_file)) as fh: marker_pos = yaml.load(fh)
+    with open(osp.join(log_loc,log_file),"r") as fh: marker_pos = yaml.load(fh)
     
     handle = mlab.points3d([0],[0],[0], color = (1,0,0), scale_factor = 0.25)
     ms = handle.mlab_source
@@ -41,9 +41,9 @@ def playback_log (log_file):
     prev_time = time.time()
     for step in marker_pos:
         
-        markers = np.asarray(step.marker_positions.values())
+        markers = np.asarray(step['marker_positions'].values())
         
-        time_to_wait = step.time_stamp - time.time() + prev_time
+        time_to_wait = step['time_stamp'] - time.time() + prev_time
         time.sleep(time_to_wait)
         
         ms.x,ms.y,ms.z = markers.T
