@@ -91,9 +91,9 @@ def get_markers_kinect():
     return avgPoints
     
 def find_rigid_tfm (kin_points, ps_points, homogeneous=True):
-    ps_points = np.asarray(ps_points.values())
     kin_points = np.asarray(kin_points)
     kin_points = kin_points[ps_points.keys()]
+    ps_points = np.asarray(ps_points.values())
     
     if kin_points.shape != ps_points.shape:
         print "Not the same number of points"
