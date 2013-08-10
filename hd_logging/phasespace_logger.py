@@ -1,3 +1,4 @@
+#!/usr/bin/ipython -i
 import itertools
 import os.path as osp, time
 
