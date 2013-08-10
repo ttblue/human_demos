@@ -53,6 +53,8 @@ def publish_phasespace_markers_ros ():
     from visualization_msgs.msg import Marker, MarkerArray
     from geometry_msgs.msg import Point
     
+    rospy.init_node("phasespace")
+    
     ph.turn_phasespace_on()   
     marker_pub = rospy.Publisher('phasespace_markers', MarkerArray)
 
@@ -104,6 +106,5 @@ def initialize_ros_logging(tfm_file=None):
     else:
         file_name = osp.join(file_base, tfm_file)
         with open(file_name,"w") as fh: yaml.dump(Tfm.tolist())
-        
-    
+            
     publish_phasespace_markers_ros()
