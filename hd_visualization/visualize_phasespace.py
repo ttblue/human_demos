@@ -14,25 +14,41 @@ class threadClass (th.Thread):
         self.handle = handle
         
     def update_x (self, x):
-        handle.mlab_source.x = x
+        self.handle.mlab_source.x = x
     
     def update_y (self, y):
-        handle.mlab_source.y = y
+        self.handle.mlab_source.y = y
         
     def update_z (self, z):
-        handle.mlab_source.z = z
+        self.handle.mlab_source.z = z
         
     def run (self):
         print 1
         mlab.show()
 
 
+
+
 def playback_log (log_file):
     import yaml, os.path as osp
     
     log_loc = "/home/sibi/sandbox/human_demos/hd_data/phasespace_logs" 
-    with open(osp.join(log_loc,logfile)) as fh: marker_pos = yaml.Load(fh)
+    with open(osp.join(log_loc,log_file)) as fh: marker_pos = yaml.load(fh)
     
+    handle = mlab.points3d([0],[0],[0], color = (1,0,0), scale_factor = 0.25)
+    ms = handle.mlab_source
+    
+    prev_time = time.time()
+    for step in marker_pos:
+        
+        markers = np.asarray(step.marker_positions.values())
+        
+        time_to_wait = step.time_stamp - time.time() + prev_time
+        time.sleep(time_to_wait)
+        
+        ms.x,ms.y,ms.z = markers.T
+        
+        prev_time = time.time()
     
 def test_mayavi ():
 
