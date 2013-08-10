@@ -45,7 +45,8 @@ def get_marker_positions():
         
         for marker in markers:
             #print "%d) %.2f %.2f %.2f" % (i, markers[i].x, markers[i].y, markers[i].z)
-            marker_pos[marker.id] = [marker.x*1/SCALE, marker.y*1/SCALE, marker.z*1/SCALE]
+            if marker.cond > 0:
+		marker_pos[marker.id] = [marker.x*1/SCALE, marker.y*1/SCALE, marker.z*1/SCALE]
         break
 
     return marker_pos
