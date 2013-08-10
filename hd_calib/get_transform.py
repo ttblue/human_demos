@@ -8,7 +8,7 @@ import subprocess, sys
 import OWL as owl
 
 
-def get_sensor_coordinates_kinect():
+def get_markers_kinect():
     subprocess.call("sudo killall XnSensorServer", shell=True)
     grabber = cloudprocpy.CloudGrabber()
     grabber.startRGBD()
@@ -91,8 +91,9 @@ def get_sensor_coordinates_kinect():
     return avgPoints
     
 def find_rigid_tfm (kin_points, ps_points, homogeneous=True):
-    kin_points = np.asarray(kin_points)
     ps_points = np.asarray(ps_points.values())
+    kin_points = np.asarray(kin_points)
+    kin_points = kin_points[ps_points.keys()]
     
     if kin_points.shape != ps_points.shape:
         print "Not the same number of points"
