@@ -53,38 +53,53 @@ def publish_phasespace_markers_ros ():
     import rospy
     from visualization_msgs.msg import Marker, MarkerArray
     from geometry_msgs.msg import Point
-    
-    rospy.init_node("phasespace")
+    from std_msgs.msg import ColorRGBA
+
+    if rospy.get_name() == '/unnamed':
+        rospy.init_node("phasespace")
     
     ph.turn_phasespace_on()   
     marker_pub = rospy.Publisher('phasespace_markers', MarkerArray)
 
+    prev_time = time.time() - 1/log_freq
     while True:
         try:
-            marker_pos = ph.get_marker_positions()
+            marker_pos = ph.get_marker_positions() 
+            #print marker_pos#.keys()
             time_stamp = rospy.Time.now()
-            
+
             mk = MarkerArray()
             for i in marker_pos:
                 m = Marker()
-                m.pose.position.x = marker_pos[i].x
-                m.pose.position.y = marker_pos[i].y
-                m.pose.position.z = marker_pos[i].z
-                m.id = marker_pos[i].id
+                m.pose.position.x = marker_pos[i][0]
+                m.pose.position.y = marker_pos[i][1]
+                m.pose.position.z = marker_pos[i][2]
+                m.pose.orientation.w = 1
+                m.id = i
                 m.header.stamp = time_stamp
-                m.header.frame_id = "phasespace_frame"
-                
+                m.header.frame_id = "camera_depth_frame"#"phasespace_frame"
+                m.scale.x = m.scale.y = m.scale.z = 0.01
+                m.type = Marker.CUBE
+                m.color.r = 1
+                m.color.a = 1
                 mk.markers.append(m)
                 
-            marker_pub.publish(mk)
+            curr_time = time.time()
+            if curr_time - prev_time > 1/log_freq:
+                print marker_pos
+                marker_pub.publish(mk)
+                prev_time = curr_time
+                
             
             #sleep for remainder of the time
-            time_passed = rospy.Time.now().to_sec() - time_stamp.to_sec()
-            time.sleep(max(1/log_freq-time_passed,0))
+            #time_passed = rospy.Time.now().to_sec() - time_stamp.to_sec()
+            #time.sleep(0.2)
+            #time.sleep(max(1/log_freq-time_passed,0))
         except KeyboardInterrupt:
             break
 
     ph.turn_phasespace_off()
+
 
 def initialize_ros_logging(tfm_file=None):
     
