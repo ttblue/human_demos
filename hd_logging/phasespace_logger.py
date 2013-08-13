@@ -1,10 +1,12 @@
 #!/usr/bin/ipython -i
 import itertools
-import os.path as osp, time
+import os.path as osp, time, subprocess
+from multiprocessing import Process
 
 from  hd_calib import phasespace as ph, get_transform as gt
+from rapprentice import conversions as conv
 
-log_freq = 5.0
+log_freq = 20.0
 
 def log_phasespace_markers (file_name=None):
     
@@ -58,7 +60,7 @@ def publish_phasespace_markers_ros ():
     if rospy.get_name() == '/unnamed':
         rospy.init_node("phasespace")
     
-    ph.turn_phasespace_on()   
+#    ph.turn_phasespace_on()   
     marker_pub = rospy.Publisher('phasespace_markers', MarkerArray)
 
     prev_time = time.time() - 1/log_freq
@@ -77,7 +79,7 @@ def publish_phasespace_markers_ros ():
                 m.pose.orientation.w = 1
                 m.id = i
                 m.header.stamp = time_stamp
-                m.header.frame_id = "camera_depth_frame"#"phasespace_frame"
+                m.header.frame_id = "phasespace_frame"
                 m.scale.x = m.scale.y = m.scale.z = 0.01
                 m.type = Marker.CUBE
                 m.color.r = 1
@@ -101,26 +103,75 @@ def publish_phasespace_markers_ros ():
     ph.turn_phasespace_off()
 
 
+
+from threading import Thread
+import roslib; roslib.load_manifest("tf")
+import rospy, tf
+import numpy as np
+
+class transformPublisher (Thread):
+    
+    def __init__(self, Tfm):
+        Thread.__init__(self)
+        self.trans, self.rot = conv.hmat_to_trans_rot(np.linalg.inv(Tfm))
+        self.transform_broadcaster = tf.TransformBroadcaster()
+        self.parent_frame = "/camera_depth_optical_frame"
+        self.child_frame = "/phasespace_frame"
+        self.time_period = 0.001
+
+    def run (self):
+        while True:
+            self.transform_broadcaster.sendTransform(self.trans, self.rot,
+                                                     rospy.Time.now(),
+                                                     self.child_frame,
+                                                     self.parent_frame)
+            time.sleep(self.time_period)
+
+
+#def static_tfm_publisher (Tfm):
+#    trans, rot = conv.hmat_to_trans_rot(Tfm)
+    #subprocess.call("")
+#    subprocess.call("rosrun tf static_transform_publisher %f %f %f %f %f %f %f /phasespace_frame /camera_depth_frame 100"
+#                        %(trans[0], trans[1], trans[2], rot[0], rot[1], rot[2], rot[3]), shell=True)
+
 def initialize_ros_logging(tfm_file=None):
     
-    import yaml
+#    import yaml
     
+    rospy.init_node("ros_logger")
+    
+    ph.turn_phasespace_off()
     ph.turn_phasespace_on()
+    print "Getting kinect points"
     kin_points = gt.get_markers_kinect()
+    print "Kinect points: ",kin_points
+
+    print "Getting marker points"
     ps_points = ph.get_marker_positions()
+    print "Phasespace points: ",ps_points
     
     Tfm = gt.find_rigid_tfm(kin_points, ps_points)
-    log_loc = "/home/sibi/sandbox/human_demos/hd_data/transforms"
-    if tfm_file == None:
-        base_name = "tfm"
-        file_base = osp.join(log_loc, base_name)
-        for suffix in itertools.chain("", (str(i) for i in itertools.count())):
-            if not osp.isfile(file_base+suffix+'.txt'):
-                file_name = file_base+suffix+'.txt'
-                with open(file_name,"w") as fh: yaml.dump(Tfm.tolist())
-                break
-    else:
-        file_name = osp.join(file_base, tfm_file)
-        with open(file_name,"w") as fh: yaml.dump(Tfm.tolist())
-            
+    print "Transform:", Tfm
+#    ph.turn_phasespace_off()    
+    
+    
+#    process = Process(target=static_tfm_publisher, args=(Tfm,))
+#    process.start()
+    tfm_pub = transformPublisher(Tfm)
+    tfm_pub.start()
+    
+#     log_loc = "/home/sibi/sandbox/human_demos/hd_data/transforms"
+#     if tfm_file == None:
+#         base_name = "tfm"
+#         file_base = osp.join(log_loc, base_name)
+#         for suffix in itertools.chain("", (str(i) for i in itertools.count())):
+#             if not osp.isfile(file_base+suffix+'.txt'):
+#                 file_name = file_base+suffix+'.txt'
+#                 with open(file_name,"w") as fh: yaml.dump(Tfm.tolist())
+#                 break
+#     else:
+#         file_name = osp.join(file_base, tfm_file)
+#         with open(file_name,"w") as fh: yaml.dump(Tfm.tolist())
+#             
+    subprocess.call("killall XnSensorServer", shell=True)
     publish_phasespace_markers_ros()

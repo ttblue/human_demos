@@ -42,7 +42,6 @@ def turn_phasespace_off():
     owlDone()
     
 def get_marker_positions(print_shit=False):
-    
     SCALE = 1000.0
     marker_pos = {}
     while(1):

@@ -9,7 +9,7 @@ import OWL as owl
 
 
 def get_markers_kinect():
-    subprocess.call("sudo killall XnSensorServer", shell=True)
+    subprocess.call("killall XnSensorServer", shell=True)
     grabber = cloudprocpy.CloudGrabber()
     grabber.startRGBD()
     rgb, depth = grabber.getRGBD()
@@ -56,14 +56,32 @@ def get_markers_kinect():
                 avgPoints.append(avg / num)
         return avgPoints       
     
-
+    def find_nearest_radius(points, clicks, cloud):
+        markerPoints = []
+        rad = 0.01
+        r = 5
+        for (x,y), point in zip(clicks,points):
+            
+            checkPoints = cloud[max(0,y-r):min(cloud.shape[0]-1,y+r), max(0,x-r):min(cloud.shape[1]-1, x+r),:]
+            np.putmask(checkPoints, np.isnan(checkPoints), np.infty)
+            dist = checkPoints - point[None,None,:]
+            dist = np.sum((dist*dist), axis=2)
+            yi,xi = np.unravel_index(np.argmin(dist), dist.shape)
+            
+            point =  checkPoints[yi,xi]
+            if np.isnan(point).any() or np.min(dist) > rad:
+                print "No point found for clicked point: ", point
+            else:
+                markerPoints.append(point)
+            
+        return markerPoints
 
     hsv = cv2.cvtColor(rgb, cv2.COLOR_BGR2HSV)
     h = hsv[:,:,0]
     s = hsv[:,:,1]
     v = hsv[:,:,2]
 
-    red_mask = ((h<10) | (h>150)) & (s > 100) & (v > 100)
+    red_mask = (v>150) & ((h<10) | (h>150))# & (v > 200)# & (s > 100)
     #valid = depth*(depth > 0)
     xyz_k = clouds.depth_to_xyz(depth, berkeley_pr2.f)
             
@@ -84,11 +102,8 @@ def get_markers_kinect():
     red_mask3d = np.tile(np.atleast_3d(red_mask), [1,1,3])
     np.putmask (xyz_k, red_mask3d != 1, np.NAN)     
 
-    print clicks
-    print clickPoints
-    avgPoints = find_avg(clickPoints, clicks, xyz_k)
-    print avgPoints
-    return avgPoints
+    markerPoints = find_nearest_radius(clickPoints, clicks, xyz_k)
+    return markerPoints
 
 def get_markers_kinect_ros():
     
