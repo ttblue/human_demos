@@ -50,3 +50,5 @@ nosetests.xml
 *.a
 
 *build/*
+# not sure about this:
+*.not_sure/*
