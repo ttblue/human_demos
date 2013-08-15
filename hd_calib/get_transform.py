@@ -192,23 +192,22 @@ def get_markers_kinect_ros():
     return avgPoints
 
     
-def find_rigid_tfm (kin_points, ps_points, homogeneous=True):
-    kin_points = np.asarray(kin_points)
-    kin_points = kin_points[ps_points.keys()]
-    ps_points = np.asarray(ps_points.values())
+def find_rigid_tfm (points1, points2, homogeneous=True):
+    points1 = np.asarray(points1)
+    points2 = np.asarray(points2)
     
-    if kin_points.shape != ps_points.shape:
+    if points1.shape != points2.shape:
         print "Not the same number of points"
         return
-    elif len(kin_points) < 3:
+    elif points1.shape[0] < 3:
         print "Not enough points"
         return
     
-    kin_center = kin_points.sum(axis=0)/float(kin_points.shape[0])
-    ps_center = ps_points.sum(axis=0)/float(ps_points.shape[0])
+    center1 = points1.sum(axis=0)/float(points1.shape[0])
+    center2 = points2.sum(axis=0)/float(points2.shape[0])
     
-    X = kin_points - kin_center
-    Y = ps_points - ps_center
+    X = points1 - center1
+    Y = points2 - center2
     
     S = X.T.dot(Y)
     # svd gives U, Sigma and V.T
@@ -221,7 +220,7 @@ def find_rigid_tfm (kin_points, ps_points, homogeneous=True):
 #     IPython.embed()   
     
     R = V.T.dot(ref_rot.dot(U.T))
-    t = ps_center - R.dot(kin_center)
+    t = center2 - R.dot(center2)
     
     if homogeneous:
         Tfm = np.eye(4,4)
@@ -271,13 +270,8 @@ def main():
 def test_rigidtfm():
     X = np.array([[1,0,0],[0,2,0],[0,0,3],[1,1,1]])
     Y = np.copy(X)
-    Y_d = {}
-    i = 0
-    for y in Y:
-        Y_d[i] = y
-        i += 1
-    
-    print find_rigid_tfm(X,Y_d)
+
+    print find_rigid_tfm(X,Y)
     
 def test_rigidtfm2():
     X = np.array([[1,0,0],[0,2,0],[0,0,3],[1,1,1]])
@@ -292,13 +286,7 @@ def test_rigidtfm2():
     print X
     print Y
     
-    Y_d = {}
-    i = 0
-    for y in Y:
-        Y_d[i] = y
-        i += 1
-    
-    fTfm = find_rigid_tfm(X,Y_d)
+    fTfm = find_rigid_tfm(X,Y)
     print Tfm
     print fTfm
     print np.allclose(Tfm, fTfm)
@@ -317,14 +305,8 @@ def test_rigidtfm2_noise():
     Y = Y[0:3,:].T + noise
     print X
     print Y
-    
-    Y_d = {}
-    i = 0
-    for y in Y:
-        Y_d[i] = y
-        i += 1
-    
-    fTfm = find_rigid_tfm(X,Y_d)
+
+    fTfm = find_rigid_tfm(X,Y)
     print Tfm
     print fTfm
     print np.allclose(Tfm, fTfm)

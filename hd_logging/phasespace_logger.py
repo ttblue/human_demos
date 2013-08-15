@@ -150,6 +150,9 @@ def initialize_ros_logging(tfm_file=None):
     ps_points = ph.get_marker_positions()
     print "Phasespace points: ",ps_points
     
+    kin_points = np.asarray(kin_points)
+    kin_points = kin_points[ps_points.keys()]
+    ps_points = np.asarray(ps_points.values())
     Tfm = gt.find_rigid_tfm(kin_points, ps_points)
     print "Transform:", Tfm
 #    ph.turn_phasespace_off()    

@@ -17,8 +17,12 @@ cb_cols = 6
 def print_checker_board_transform ():
     pass
 
-def get_corners_rgb(rgb):
+def get_corners_rgb(rgb,rows=None,cols=None):
     cv_rgb = cv.fromarray(rgb)
+    
+    if not rows: rows = cb_rows
+    if not cols: cols = cb_cols
+    
     rtn, corners = rtn, corners = cv.FindChessboardCorners(cv_rgb, (cb_rows, cb_cols))
     return rtn, corners
 
