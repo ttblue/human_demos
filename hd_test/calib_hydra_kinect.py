@@ -59,14 +59,14 @@ def get_transforms(marker, hydra, n_tfm , n_avg):
             
             mtrans, mrot, htrans, hrot = None, None, None, None
             while htrans == None:
-                now = rospy.Time.now()
+                #now = rospy.Time.now()
                 #tf_sub.waitForTransform(camera_frame, marker_frame, now)
                 mtrans, mrot = tf_sub.lookupTransform(camera_frame, marker_frame, rospy.Time(0))
-                try:
-                    tf_sub.waitForTransform(hydra_frame, paddle_frame, now, rospy.Duration(0.05))
-                    (htrans,hrot) = tf_sub.lookupTransform(hydra_frame, paddle_frame, rospy.Time(0))
-                except (tf.LookupException):
-                    continue
+                (htrans,hrot) = tf_sub.lookupTransform(hydra_frame, paddle_frame, rospy.Time(0))
+                #try:
+                #    tf_sub.waitForTransform(hydra_frame, paddle_frame, now, rospy.Duration(0.05))
+                #except (tf.LookupException):
+                #    continue
     
             m_ts = np.r_[m_ts, np.array(mtrans, ndmin=2)]
             h_ts = np.r_[h_ts, np.array(htrans, ndmin=2)]
@@ -85,6 +85,51 @@ def get_transforms(marker, hydra, n_tfm , n_avg):
 
 
 
+def solve_sylvester (tfms1, tfms2):
+    """
+    Solves the system of Sylvester's equations to find the calibration transform.
+    Returns the calibration transform from sensor 1 (corresponding to tfms1) to sensor 2.
+    """
+
+    assert len(tfms1) == len(tfms2) and len(tfms1) >= 2
+    I = np.eye(4)
+        
+    M_final = np.empty((0,16))
+
+    s1_t0_inv = np.linalg.inv(tfms1[0])
+    s2_t0_inv = np.linalg.inv(tfms2[0])
+    
+    for i in range(1,len(tfms1)):
+        M = np.kron(I, s1_t0_inv.dot(tfms1[i])) - np.kron(s2_t0_inv.dot(tfms2[i]),I)
+        M_final = np.r_[M_final, M]
+    
+    # add the constraints on the last row of the transformation matrix to be == [0,0,0,1]
+    for i in [3,7,11,15]:
+        t = np.zeros((1,16))
+        t[0,i] = 1
+        M_final = np.r_[M_final,t]
+    L_final = np.zeros(M_final.shape[0])
+    L_final[-1] = 1
+
+    X = np.linalg.lstsq(M_final,L_final)[0]
+    print M_final.dot(X)
+    tt = np.reshape(X,(4,4),order='F')
+    return tt
+
+
+def publish_tf(T, from_frame, to_frame):
+    print colorize("Transform : ", "yellow", True)
+    print T
+    tf_pub = tf.TransformBroadcaster()
+    trans = T[0:3,3] 
+    rot   = tf.transformations.quaternion_from_matrix(T)
+    sleeper = rospy.Rate(100)
+
+    while True:
+        tf_pub.sendTransform(trans, rot, rospy.Time.now(), to_frame, from_frame)
+        sleeper.sleep()
+
+
 if __name__ == '__main__':
     rospy.init_node('calib_hydra_kinect')
     
@@ -97,5 +142,11 @@ if __name__ == '__main__':
     vals = parser.parse_args()
 
     ar_tfms, hydra_tfms = get_transforms(vals.marker, vals.hydra, vals.n_tfm, vals.n_avg)
-    print "AR Transforms: ", ar_tfms
-    print "Hydra Transforms: ", hydra_tfms
+    #print "AR Transforms: ", ar_tfms
+    #print "Hydra Transforms: ", hydra_tfms
+    
+    if vals.publish_tf:
+        T_ms = solve_sylvester(ar_tfms, hydra_tfms)
+        T_ch = ar_tfms[0].dot(T_ms).dot(np.linalg.inv(hydra_tfms[0]))
+        publish_tf(T_ch, 'camera_link', 'hydra_base')                                
+        #publish_tf(, 'ar_marker_%d'%vals.marker, 'hydra_%s_pivot'%vals.hydra)
