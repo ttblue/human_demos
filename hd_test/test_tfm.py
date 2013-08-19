@@ -223,7 +223,7 @@ def test_tfm4 (n):
     tfms2 = []
     for i in range(n):
         Tcm = make_obs(0.3)
-        noise = make_obs(0.01,0.02)
+        noise = np.eye(4)#make_obs(0.01,0.02)
         Ths = Thc.dot(Tcm).dot(Tms).dot(noise)
         
         tfms1.append(Tcm)

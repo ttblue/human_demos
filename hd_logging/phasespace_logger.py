@@ -50,7 +50,7 @@ def log_phasespace_markers (file_name=None):
     print "Finished logging to file: "+file_name
 
 
-def publish_phasespace_markers_ros ():
+def publish_phasespace_markers_ros (print_shit=False):
 
     import rospy
     from visualization_msgs.msg import Marker, MarkerArray
@@ -66,11 +66,11 @@ def publish_phasespace_markers_ros ():
     prev_time = time.time() - 1/log_freq
     while True:
         try:
-            marker_pos = ph.get_marker_positions() 
+            marker_pos = ph.get_marker_positions(print_shit) 
             #print marker_pos#.keys()
             time_stamp = rospy.Time.now()
 
-            mk = MarkerArray()
+            mk = MarkerArray()  
             for i in marker_pos:
                 m = Marker()
                 m.pose.position.x = marker_pos[i][0]
@@ -88,7 +88,7 @@ def publish_phasespace_markers_ros ():
                 
             curr_time = time.time()
             if curr_time - prev_time > 1/log_freq:
-                print marker_pos
+                if print_shit: print marker_pos
                 marker_pub.publish(mk)
                 prev_time = curr_time
                 

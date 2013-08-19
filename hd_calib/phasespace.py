@@ -2,7 +2,7 @@ from OWL import *
 import sys
 
 MARKER_COUNT = 4
-SERVER_NAME = "192.168.1.143"
+SERVER_NAME = "192.168.1.136"
 INIT_FLAGS = 0
 
 def owl_print_error(s, n):

@@ -25,7 +25,7 @@ def get_ar_marker_poses (rgb, depth):
     marker_tfm = {}
     res = getMarkers(req)
     for marker in res.markers.markers:
-        marker_tfm[marker.id] = conversions.pose_to_hmat(marker.pose.pose).tolist()
+        marker_tfm[marker.id] = conversions.pose_to_hmat(marker.pose.pose)
     
     #print "Marker ids found: ", marker_tfm.keys()
     
@@ -146,5 +146,7 @@ def calibrate_click (rgb1, depth1, rgb2, depth2):
     
     points1 = get_click_points(rgb1, depth1)
     points2 = get_click_points(rgb2, depth2)
-    
+     
+     
+     
     return find_rigid_tfm(points1, points2)
