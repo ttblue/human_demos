@@ -9,10 +9,12 @@ from geometry_msgs.msg import PoseStamped
 
 
 import cloudprocpy as cpr
-from rapprentice import clouds, berkeley_pr2, conversions, ros_utils
+from hd_utils import clouds, conversions, ros_utils
 
 cb_rows = 8
 cb_cols = 6
+
+asus_xtion_pro_f = 544.260779961
 
 def print_checker_board_transform ():
     pass
@@ -59,7 +61,7 @@ def checkerboard_loop ():
     while True:
         try:
             rgb, depth = grabber.getRGBD()
-            xyz = clouds.depth_to_xyz(depth, berkeley_pr2.f)
+            xyz = clouds.depth_to_xyz(depth, asus_xtion_pro_f)
             
             rtn, corners = get_corners_rgb (rgb)
             points = get_xyz_from_corners(corners, xyz)
