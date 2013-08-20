@@ -483,11 +483,10 @@ if __name__ == '__main__':
     if vals.publish_tf:
         T_ms = solve_sylvester4(ar_tfms, hydra_tfms)
         T_chs = [ar_tfms[i].dot(T_ms).dot(np.linalg.inv(hydra_tfms[i])) for i in xrange(len(ar_tfms))]
-
         trans_rots = [conversions.hmat_to_trans_rot(tfm) for tfm in T_chs]
+        
         trans = np.asarray([trans for (trans, rot) in trans_rots])
         avg_trans = np.sum(trans,axis=0)/trans.shape[0]
-        
         rots = [rot for (trans, rot) in trans_rots]
         avg_rot = avg_quaternions(np.array(rots))
         
