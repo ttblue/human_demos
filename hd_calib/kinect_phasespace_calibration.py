@@ -2,7 +2,7 @@
 
 import time
 import numpy as np, numpy.linalg as nlg
-import scipy as scp, scipy.linalg as sclg
+import scipy as scp, scipy.linalg as sclg, scipy.optimize as sco
 import roslib; roslib.load_manifest("tf")
 import rospy, tf
 import roslib; roslib.load_manifest('ar_track_service')

@@ -1,3 +1,5 @@
+from __future__ import division
+
 import roslib
 roslib.load_manifest('calib_hydra_kinect')
 import rospy
@@ -5,7 +7,8 @@ import tf; roslib.load_manifest('tf')
 
 
 import argparse
-import numpy as np, scipy as scp
+import numpy as np, numpy.linalg as nlg
+import scipy as scp, scipy.optimize as sco
 from colorize import colorize
 
 from rapprentice import conversions
@@ -328,9 +331,9 @@ def solve_sylvester2 (tfms1, tfms2):
     print "\n CONSTRUCTING M: \n"
     
     for i in range(1,len(tfms1)):
-        del1 = s1_t0_inv.dot(tfms1[i])
-        del2 = s2_t0_inv.dot(tfms2[i])
-        
+        del1 = np.linalg.inv(tfms1[i]).dot(tfms1[0])
+        del2 = np.linalg.inv(tfms2[i]).dot(tfms2[0])
+
         print "\n del1:"
         print del1
         print del1.dot(I_0).dot(del1.T)
@@ -391,6 +394,58 @@ def solve_sylvester3 (tfms1, tfms2):
     
     return tt
 
+def solve_sylvester4 (tfms1, tfms2):
+    """
+    Solves the system of Sylvester's equations to find the calibration transform.
+    Returns the calibration transform from sensor 1 (corresponding to tfms1) to sensor 2.
+    This functions forces the bottom row to be 0,0,0,1 by neglecting columns of M and changing L.
+    In order to solve the equation, it constrains rotation matrix to be the identity.
+    """
+
+    assert len(tfms1) == len(tfms2) and len(tfms1) >= 2
+    I = np.eye(4)
+        
+    M_final = np.empty((0,16))
+
+    s1_t0_inv = np.linalg.inv(tfms1[0])
+    s2_t0_inv = np.linalg.inv(tfms2[0])
+    
+    print "\n CONSTRUCTING M: \n"
+    
+    for i in range(1,len(tfms1)):
+        M = np.kron(I, s1_t0_inv.dot(tfms1[i])) - np.kron(s2_t0_inv.dot(tfms2[i]).T,I)
+        M_final = np.r_[M_final, M]
+    
+    # add the constraints on the last row of the transformation matrix to be == [0,0,0,1]
+    L_final = -1*np.copy(M_final)[:,15]
+    M_final = scp.delete(M_final, (3,7,11,15), 1)
+    I3 = np.eye(3)
+    x_init = np.linalg.lstsq(M_final,L_final)[0]
+
+    # Objective function:
+    def f_opt (x):
+        err_vec = M_final.dot(x)-L_final
+        return nlg.norm(err_vec)
+    
+    # Rotation constraint:
+    def rot_con (x):
+        R = np.reshape(x,(3,4), order='F')[:,0:3]
+        err_mat = R.T.dot(R) - I3
+        return nlg.norm(err_mat)
+    
+    
+    #x_init = np.linalg.lstsq(M_final,L_final)[0]
+    (X, fx, _, _, _) = sco.fmin_slsqp(func=f_opt, x0=x_init, eqcons=[rot_con], iter=200, full_output=1)
+
+    print "Function value at optimum: ", fx
+
+    tt = np.reshape(X,(3,4),order='F')
+    tt = np.r_[tt,np.array([[0,0,0,1]])]
+    
+    print tt.T.dot(tt)
+    
+    return tt
+    
 
 def publish_tf(T, from_frame, to_frame):
     print colorize("Transform : ", "yellow", True)
@@ -416,8 +471,8 @@ if __name__ == '__main__':
     parser.add_argument('--publish_tf', help="whether to publish the transform between hydra_base and camera_link", default=True)
     vals = parser.parse_args()
 
-    #ar_tfms, hydra_tfms = get_transforms(vals.marker, vals.hydra, vals.n_tfm, vals.n_avg)
-    ar_tfms, hydra_tfms = get_hydra_transforms(vals.n_tfm, vals.n_avg)
+    ar_tfms, hydra_tfms = get_transforms(vals.marker, vals.hydra, vals.n_tfm, vals.n_avg)
+    #ar_tfms, hydra_tfms = get_hydra_transforms(vals.n_tfm, vals.n_avg)
     #ar_tfms, hydra_tfms = get_ar_transforms(8,5, vals.n_tfm, vals.n_avg)
     #print "AR Transforms: ", ar_tfms
     #print "Hydra Transforms: ", hydra_tfms
@@ -426,8 +481,19 @@ if __name__ == '__main__':
     #pickle.dump({"AR":ar_tfms, "Hydra":hydra_tfms}, open( "transforms.p", "wb" ))
     
     if vals.publish_tf:
-        T_ms = solve_sylvester2(ar_tfms, hydra_tfms)
-        T_ch = ar_tfms[0].dot(T_ms).dot(np.linalg.inv(hydra_tfms[0]))
+        T_ms = solve_sylvester4(ar_tfms, hydra_tfms)
+        T_chs = [ar_tfms[i].dot(T_ms).dot(np.linalg.inv(hydra_tfms[i])) for i in xrange(len(ar_tfms))]
+
+        trans_rots = [conversions.hmat_to_trans_rot(tfm) for tfm in T_chs]
+        trans = np.asarray([trans for (trans, rot) in trans_rots])
+        avg_trans = np.sum(trans,axis=0)/trans.shape[0]
+        
+        rots = [rot for (trans, rot) in trans_rots]
+        avg_rot = avg_quaternions(np.array(rots))
+        
+        T_ch = conversions.trans_rot_to_hmat(avg_trans, avg_rot)
+        
+        #T_ch = ar_tfms[0].dot(T_ms).dot(np.linalg.inv(hydra_tfms[0]))
         print T_ch
         
 #        print T_ch.dot(hydra_tfms[0].dot(np.linalg.inv(T_ms))).dot(np.linalg.inv(ar_tfms[0]))
