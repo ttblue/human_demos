@@ -12,7 +12,7 @@ from ar_track_service.srv import MarkerPositions, MarkerPositionsRequest, Marker
 import cloudprocpy as cpr
 import phasespace as ph
 
-from hd_utils import clouds, ros_utils as ru, conversions, solve_sylvester as ss
+from hd_utils import clouds, ros_utils as ru, conversions, solve_sylvester as ss, utils
 from hd_utils.colorize import colorize
 
 asus_xtion_pro_f = 544.260779961
@@ -36,9 +36,7 @@ def get_phasespace_transform ():
     z = np.cross(x,y)
     y = np.cross(z,x)
     
-    tfm = np.eye(4)
-    tfm[0:3,:] = np.array([x,y,z,marker_pos[0]]).T
-    
+    tfm = np.r_[np.array([x,y,z,marker_pos[0]]).T,np.array([0,0,0,1])]
     return tfm
     
 def get_ar_transform_id (depth, rgb, idm=None):    
@@ -139,6 +137,7 @@ def get_transform_kb (grabber, marker, n_tfm=3, print_shit=True):
     Tcp = tfms_ar[0].dot(Tas.dot(nlg.inv(tfms_ph[0])))
     return Tcp
 
+# TODO: Average transforms - would definitely work better
 def get_transform_freq (grabber, marker, freq=0.5, n_tfm=3, print_shit=True):
     """
     Stores data at frequency provided.
@@ -188,7 +187,15 @@ def get_transform_freq (grabber, marker, freq=0.5, n_tfm=3, print_shit=True):
     Tas = ss.solve4(tfms_ar, tfms_ph)
     print "Done."
     
-    Tcp = tfms_ar[0].dot(Tas.dot(nlg.inv(tfms_ph[0])))
+    T_cps = [tfms_ar[i].dot(T_ms).dot(np.linalg.inv(tfms_ph[i])) for i in xrange(len(tfms_ar))]
+    trans_rots = [conversions.hmat_to_trans_rot(tfm) for tfm in T_cps]
+    
+    trans = np.asarray([trans for (trans, rot) in trans_rots])
+    avg_trans = np.sum(trans,axis=0)/trans.shape[0]
+    rots = [rot for (trans, rot) in trans_rots]
+    avg_rot = avg_quaternions(np.array(rots))
+    
+    Tcp = conversions.trans_rot_to_hmat(avg_trans, avg_rot)
     return Tcp
 
 from threading import Thread
