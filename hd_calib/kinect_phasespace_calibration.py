@@ -40,29 +40,18 @@ def get_phasespace_transform ():
     tfm[0:3,:] = np.array([x,y,z,marker_pos[0]]).T
     
     return tfm
-    
+
+getMarkers = None
+req = MarkerPositionsRequest()
+
 def get_ar_transform_id (depth, rgb, idm=None):    
     """
     In order to run this, ar_marker_service needs to be running.
     """
-    if rospy.get_name() == '/unnamed':
-        rospy.init_node('keypoints')
-    
-    getMarkers = rospy.ServiceProxy("getMarkers", MarkerPositions)
-    
-    #xyz = svi.transform_pointclouds(depth, tfm)
-    xyz = clouds.depth_to_xyz(depth, asus_xtion_pro_f)
-    pc = ru.xyzrgb2pc(xyz, rgb, '/camera_link')
-    
-    req = MarkerPositionsRequest()
-    req.pc = pc
-    
-    marker_tfm = {}
+    req.pc = ru.xyzrgb2pc(clouds.depth_to_xyz(depth, asus_xtion_pro_f), rgb, '/camera_link')    
     res = getMarkers(req)
-    for marker in res.markers.markers:
-        marker_tfm[marker.id] = conversions.pose_to_hmat(marker.pose.pose)
     
-    #print "Marker ids found: ", marker_tfm.keys()
+    marker_tfm = {marker.id:conversions.pose_to_hmat(marker.pose.pose) for marker in res.markers.markers}
     
     if not idm: return marker_tfm
     if idm not in marker_tfm: return None
@@ -72,24 +61,34 @@ def get_ar_transform_id (depth, rgb, idm=None):
 def publish_transform_markers(grabber, marker, T, from_frame, to_frame, rate=100):
 
     from visualization_msgs.msg import Marker
+    from sensor_msgs.msg import PointCloud2
     
     print colorize("Transform : ", "yellow", True)
     print T
     
     marker_frame = "ar_frame"
     tf_pub = tf.TransformBroadcaster()
+    pc_pub = rospy.Publisher("camera_points", PointCloud2)
+    
     trans = T[0:3,3] 
     rot   = tf.transformations.quaternion_from_matrix(T)
-    sleeper = rospy.Rate(100)
+    sleeper = rospy.Rate(10)
 
     while True:
         try:
             r, d = grabber.getRGBD()
             ar_tfm = get_ar_transform_id (d, r, marker)
-            trans_m, rot_m = conversions.hmat_to_trans_rot(ar_tfm)
+            
+            pc = ru.xyzrgb2pc(clouds.depth_to_xyz(d, asus_xtion_pro_f), r, from_frame)
+            pc_pub.publish(pc)
             
             tf_pub.sendTransform(trans, rot, rospy.Time.now(), to_frame, from_frame)
-            tf_pub.sendTransform(trans_m, rot_m, rospy.Time.now(), marker_frame, from_frame)
+            
+            try:
+                trans_m, rot_m = conversions.hmat_to_trans_rot(ar_tfm)
+                tf_pub.sendTransform(trans_m, rot_m, rospy.Time.now(), marker_frame, from_frame)
+            except:
+                pass
             
             sleeper.sleep()
         except KeyboardInterrupt:
@@ -152,13 +151,14 @@ def get_transform_freq (grabber, marker, freq=0.5, n_tfm=3, print_shit=True):
     
     i = 0
     
-    wait_time = 5
+    wait_time = 0
     print "Waiting for %f seconds before collecting data."%wait_time
     time.sleep(wait_time)
     
     
     while i < n_tfm:
         print "Transform %i"%(i+1)
+        
         rgb, depth = grabber.getRGBD()
         ar_tfm = get_ar_transform_id(depth, rgb, marker)
         ph_tfm = get_phasespace_transform()
@@ -200,11 +200,15 @@ class threadClass (Thread):
 
 
 def main_loop():
+    global getMarkers
+    
     rospy.init_node("phasespace_camera_calibration")
     ph.turn_phasespace_on()
 
     marker = 10
     n_tfm = 5
+    
+    getMarkers = rospy.ServiceProxy("getMarkers", MarkerPositions)
     
     grabber = cpr.CloudGrabber()
     grabber.startRGBD()
