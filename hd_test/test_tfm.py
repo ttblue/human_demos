@@ -1,5 +1,5 @@
 import numpy as np, numpy.linalg as nlg
-import scipy as scp
+import scipy as scp, scipy.optimize as sco
 
 np.set_printoptions(precision=5, suppress=True)
 
@@ -155,6 +155,62 @@ def solve_sylvester2 (tfms1, tfms2, addnoise=True):
     print tt.T.dot(tt)
     
     return tt
+
+def solve_sylvester4 (tfms1, tfms2, addnoise=True):
+    """
+    Solves the system of Sylvester's equations to find the calibration transform.
+    Returns the calibration transform from sensor 1 (corresponding to tfms1) to sensor 2.
+    This functions forces the bottom row to be 0,0,0,1 by neglecting columns of M and changing L.
+    In order to solve the equation, it constrains rotation matrix to be the identity.
+    """
+
+    assert len(tfms1) == len(tfms2) and len(tfms1) >= 2
+    I = np.eye(4)
+        
+    M_final = np.empty((0,16))
+
+    s1_t0_inv = np.linalg.inv(tfms1[0])
+    s2_t0_inv = np.linalg.inv(tfms2[0])
+    
+    print "\n CONSTRUCTING M: \n"
+    
+    for i in range(1,len(tfms1)):
+        if addnoise:
+            noise = make_obs(0.01,0.01)
+        else:
+            noise = np.eye(4)
+        M = np.kron(I, s1_t0_inv.dot(tfms1[i])) - np.kron(s2_t0_inv.dot(tfms2[i]).dot(noise).T,I)
+        M_final = np.r_[M_final, M]
+    
+    # add the constraints on the last row of the transformation matrix to be == [0,0,0,1]
+    L_final = -1*np.copy(M_final)[:,15]
+    M_final = scp.delete(M_final, (3,7,11,15), 1) 
+    I3 = np.eye(3)
+    x_init = np.linalg.lstsq(M_final,L_final)[0]
+
+    # Objective function:
+    def f_opt (x):
+        err_vec = M_final.dot(x)-L_final
+        return nlg.norm(err_vec)
+    
+    # Rotation constraint:
+    def rot_con (x):
+        R = np.reshape(x,(3,4), order='F')[:,0:3]
+        err_mat = R.T.dot(R) - I3
+        return nlg.norm(err_mat)
+    
+    (X, fx, _, _, _) = sco.fmin_slsqp(func=f_opt, x0=x_init, eqcons=[rot_con], acc=1e-5, full_output=1)
+
+    print "Function value at optimum: ", fx
+
+    print nlg.norm(M_final.dot(X) - L_final)
+    print nlg.norm(M_final.dot(x_init) - L_final)
+    tt = np.reshape(X,(3,4),order='F')
+    tt = np.r_[tt,np.array([[0,0,0,1]])]
+    
+    print tt.T.dot(tt)
+    
+    return tt
     
 def test_tfm3 (n):
     """
@@ -191,7 +247,7 @@ def test_tfm3 (n):
         print Ths.dot(I_0).dot(Ths.T)
         print Tcm.dot(Tms).dot(nlg.inv(Ths)).dot(Thc), '\n'
         
-    Tms_calib = solve_sylvester2(tfms1, tfms2)
+    Tms_calib = solve_sylvester4(tfms1, tfms2, False)
     
     print "Tms: \n", Tms
     print "Tms_calib: \n", Tms_calib
@@ -237,7 +293,7 @@ def test_tfm4 (n):
         print Ths.dot(I_0).dot(Ths.T)
         print Tcm.dot(Tms).dot(nlg.inv(Ths)).dot(Thc), '\n'
         
-    Tms_calib = solve_sylvester2(tfms1, tfms2)
+    Tms_calib = solve_sylvester4(tfms1, tfms2, False)
     
     print "Tms: \n", Tms
     print "Tms_calib: \n", Tms_calib
@@ -248,7 +304,7 @@ def test_tfm4 (n):
     R = Tms_calib[0:3,0:3]
     print R.T.dot(R)
     
-    #assert (np.allclose(Tms_calib,Tms, atol=0.001))
+    assert (np.allclose(Tms_calib,Tms, atol=0.001))
 
 def test_tfm_val1():
 
