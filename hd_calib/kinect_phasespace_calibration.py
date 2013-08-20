@@ -10,9 +10,12 @@ from ar_track_service.srv import MarkerPositions, MarkerPositionsRequest, Marker
 
 
 import cloudprocpy as cpr
-from rapprentice import clouds, ros_utils as ru, conversions, berkeley_pr2
 import phasespace as ph
+
+from hd_utils import clouds, ros_utils as ru, conversions, solve_sylvester as ss
 from hd_utils.colorize import colorize
+
+asus_xtion_pro_f = 544.260779961
 
 def get_phasespace_transform ():
     """
@@ -48,7 +51,7 @@ def get_ar_transform_id (depth, rgb, idm=None):
     getMarkers = rospy.ServiceProxy("getMarkers", MarkerPositions)
     
     #xyz = svi.transform_pointclouds(depth, tfm)
-    xyz = clouds.depth_to_xyz(depth, berkeley_pr2.f)
+    xyz = clouds.depth_to_xyz(depth, asus_xtion_pro_f)
     pc = ru.xyzrgb2pc(xyz, rgb, '/camera_link')
     
     req = MarkerPositionsRequest()
@@ -66,134 +69,6 @@ def get_ar_transform_id (depth, rgb, idm=None):
     return marker_tfm[idm]
 
 
-def solve_sylvester (tfms1, tfms2):
-    """
-    Solves the system of Sylvester's equations to find the calibration transform.
-    Returns the calibration transform from sensor 1 (corresponding to tfms1) to sensor 2.
-    """
-
-    assert len(tfms1) == len(tfms2) and len(tfms1) >= 3
-    I = np.eye(4)
-
-    M_final = np.empty((0,16))
-
-    s1_t0_inv = np.linalg.inv(tfms1[0])
-    s2_t0_inv = np.linalg.inv(tfms2[0])
-    
-    for i in range(1,len(tfms1)):
-        M = np.kron(I, s1_t0_inv.dot(tfms1[i])) - np.kron(s2_t0_inv.dot(tfms2[i]).T,I)
-        M_final = np.r_[M_final, M]
-    
-    # add the constraints on the last row of the transformation matrix to be == [0,0,0,1]
-    for i in [3,7,11,15]:
-        t = np.zeros((1,16))
-        t[0,i] = 1
-        M_final = np.r_[M_final,t]
-    L_final = np.zeros(M_final.shape[0])
-    L_final[-1] = 1
-
-    X = np.linalg.lstsq(M_final,L_final)[0]
-    print M_final.dot(X)
-    tt = np.reshape(X,(4,4),order='F')
-    return tt
-
-def solve_sylvester2 (tfms1, tfms2):
-    """
-    Solves the system of Sylvester's equations to find the calibration transform.
-    Returns the calibration transform from sensor 1 (corresponding to tfms1) to sensor 2.
-    This functions forces the bottom row to be 0,0,0,1 by neglecting columns of M and changing L.
-    """
-
-    assert len(tfms1) == len(tfms2) and len(tfms1) >= 2
-    I = np.eye(4)
-    I_0 = np.copy(I)
-    I_0[3,3] = 0
-        
-    M_final = np.empty((0,16))
-
-    s1_t0_inv = np.linalg.inv(tfms1[0])
-    s2_t0_inv = np.linalg.inv(tfms2[0])
-    
-    print "\n CONSTRUCTING M: \n"
-    
-    for i in range(1,len(tfms1)):
-        del1 = s1_t0_inv.dot(tfms1[i])
-        del2 = s2_t0_inv.dot(tfms2[i])
-        
-        print "\n del1:"
-        print del1
-        print del1.dot(I_0).dot(del1.T)
-        print "\n del2:"
-        print del2, '\n'
-        print del2.dot(I_0).dot(del2.T)
-        
-        M = np.kron(I, del1) - np.kron(del2.T,I)
-        M_final = np.r_[M_final, M]
-    
-    L_final = -1*np.copy(M_final[:,15])
-    M_final = scp.delete(M_final, (3,7,11,15), 1) 
-
-    X = np.linalg.lstsq(M_final,L_final)[0]
-    Tas2 = sclg.sol
-    print M_final.dot(X) - L_final
-        
-    tt = np.reshape(X,(3,4),order='F')
-    tt = np.r_[tt,np.array([[0,0,0,1]])]
-    
-    print tt.T.dot(tt)
-    
-    return tt
-
-def solve_sylvester4 (tfms1, tfms2):
-    """
-    Solves the system of Sylvester's equations to find the calibration transform.
-    Returns the calibration transform from sensor 1 (corresponding to tfms1) to sensor 2.
-    This functions forces the bottom row to be 0,0,0,1 by neglecting columns of M and changing L.
-    In order to solve the equation, it constrains rotation matrix to be the identity.
-    """
-
-    assert len(tfms1) == len(tfms2) and len(tfms1) >= 2
-    I = np.eye(4)
-        
-    M_final = np.empty((0,16))
-
-    s1_t0_inv = np.linalg.inv(tfms1[0])
-    s2_t0_inv = np.linalg.inv(tfms2[0])
-    
-    print "\n CONSTRUCTING M: \n"
-    
-    for i in range(1,len(tfms1)):
-        M = np.kron(I, s1_t0_inv.dot(tfms1[i])) - np.kron(s2_t0_inv.dot(tfms2[i]).T,I)
-        M_final = np.r_[M_final, M]
-    
-    # add the constraints on the last row of the transformation matrix to be == [0,0,0,1]
-    L_final = -1*np.copy(M_final)[:,15]
-    M_final = scp.delete(M_final, (3,7,11,15), 1)
-    I3 = np.eye(3)
-    x_init = np.linalg.lstsq(M_final,L_final)[0]
-
-    # Objective function:
-    def f_opt (x):
-        err_vec = M_final.dot(x)-L_final
-        return nlg.norm(err_vec)
-    
-    # Rotation constraint:
-    def rot_con (x):
-        R = np.reshape(x,(3,4), order='F')[:,0:3]
-        err_mat = R.T.dot(R) - I3
-        return nlg.norm(err_mat)
-    
-    (X, fx, _, _, _) = sco.fmin_slsqp(func=f_opt, x0=x_init, eqcons=[rot_con], acc=1e-5, full_output=1)
-
-    print "Function value at optimum: ", fx
-
-    tt = np.reshape(X,(3,4),order='F')
-    tt = np.r_[tt,np.array([[0,0,0,1]])]
-    
-    print tt.T.dot(tt)
-    
-    return tt
-    
 def publish_transform_markers(grabber, marker, T, from_frame, to_frame, rate=100):
 
     from visualization_msgs.msg import Marker
@@ -258,7 +133,7 @@ def get_transform_kb (grabber, marker, n_tfm=3, print_shit=True):
         i += 1
     
     print "Found %i transforms. Calibrating..."%n_tfm
-    Tas = solve_sylvester(tfms_ar, tfms_ph)
+    Tas = ss.solve4(tfms_ar, tfms_ph)
     print "Done."
     
     Tcp = tfms_ar[0].dot(Tas.dot(nlg.inv(tfms_ph[0])))
@@ -310,7 +185,7 @@ def get_transform_freq (grabber, marker, freq=0.5, n_tfm=3, print_shit=True):
         time.sleep(1/freq)
     
     print "Found %i transforms. Calibrating..."%n_tfm
-    Tas = solve_sylvester2(tfms_ar, tfms_ph)
+    Tas = ss.solve4(tfms_ar, tfms_ph)
     print "Done."
     
     Tcp = tfms_ar[0].dot(Tas.dot(nlg.inv(tfms_ph[0])))
