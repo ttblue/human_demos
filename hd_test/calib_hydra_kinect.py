@@ -484,7 +484,7 @@ if __name__ == '__main__':
         #publish_tf(, 'ar_marker_%d'%vals.marker, 'hydra_%s_pivot'%vals.hydra)
         
         
-def poll_tf(poll. hydra):
+def poll_tf(poll, hydra):
     
     tf_sub= tf.TransformListener()
     parent_frame = 'camera_link'
