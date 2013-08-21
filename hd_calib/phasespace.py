@@ -1,9 +1,10 @@
 from OWL import *
-import sys
+import sys, numpy as np, numpy.linalg as nlg
 
 MARKER_COUNT = 4
 SERVER_NAME = "192.168.1.136"
 INIT_FLAGS = 0
+PHASESPACE_FRAME = "phasespace_frame"
 
 def owl_print_error(s, n):
     """Print OWL error."""
@@ -77,3 +78,24 @@ def get_marker_positions(print_shit=False):
         break
 
     return marker_pos
+
+# Specify the transform of phasespace by 3 markers
+def marker_transform (m1, m2, m3, marker_pos):
+        
+    for i in [m1,m2,m3]:
+        if i not in marker_pos: return None
+
+    # Take 0->1 as x axis, 0->2 as y axis
+    x = np.asarray(marker_pos[m2]) - np.asarray(marker_pos[m1])
+    y = np.asarray(marker_pos[m3]) - np.asarray(marker_pos[m1])
+    x = x/nlg.norm(x)
+    y = y/nlg.norm(y)
+    
+    z = np.cross(x,y)
+    y = np.cross(z,x)
+    
+#    print np.array([x,y,z,marker_pos[0]]).shape
+#    print np.array([[0,0,0,1]]).shape
+    tfm = np.r_[np.array([x,y,z,marker_pos[m1]]).T,np.array([[0,0,0,1]])]
+    return tfm
+

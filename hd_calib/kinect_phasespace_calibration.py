@@ -1,5 +1,5 @@
-#!/usr/bin/ipython -i
-
+#!/usr/bin/python
+import argparse
 import time
 import numpy as np, numpy.linalg as nlg
 import scipy as scp, scipy.linalg as sclg, scipy.optimize as sco
@@ -7,7 +7,7 @@ import roslib; roslib.load_manifest("tf")
 import rospy, tf
 import roslib; roslib.load_manifest('ar_track_service')
 from ar_track_service.srv import MarkerPositions, MarkerPositionsRequest, MarkerPositionsResponse
-
+import subprocess
 
 import cloudprocpy as cpr
 import phasespace as ph
@@ -16,28 +16,6 @@ from hd_utils import clouds, ros_utils as ru, conversions, solve_sylvester as ss
 from hd_utils.colorize import colorize
 
 asus_xtion_pro_f = 544.260779961
-
-def get_phasespace_transform ():
-    """
-    Uses marker 0 as origin, 0->1 as x axis and 0->2 as y axis.
-    Returns none if relevant markers not found.
-    """
-    marker_pos = ph.get_marker_positions()
-    
-    for i in range(3):
-        if i not in marker_pos: return None
-        
-    # Take 0->1 as x axis, 0->2 as y axis
-    x = np.asarray(marker_pos[1]) - np.asarray(marker_pos[0])
-    y = np.asarray(marker_pos[2]) - np.asarray(marker_pos[0])
-    x = x/nlg.norm(x)
-    y = y/nlg.norm(y)
-    
-    z = np.cross(x,y)
-    y = np.cross(z,x)
-    
-    tfm = np.r_[np.array([x,y,z,marker_pos[0]]).T,np.array([0,0,0,1])]
-    return tfm
 
 getMarkers = None
 req = MarkerPositionsRequest()
@@ -92,9 +70,26 @@ def publish_transform_markers(grabber, marker, T, from_frame, to_frame, rate=100
         except KeyboardInterrupt:
             break    
 
+def publish_transform(T, from_frame, to_frame, rate=100):
+    
+    print colorize("Transform : ", "yellow", True)
+    print T
+    
+    tf_pub = tf.TransformBroadcaster()
+    
+    trans, rot = conversions.hmat_to_trans_rot(T)
+    sleeper = rospy.Rate(10)
+
+    while True:
+        try:            
+            tf_pub.sendTransform(trans, rot, rospy.Time.now(), to_frame, from_frame)
+            sleeper.sleep()
+        except KeyboardInterrupt:
+            break    
+
 
 # Incorporate averaging.
-def get_transform_kb (grabber, marker, n_tfm=3, print_shit=True):
+def get_transform_kb (grabber, marker, n_avg=10, n_tfm=3, print_shit=True):
     """
     Prompts the user to hit the keyboard whenever taking an observation.
     Switch on phasespace before this.
@@ -137,8 +132,77 @@ def get_transform_kb (grabber, marker, n_tfm=3, print_shit=True):
     Tcp = tfms_ar[0].dot(Tas.dot(nlg.inv(tfms_ph[0])))
     return Tcp
 
+def get_transform_ros(marker, n_tfm, n_avg, freq=None):
+    """
+    Returns a tuple of two list of N_TFM transforms, each
+    the average of N_AVG transforms
+    corresponding to the AR marker with ID = MARKER and 
+    the phasespace markers.
+    """
 
-def get_transform_freq (grabber, marker, freq=0.5, n_tfm=3, print_shit=False):
+    camera_frame = 'camera_depth_optical_frame'
+    marker_frame = 'ar_marker_%d'%marker
+    ps_frame = 'ps_marker_transform'
+
+    tf_sub = tf.TransformListener()
+
+    I_0 = np.eye(4)
+    I_0[3,3] = 0
+    
+    ar_tfms    = []
+    ph_tfms = []
+
+    wait_time = 5
+    print "Waiting for %f seconds before collecting data."%wait_time
+    time.sleep(wait_time)
+
+    sleeper = rospy.Rate(30)
+    for i in xrange(n_tfm+1):
+        if freq is None:
+            raw_input(colorize("Transform %d of %d : Press return when ready to capture transforms"%(i, n_tfm), "red", True))
+        else: 
+            print colorize("Transform %d of %d."%(i, n_tfm), "red", True)
+        ## transforms which need to be averaged.
+        ar_tfm_avgs = []
+        ph_tfm_avgs = []
+        
+        for j in xrange(n_avg):            
+            print colorize('\tGetting averaging transform : %d of %d ...'%(j,n_avg-1), "blue", True)
+            
+            mtrans, mrot, ptrans, prot = None, None, None, None
+            while ptrans == None or mtrans == None:
+                mtrans, mrot = tf_sub.lookupTransform(camera_frame, marker_frame, rospy.Time(0))
+                ptrans, prot = tf_sub.lookupTransform(ph.PHASESPACE_FRAME, ps_frame, rospy.Time(0))
+                sleeper.sleep()
+
+            ar_tfm_avgs.append(conversions.trans_rot_to_hmat(mtrans,mrot))
+            ph_tfm_avgs.append(conversions.trans_rot_to_hmat(ptrans,prot))
+            
+        ar_tfm = utils.avg_transform(ar_tfm_avgs)
+        ph_tfm = utils.avg_transform(ph_tfm_avgs)
+
+#         print "\nar:"
+#         print ar_tfm
+#         print ar_tfm.dot(I_0).dot(ar_tfm.T)
+#         print "h:"
+#         print ph_tfm
+#         print ph_tfm.dot(I_0).dot(ph_tfm.T), "\n"
+                
+        ar_tfms.append(ar_tfm)
+        ph_tfms.append(ph_tfm)
+        if freq is not None:
+            time.sleep(1/freq)
+
+        
+    print "Found %i transforms. Calibrating..."%n_tfm
+    Tas = ss.solve4(ar_tfms, ph_tfms)
+    print "Done."
+    
+    T_cps = [ar_tfms[i].dot(Tas).dot(np.linalg.inv(ph_tfms[i])) for i in xrange(len(ar_tfms))]
+    return utils.avg_transform(T_cps)
+
+
+def get_transform_freq (grabber, marker, freq=0.5, n_avg=10, n_tfm=3, print_shit=False):
     """
     Stores data at frequency provided.
     Switch on phasespace before this.
@@ -151,7 +215,7 @@ def get_transform_freq (grabber, marker, freq=0.5, n_tfm=3, print_shit=False):
     
     i = 0
     
-    wait_time = 0
+    wait_time = 5
     print "Waiting for %f seconds before collecting data."%wait_time
     time.sleep(wait_time)
     
@@ -166,22 +230,23 @@ def get_transform_freq (grabber, marker, freq=0.5, n_tfm=3, print_shit=False):
         while j < n_avg:
             rgb, depth = grabber.getRGBD()
             ar_tfm = get_ar_transform_id(depth, rgb, marker)
-            ph_tfm = get_phasespace_transform()
+            ph_tfm = ph.marker_transform(0,1,2, ph.get_marker_positions())
 
             if ar_tfm is None: 
-#                print "Could not find AR marker %i." %marker
+                print colorize("Could not find AR marker %i."%marker,"red",True)
                 continue
             if ph_tfm is None:
-#                print "Could not correct phasespace markers."
+                print colorize("Could not correct phasespace markers.", "red", True)
                 continue
-            
+
+            print colorize("Got transform %i for averaging."%(j+1), "blue", True)
             ar_tfms.append(ar_tfm)
             ph_tfms.append(ph_tfm)
             j += 1
             time.sleep(1/avg_freq)
         
-        ar_avg_fm = utils.avg_transform(ar_tfms)
-        ph_avg_fm = utils.avg_transform(ph_tfms)
+        ar_avg_tfm = utils.avg_transform(ar_tfms)
+        ph_avg_tfm = utils.avg_transform(ph_tfms)
         
         if print_shit:
             print "\n ar: "
@@ -201,37 +266,48 @@ def get_transform_freq (grabber, marker, freq=0.5, n_tfm=3, print_shit=False):
     Tas = ss.solve4(tfms_ar, tfms_ph)
     print "Done."
     
-    T_cps = [tfms_ar[i].dot(T_ms).dot(np.linalg.inv(tfms_ph[i])) for i in xrange(len(tfms_ar))]
+    T_cps = [tfms_ar[i].dot(Tas).dot(np.linalg.inv(tfms_ph[i])) for i in xrange(len(tfms_ar))]
     return utils.avg_transform(T_cps)
 
 from threading import Thread
-from hd_logging import phasespace_logger as pl
+from hd_visualization import visualize_phasespace as vp
 
 class threadClass (Thread):    
     def run(self):
-        pl.publish_phasespace_markers_ros()
+        vp.publish_phasespace_markers_ros()
 
 # Use command line arguments
-def main_loop():
-    global getMarkers
-    
-    rospy.init_node("phasespace_camera_calibration")
-    ph.turn_phasespace_on()
+# Before staring this, start up hd_visualization.visualize_ar_ps
+# OR, if you have roslaunch, then run the ar marker and phasespace stuff separately
+if __name__=='__main__':
+#     global getMarkers
 
-    marker = 10
-    n_tfm = 5
-    n_avg = 30
+    parser = argparse.ArgumentParser(description="Phasespace Kinect Calibration")
+    parser.add_argument('--marker', help="AR marker id to track.", required=True, type=int)
+    parser.add_argument('--n_tfm', help="number of transforms to use for calibration.", type=int, default=5)
+    parser.add_argument('--n_avg', help="number of estimates of transform to use for averaging.", type=int, default=10)
+    args = parser.parse_args()
     
-    getMarkers = rospy.ServiceProxy("getMarkers", MarkerPositions)
+    #subprocess.call("killall XnSensorServer", shell=True)
+    rospy.init_node("phasespace_camera_calibration")    
     
-    grabber = cpr.CloudGrabber()
-    grabber.startRGBD()
-    
-    Tcp = get_transform_freq(grabber, marker, n_avg=n_avg, n_tfm=n_tfm)
+#     ph.turn_phasespace_off()
+#     thc = threadClass()
+#     thc.start()
 
-    thc = threadClass()
-    thc.start()
+    #ph.turn_phasespace_on()
+
+#     marker = 10
+#     n_tfm = 5
+#     n_avg = 10
+#     
+#     getMarkers = rospy.ServiceProxy("getMarkers", MarkerPositions)
+#     
+#     grabber = cpr.CloudGrabber()
+#     grabber.startRGBD()
     
-    publish_transform_markers(grabber, marker, Tcp, "camera_link", "phasespace_frame")
+    Tcp = get_transform_ros(args.marker, args.n_tfm, args.n_avg)
     
-    ph.turn_phasespace_off()
+    raw_input("Kill static transform and press return.")
+    publish_transform(Tcp, "camera_depth_optical_frame", ph.PHASESPACE_FRAME)
+    

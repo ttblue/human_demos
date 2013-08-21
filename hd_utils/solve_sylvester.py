@@ -131,6 +131,7 @@ def solve4 (tfms1, tfms2):
         
     M_final = np.empty((0,16))
 
+    # Inverses of transforms of two sensors at time t = 0
     s1_t0_inv = nlg.inv(tfms1[0])
     s2_t0_inv = nlg.inv(tfms2[0])
 

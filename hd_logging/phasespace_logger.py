@@ -53,20 +53,25 @@ def log_phasespace_markers (file_name=None):
 def publish_phasespace_markers_ros (print_shit=False):
 
     import rospy
+    import roslib; roslib.load_manifest("tf")
+    import tf
     from visualization_msgs.msg import Marker, MarkerArray
     from geometry_msgs.msg import Point
     from std_msgs.msg import ColorRGBA
+
+    ph.turn_phasespace_on()
 
     if rospy.get_name() == '/unnamed':
         rospy.init_node("phasespace")
     
 #    ph.turn_phasespace_on()   
     marker_pub = rospy.Publisher('phasespace_markers', MarkerArray)
+    tf_pub = tf.TransformBroadcaster()
 
-    prev_time = time.time() - 1/log_freq
+    #prev_time = time.time() - 1/log_freq
     while True:
         try:
-            marker_pos = ph.get_marker_positions(print_shit) 
+            marker_pos = ph.get_marker_positions() 
             #print marker_pos#.keys()
             time_stamp = rospy.Time.now()
 
@@ -79,18 +84,27 @@ def publish_phasespace_markers_ros (print_shit=False):
                 m.pose.orientation.w = 1
                 m.id = i
                 m.header.stamp = time_stamp
-                m.header.frame_id = "phasespace_frame"
+                m.header.frame_id = ph.PHASESPACE_FRAME
                 m.scale.x = m.scale.y = m.scale.z = 0.01
                 m.type = Marker.CUBE
                 m.color.r = 1
                 m.color.a = 1
                 mk.markers.append(m)
-                
-            curr_time = time.time()
-            if curr_time - prev_time > 1/log_freq:
-                if print_shit: print marker_pos
-                marker_pub.publish(mk)
-                prev_time = curr_time
+            
+            trans, rot = None, None
+            try:
+                trans, rot = conv.hmat_to_trans_rot(ph.marker_transform(0,1,2, marker_pos))
+            except:
+                print "Could not find phasespace transform."
+                pass
+            
+            #curr_time = time.time()
+            #if curr_time - prev_time > 1/log_freq:
+            if print_shit: print marker_pos
+            marker_pub.publish(mk)
+            if trans is not None:
+                tf_pub.sendTransform(trans, rot, rospy.Time.now(), "ps_marker_transform", ph.PHASESPACE_FRAME)
+            #    prev_time = curr_time
                 
             
             #sleep for remainder of the time
@@ -155,7 +169,7 @@ def initialize_ros_logging(tfm_file=None):
     ps_points = np.asarray(ps_points.values())
     Tfm = gt.find_rigid_tfm(kin_points, ps_points)
     print "Transform:", Tfm
-#    ph.turn_phasespace_off()    
+    ph.turn_phasespace_off()    
     
     
 #    process = Process(target=static_tfm_publisher, args=(Tfm,))
