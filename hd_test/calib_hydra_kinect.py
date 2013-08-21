@@ -11,7 +11,7 @@ import numpy as np, numpy.linalg as nlg
 import scipy as scp, scipy.optimize as sco
 from colorize import colorize
 
-from rapprentice import conversions
+from hd_utils import conversions
 
 np.set_printoptions(precision=5, suppress=True)
 

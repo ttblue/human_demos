@@ -93,6 +93,7 @@ def publish_transform_markers(grabber, marker, T, from_frame, to_frame, rate=100
             break    
 
 
+# Incorporate averaging.
 def get_transform_kb (grabber, marker, n_tfm=3, print_shit=True):
     """
     Prompts the user to hit the keyboard whenever taking an observation.
@@ -136,8 +137,8 @@ def get_transform_kb (grabber, marker, n_tfm=3, print_shit=True):
     Tcp = tfms_ar[0].dot(Tas.dot(nlg.inv(tfms_ph[0])))
     return Tcp
 
-# TODO: Average transforms - would definitely work better
-def get_transform_freq (grabber, marker, freq=0.5, n_tfm=3, print_shit=True):
+
+def get_transform_freq (grabber, marker, freq=0.5, n_tfm=3, print_shit=False):
     """
     Stores data at frequency provided.
     Switch on phasespace before this.
@@ -155,31 +156,44 @@ def get_transform_freq (grabber, marker, freq=0.5, n_tfm=3, print_shit=True):
     time.sleep(wait_time)
     
     
+    avg_freq = 30
     while i < n_tfm:
         print "Transform %i"%(i+1)
         
-        rgb, depth = grabber.getRGBD()
-        ar_tfm = get_ar_transform_id(depth, rgb, marker)
-        ph_tfm = get_phasespace_transform()
+        j = 0
+        ar_tfms = []
+        ph_tfms = []
+        while j < n_avg:
+            rgb, depth = grabber.getRGBD()
+            ar_tfm = get_ar_transform_id(depth, rgb, marker)
+            ph_tfm = get_phasespace_transform()
 
-        if ar_tfm is None: 
-            print "Could not find AR marker %i." %marker
-            continue
-        if ph_tfm is None:
-            print "Could not correct phasespace markers."
-            continue
+            if ar_tfm is None: 
+#                print "Could not find AR marker %i." %marker
+                continue
+            if ph_tfm is None:
+#                print "Could not correct phasespace markers."
+                continue
+            
+            ar_tfms.append(ar_tfm)
+            ph_tfms.append(ph_tfm)
+            j += 1
+            time.sleep(1/avg_freq)
+        
+        ar_avg_fm = utils.avg_transform(ar_tfms)
+        ph_avg_fm = utils.avg_transform(ph_tfms)
         
         if print_shit:
             print "\n ar: "
-            print ar_tfm
-            print ar_tfm.dot(I_0).dot(ar_tfm.T)
+            print ar_avg_tfm
+            print ar_avg_tfm.dot(I_0).dot(ar_avg_tfm.T)
             print "ph: "
-            print ph_tfm
-            print ph_tfm.dot(I_0).dot(ph_tfm.T)
+            print ph_avg_tfm
+            print ph_avg_tfm.dot(I_0).dot(ph_avg_tfm.T)
             
         
-        tfms_ar.append(ar_tfm)
-        tfms_ph.append(ph_tfm)
+        tfms_ar.append(ar_avg_tfm)
+        tfms_ph.append(ph_avg_tfm)
         i += 1
         time.sleep(1/freq)
     
@@ -188,15 +202,7 @@ def get_transform_freq (grabber, marker, freq=0.5, n_tfm=3, print_shit=True):
     print "Done."
     
     T_cps = [tfms_ar[i].dot(T_ms).dot(np.linalg.inv(tfms_ph[i])) for i in xrange(len(tfms_ar))]
-    trans_rots = [conversions.hmat_to_trans_rot(tfm) for tfm in T_cps]
-    
-    trans = np.asarray([trans for (trans, rot) in trans_rots])
-    avg_trans = np.sum(trans,axis=0)/trans.shape[0]
-    rots = [rot for (trans, rot) in trans_rots]
-    avg_rot = avg_quaternions(np.array(rots))
-    
-    Tcp = conversions.trans_rot_to_hmat(avg_trans, avg_rot)
-    return Tcp
+    return utils.avg_transform(T_cps)
 
 from threading import Thread
 from hd_logging import phasespace_logger as pl
@@ -205,7 +211,7 @@ class threadClass (Thread):
     def run(self):
         pl.publish_phasespace_markers_ros()
 
-
+# Use command line arguments
 def main_loop():
     global getMarkers
     
@@ -214,13 +220,14 @@ def main_loop():
 
     marker = 10
     n_tfm = 5
+    n_avg = 30
     
     getMarkers = rospy.ServiceProxy("getMarkers", MarkerPositions)
     
     grabber = cpr.CloudGrabber()
     grabber.startRGBD()
     
-    Tcp = get_transform_freq(grabber, marker, n_tfm=n_tfm)
+    Tcp = get_transform_freq(grabber, marker, n_avg=n_avg, n_tfm=n_tfm)
 
     thc = threadClass()
     thc.start()
