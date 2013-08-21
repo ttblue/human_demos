@@ -2,9 +2,11 @@ import rospy
 import numpy as np
 import cv2
 
-from rapprentice import ros_utils as ru, clouds, berkeley_pr2, conversions
+from hd_utils import ros_utils as ru, clouds, conversions
 from get_transform import find_rigid_tfm
 import checkerboard_transform as cbt
+
+asus_xtion_pro_f = 544.260779961
 
 def get_ar_marker_poses (rgb, depth):
     """
@@ -16,7 +18,7 @@ def get_ar_marker_poses (rgb, depth):
     getMarkers = rospy.ServiceProxy("getMarkers", MarkerPositions)
     
     #xyz = svi.transform_pointclouds(depth, tfm)
-    xyz = clouds.depth_to_xyz(depth, berkeley_pr2.f)
+    xyz = clouds.depth_to_xyz(depth, asus_xtion_pro_f)
     pc = ru.xyzrgb2pc(xyz, rgb, '/base_footprint')
     
     req = MarkerPositionsRequest()
@@ -74,7 +76,7 @@ def get_click_points (rgb, depth):
         if event == cv.CV_EVENT_LBUTTONDOWN:
             clicks.append([x, y])
 
-    xyz = clouds.depth_to_xyz(depth, berkeley_pr2.f)
+    xyz = clouds.depth_to_xyz(depth, asus_xtion_pro_f)
             
     cv2.imshow("Points", rgb)
     cv.SetMouseCallback("Points", mouse_click, 0)
@@ -119,9 +121,9 @@ def calibrate_cb (rgb1, depth1, rgb2, depth2):
     """
 
     rtn1, corners1 = cbt.get_corners_rgb(rgb1, cb_rows, cb_cols)
-    xyz1 = clouds.depth_to_xyz(depth, berkeley_pr2.f)
+    xyz1 = clouds.depth_to_xyz(depth, asus_xtion_pro_f)
     rtn2, corners2 = cbt.get_corners_rgb(rgb2, cb_rows, cb_cols)
-    xyz2 = clouds.depth_to_xyz(depth, berkeley_pr2.f)
+    xyz2 = clouds.depth_to_xyz(depth, asus_xtion_pro_f)
     
     if rtn1 != rtn2:
         print "Warning: One of the cameras do not see all the checkerboard points."

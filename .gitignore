@@ -52,3 +52,4 @@ nosetests.xml
 *build/*
 # not sure about this:
 *.not_sure/*
+*.settings/*

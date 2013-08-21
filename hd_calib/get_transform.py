@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-from rapprentice import berkeley_pr2, clouds, ros_utils
+from hd_utils import clouds, ros_utils
 import phasespace as ph
 
 import cloudprocpy, cv, cv2, numpy as np
@@ -7,6 +7,7 @@ import subprocess, sys
 
 import OWL as owl
 
+asus_xtion_pro_f = 544.260779961
 
 def get_markers_kinect():
     subprocess.call("killall XnSensorServer", shell=True)
@@ -83,7 +84,7 @@ def get_markers_kinect():
 
     red_mask = (v>150) & ((h<10) | (h>150))# & (v > 200)# & (s > 100)
     #valid = depth*(depth > 0)
-    xyz_k = clouds.depth_to_xyz(depth, berkeley_pr2.f)
+    xyz_k = clouds.depth_to_xyz(depth, asus_xtion_pro_f)
             
     #cv2.imshow("red",red_mask.astype('uint8')*255)
     cv2.imshow("red", red_mask.astype('uint8')*255)

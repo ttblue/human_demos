@@ -199,7 +199,7 @@ def solve_sylvester4 (tfms1, tfms2, addnoise=True):
         err_mat = R.T.dot(R) - I3
         return nlg.norm(err_mat)
     
-    (X, fx, _, _, _) = sco.fmin_slsqp(func=f_opt, x0=x_init, eqcons=[rot_con], acc=1e-5, full_output=1)
+    (X, fx, _, _, _) = sco.fmin_slsqp(func=f_opt, x0=x_init, eqcons=[rot_con], iter=200, acc=1e-3, full_output=1)
 
     print "Function value at optimum: ", fx
 

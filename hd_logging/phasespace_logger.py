@@ -4,7 +4,7 @@ import os.path as osp, time, subprocess
 from multiprocessing import Process
 
 from  hd_calib import phasespace as ph, get_transform as gt
-from rapprentice import conversions as conv
+from hd_utils import conversions as conv
 
 log_freq = 20.0
 
