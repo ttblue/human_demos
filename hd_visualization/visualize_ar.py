@@ -69,31 +69,3 @@ def visualize_ar ():
             print "Keyboard interrupt. Exiting."
             break
         
-def visualize_pointcloud ():
-    """
-    Visualize point clouds from openni grabber through ROS.
-    """
-    if rospy.get_name() == '/unnamed':
-        rospy.init_node("visualize_pointcloud")
-    
-    camera_frame = "camera_depth_optical_frame"
-    
-    pc_pub = rospy.Publisher("camera_points", PointCloud2)
-    sleeper = rospy.Rate(30)
-    
-    grabber= cpr.CloudGrabber()
-    grabber.startRGBD()
-    
-    print "Streaming now: Pointclouds only."
-    while True:
-        try:
-            r, d = grabber.getRGBD()            
-
-            pc = ru.xyzrgb2pc(clouds.depth_to_xyz(d, asus_xtion_pro_f), r, camera_frame)
-            pc_pub.publish(pc)
-
-            sleeper.sleep()
-        except KeyboardInterrupt:
-            print "Keyboard interrupt. Exiting."
-            break
-        
