@@ -1,88 +1,23 @@
+#!/usr/bin/ipython -i
 import numpy as np, numpy.linalg as nlg
-import scipy as scp, scipy.optimize as sco
-
+import scipy.optimize as sco
 import networkx as nx, networkx.algorithms as nxa
 import itertools
 
-from hd_utils import utils
+import roslib; roslib.load_manifest("tf")
+import rospy, tf
 
-######### Tentative transform code ###############
-def get_transform_ros(n_tfm, n_avg, freq=None):
+from hd_utils import utils, conversions
+from hd_utils.yes_or_no import yes_or_no
+
+tf_listener = None
+
+
+def update_graph_from_observations(G, tfms):
     """
+    Updates transform graph @G based on the observations @tfms, which is a dict from 
+    marker ids (or names) to transforms all in the same coordinate frame. 
     """
-
-    camera_frame = 'camera_depth_optical_frame'
-    marker_frame = 'ar_marker_%d'%marker
-    ps_frame = 'ps_marker_transform'
-
-    tf_sub = tf.TransformListener()
-
-    I_0 = np.eye(4)
-    I_0[3,3] = 0
-    
-    ar_tfms    = []
-    ph_tfms = []
-
-    wait_time = 5
-    print "Waiting for %f seconds before collecting data."%wait_time
-    time.sleep(wait_time)
-
-    sleeper = rospy.Rate(30)
-    for i in xrange(n_tfm+1):
-        if freq is None:
-            raw_input(colorize("Transform %d of %d : Press return when ready to capture transforms"%(i, n_tfm), "red", True))
-        else: 
-            print colorize("Transform %d of %d."%(i, n_tfm), "red", True)
-        ## transforms which need to be averaged.
-        ar_tfm_avgs = []
-        ph_tfm_avgs = []
-        
-        for j in xrange(n_avg):            
-            print colorize('\tGetting averaging transform : %d of %d ...'%(j,n_avg-1), "blue", True)
-            
-            mtrans, mrot, ptrans, prot = None, None, None, None
-            while ptrans == None or mtrans == None:
-                mtrans, mrot = tf_sub.lookupTransform(camera_frame, marker_frame, rospy.Time(0))
-                ptrans, prot = tf_sub.lookupTransform(ph.PHASESPACE_FRAME, ps_frame, rospy.Time(0))
-                sleeper.sleep()
-
-            ar_tfm_avgs.append(conversions.trans_rot_to_hmat(mtrans,mrot))
-            ph_tfm_avgs.append(conversions.trans_rot_to_hmat(ptrans,prot))
-            
-        ar_tfm = utils.avg_transform(ar_tfm_avgs)
-        ph_tfm = utils.avg_transform(ph_tfm_avgs)
-
-#         print "\nar:"
-#         print ar_tfm
-#         print ar_tfm.dot(I_0).dot(ar_tfm.T)
-#         print "h:"
-#         print ph_tfm
-#         print ph_tfm.dot(I_0).dot(ph_tfm.T), "\n"
-                
-        ar_tfms.append(ar_tfm)
-        ph_tfms.append(ph_tfm)
-        if freq is not None:
-            time.sleep(1/freq)
-
-        
-    print "Found %i transforms. Calibrating..."%n_tfm
-    Tas = ss.solve4(ar_tfms, ph_tfms)
-    print "Done."
-    
-    T_cps = [ar_tfms[i].dot(Tas).dot(np.linalg.inv(ph_tfms[i])) for i in xrange(len(ar_tfms))]
-    return utils.avg_transform(T_cps)
-
-
-def update_graph_from_observations(G, marker_tfms, hydra_tfms={}, ps_tfms={}):
-    """
-    Updates transform graph @G based on the observations @marker_tfms of AR marker transforms,
-    @hydra_tfms of Hydra joystick transforms and @ps_tfms of phasespace markers.
-    This assumes they are already in the same frame after running another calibration. 
-    """
-    tfms = {}
-    tfms.update(marker_tfms)
-    tfms.update(hydra_tfms)
-    tfms.update(ps_tfms)
     ids = tfms.keys()
     ids.sort()
     
@@ -234,7 +169,7 @@ def compute_relative_transforms (G, num_markers, min_obs=5):
     """
     Takes in a transform graph @G such that it has enough data to begin calibration (is_ready(G) returns true).
     Optimizes and computes final relative transforms between all nodes (markers).
-    Returns a graph final_G with the same edges and final transforms computed.
+    Returns a graph final_G with the all edges (clique) and final transforms stored in edges.
     """
     
     assert (is_ready(G, num_markers=num_markers, min_obs=min_obs))
@@ -242,4 +177,101 @@ def compute_relative_transforms (G, num_markers, min_obs=5):
         G[i][j]['avg_tfm'] = utils.avg_transform(G[i][j]['transform_list'])
     
     G_opt = optimize_transforms(G)
+    return G_opt
+
+
+# These three functions assume calibration has taken place.
+def get_ar_transforms(markers, parent_frame):
+    """
+    Takes in a list of @markers (AR marker ids) and a @parent_frame.
+    Returns a dict of transforms with keys as found marker ids and values as transforms.
+    """
+    if markers is None: return {}
+    ar_tfms = {}
+    for marker in markers:
+        try:
+            trans, rot = tf_listener.lookupTransform(parent_frame, 'ar_marker_%d'%marker, rospy.Time(0))
+            ar_tfms[marker] = conversions.trans_rot_to_hmat(trans, rot)
+        except LookupException:
+            pass
+    return ar_tfms
+    
+def get_hydra_transforms(hydras, parent_frame):
+    """
+    Transform finder for hydras. Nothing for now.
+    """
+    return {}
+
+def get_phasespace_transforms(ps_markers, parent_frame):
+    """
+    Transform finder for hydras. Nothing for now.
+    """
+    return {}
+
+
+def create_graph_from_observations(parent_frame, num_markers, obs_info, min_obs=5, n_avg=5, freq=None):
+    """
+    Runs a loop till graph has enough data and user is happy with data.
+    Or run with frequency specified until enough data is gathered.
+    
+    @parent_frame -- frame to get observations in.
+    @num_markers -- total_number of markers.
+    @obs_info -- dict with information on what markers to search for.
+    @min_obs -- 
+    """
+    global tf_listener
+    if rospy.get_name == '/unnamed':
+        rospy.init_node('gripper_marker_calibration')
+    tf_listener = tf.TransformListener()
+    
+    G = nx.Graph()
+
+    # setup for different sensors
+    ar_markers = obs_info.get('ar_markers')
+    hydras = obs_info.get('hydras')
+    ps_markers = obs_info.get('phasespace_markers')
+
+    wait_time = 5
+    print "Waiting for %f seconds before collecting data."%wait_time
+    time.sleep(wait_time)
+
+    sleeper = rospy.Rate(30)
+    count = 0
+    while True:
+        if freq is None:
+            raw_input(colorize("Iteration %d: Press return when ready to capture transforms."%count, "red", True))
+        else: 
+            print colorize("Iteration %d"%count, "red", True)
+        
+        avg_tfms = {}
+        for j in xrange(n_avg):
+            print colorize('\tGetting averaging transform : %d of %d ...'%(j,n_avg-1), "blue", True)
+          
+            tfms = {}
+            tfms.update(get_ar_transforms(ar_markers, parent_frame))
+            tfms.update(get_hydra_transforms(hydras, parent_frame))
+            tfms.update(get_phasespace_transforms(ps_markers, parent_frame))
+            
+            for marker in tfms:
+                if marker not in avg_tfms:
+                    avg_tfms[marker] = []
+                avg_tfms[marker].append(tfms[marker])
+            
+            sleeper.sleep()
+        
+        for marker in avg_tfms:
+            avg_tfms[marker] = utils.avg_transform(avg_tfms[marker])
+        
+        count += 1
+        update_graph_from_observations(G, avg_tfms)
+        if is_ready(G,num_markers,min_obs):
+            if freq:
+                break
+            elif not yes_or_no("Enough data has been gathered. Would you like to gather more data anyway?"):
+                break
+
+    print "Finished gathering data in %d iterations."%count
+    print "Calibrating for optimal transforms between markers..."
+    G_opt = compute_relative_transforms (G, num_markers=num_markers, min_obs=min_obs)
+    print "Finished calibrating."
     return G_opt
