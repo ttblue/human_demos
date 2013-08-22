@@ -1,7 +1,7 @@
 import numpy as np, numpy.linalg as nlg
 import scipy as scp, scipy.optimize as sco
 
-import networkx as nx
+import networkx as nx, networkx.algorithms as nxa
 import itertools
 
 from hd_utils import utils
@@ -9,10 +9,6 @@ from hd_utils import utils
 ######### Tentative transform code ###############
 def get_transform_ros(n_tfm, n_avg, freq=None):
     """
-    Returns a tuple of two list of N_TFM transforms, each
-    the average of N_AVG transforms
-    corresponding to the AR marker with ID = MARKER and 
-    the phasespace markers.
     """
 
     camera_frame = 'camera_depth_optical_frame'
@@ -77,14 +73,20 @@ def get_transform_ros(n_tfm, n_avg, freq=None):
     return utils.avg_transform(T_cps)
 
 
-def update_graph_from_observations(G, marker_tfms):
+def update_graph_from_observations(G, marker_tfms, hydra_tfms={}, ps_tfms={}):
     """
-    Updates transform graph @G based on the observations @marker_tfms of AR marker transforms. 
+    Updates transform graph @G based on the observations @marker_tfms of AR marker transforms,
+    @hydra_tfms of Hydra joystick transforms and @ps_tfms of phasespace markers.
+    This assumes they are already in the same frame after running another calibration. 
     """
-    ids = marker_tfms.keys()
+    tfms = {}
+    tfms.update(marker_tfms)
+    tfms.update(hydra_tfms)
+    tfms.update(ps_tfms)
+    ids = tfms.keys()
     ids.sort()
     
-    for i,j in itertools.combinations(xrange(len(ids)), 2):
+    for i,j in itertools.combinations(ids, 2):
         for k in [i,j]:
             if not G.has_node(k):
                 G.add_node(k)
@@ -93,14 +95,14 @@ def update_graph_from_observations(G, marker_tfms):
             G.edges[i][j]['transform_list'] = []
             G.edges[i][j]['n'] = 0
         
-        Tij = nlg.inv(marker_tfms[i]).dot(marker_tfms[j])
+        Tij = nlg.inv(tfms[i]).dot(tfms[j])
         G.edges[i][j]['transform_list'].append(Tij)
         G.edges[i][j]['n'] += 1
 
             
 def is_ready (G, num_markers, min_obs=5):
     """
-    @num_markers is the total number of markers on the rigid object.
+    @num_markers is the total number of markers/sensors on the rigid object.
     @min_obs is the minimum number of observations required for each relative transform, once one is seen. 
     
     Returns True when the graph has enough data to begin calibration, False otherwise.
@@ -115,46 +117,24 @@ def is_ready (G, num_markers, min_obs=5):
 
 
 def optimize_for_transforms (G):
-
-# Only for cliques --- not really relevant
-#     def get_mat_from_x(X, n, i, j):
-#         """
-#         X is a vertical stack of variables for transformation matrices (12 variables each).
-#         First n are Ti's.
-#         Next n(n-1)/2 are Tij's, in lexicographic order of (i,j).
-#         
-#         Returns 3x4 matrix Tij
-#         """
-#         if j is None:
-#             i_offset = 12*i
-#             ij_offset = 0
-#         else:
-#             i_offset = 12*n
-#             #  First term below is for edges (u,v) where u < i
-#             # Second term below if for edges (i,v) where i < v < j
-#             ij_offset = 12*[(n-1-(i-1)/2)*i + (j-i-2)]
-# 
-#         offset = i_offset + ij_offset
-#         Xij = X[offset:offset+12]
-#         
-#         Tij = Xij.reshape([3,4], order='F')
-#         Tij = np.r_[Tij, np.array([[0,0,0,1]])]
-#         
-#         return Tij
+    """
+    Optimize for transforms in G. Assumes G is_ready.
+    Returns a clique with relative transforms between all objects.
+    """
 
     # Index maps from nodes and edges in the optimizer variable X.
     # Also calculate the reverse map if needed.
     node_map, edge_map = {}, {}
-    rev_node_map, rev_edge_map = {}, {}
+    rev_map = {}
     idx = 0
 
-    for obj in G.nodes():
+    for obj in G.nodes_iter():
         node_map[obj] = idx
-        rev_node_map[idx] = obj
+        rev_map[idx] = obj
         idx += 1
-    for obj in G.edges():
+    for obj in G.edges_iter():
         edge_map[obj] = idx
-        rev_edge_map[idx] = obj
+        rev_map[idx] = obj
         idx += 1
         
     # Some predefined variables
@@ -183,6 +163,8 @@ def optimize_for_transforms (G):
         obj = 0
         for i,j in edge_map: 
             obj += nlg.norm(get_mat_from_x(X, i, j) - G[i][j]['avg_tfm'])
+            
+        return obj
     
     def f_constraints (X):
         """
@@ -214,10 +196,39 @@ def optimize_for_transforms (G):
             Rij = Tij[0:3,0:3]
               
             con.append(nlg.norm(Tj - Ti.dot(Tij)))
-            con.append(nlg.norm)
+            con.append(nlg.norm(Rij.T.dot(Rij) - I3))
             
-            
+        return np.asarray(con)
+    
+    (X, fx, _, _, _) = sco.fmin_slsqp(func=f_objective, x0=0, f_eqcons=f_constraints, iter=200, full_output=1)
+    
+    # Create output optimal graph and copy edge transforms
+    G_opt = G.to_directed()
+    for i,j in G.edges_iter():
+        Tij = np.r_[get_mat_from_x(X, i, j),np.array([0,0,0,1])]
+        Tji = nlg.inv(Tij)
         
+        G_opt.edge[i][j] = {'tfm':Tij}
+        G_opt.edge[j][i] = {'tfm':Tji}
+        
+    # Add all edges to make clique
+    # Follow shortest path to get transform for edge
+    for i,j in itertools.permutations(G_opt.nodes(), 2):
+        if not G_opt.has_edge(i,j):
+            ij_path = nxa.shortest_path(G_opt, i, j)
+            Tij = G_opt.edge[ij_path[0]][ij_path[1]]['tfm']
+            for p in xrange(2,len(ij_path)):
+                Tij = Tij.dot(G_opt.edge[ij_path[p-1]][ij_path[p]]['tfm'])
+            Tji = nlg.inv(Tij)
+            
+            G_opt.add_edge(i,j)
+            G_opt.add_edge(j,i)
+            G_opt.edge[i][j] = {'tfm':Tij}
+            G_opt.edge[j][i] = {'tfm':Tji}
+
+    return G_opt
+            
+    
     
 def compute_relative_transforms (G, num_markers, min_obs=5):
     """
@@ -227,7 +238,8 @@ def compute_relative_transforms (G, num_markers, min_obs=5):
     """
     
     assert (is_ready(G, num_markers=num_markers, min_obs=min_obs))
-    
     for i,j in G.edges_iter():
         G[i][j]['avg_tfm'] = utils.avg_transform(G[i][j]['transform_list'])
-        
+    
+    G_opt = optimize_transforms(G)
+    return G_opt
