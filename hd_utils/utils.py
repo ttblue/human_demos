@@ -18,8 +18,9 @@ def avg_quaternions(qs):
 def avg_transform (tfms):
     """
     Averages transforms by converting to translations + quaternions.
+    
     Average out translations as normal (sum of vectors / # of vectors).
-    Average out quaternions as above.
+    Average out quaternions as in avg_quaternions.
     """
     trans_rots = [conversions.hmat_to_trans_rot(tfm) for tfm in tfms]
     trans = np.asarray([trans for (trans, rot) in trans_rots])

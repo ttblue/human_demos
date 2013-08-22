@@ -4,6 +4,7 @@ import scipy as scp, scipy.optimize as sco
 import networkx as nx
 import itertools
 
+from hd_utils import utils
 
 ######### Tentative transform code ###############
 def get_transform_ros(n_tfm, n_avg, freq=None):
@@ -83,7 +84,7 @@ def update_graph_from_observations(G, marker_tfms):
     ids = marker_tfms.keys()
     ids.sort()
     
-    for i,j in itertools.combinations(range(len(ids)), 2):
+    for i,j in itertools.combinations(xrange(len(ids)), 2):
         for k in [i,j]:
             if not G.has_node(k):
                 G.add_node(k)
@@ -112,6 +113,111 @@ def is_ready (G, num_markers, min_obs=5):
     else:
         return False
 
+
+def optimize_for_transforms (G):
+
+# Only for cliques --- not really relevant
+#     def get_mat_from_x(X, n, i, j):
+#         """
+#         X is a vertical stack of variables for transformation matrices (12 variables each).
+#         First n are Ti's.
+#         Next n(n-1)/2 are Tij's, in lexicographic order of (i,j).
+#         
+#         Returns 3x4 matrix Tij
+#         """
+#         if j is None:
+#             i_offset = 12*i
+#             ij_offset = 0
+#         else:
+#             i_offset = 12*n
+#             #  First term below is for edges (u,v) where u < i
+#             # Second term below if for edges (i,v) where i < v < j
+#             ij_offset = 12*[(n-1-(i-1)/2)*i + (j-i-2)]
+# 
+#         offset = i_offset + ij_offset
+#         Xij = X[offset:offset+12]
+#         
+#         Tij = Xij.reshape([3,4], order='F')
+#         Tij = np.r_[Tij, np.array([[0,0,0,1]])]
+#         
+#         return Tij
+
+    # Index maps from nodes and edges in the optimizer variable X.
+    # Also calculate the reverse map if needed.
+    node_map, edge_map = {}, {}
+    rev_node_map, rev_edge_map = {}, {}
+    idx = 0
+
+    for obj in G.nodes():
+        node_map[obj] = idx
+        rev_node_map[idx] = obj
+        idx += 1
+    for obj in G.edges():
+        edge_map[obj] = idx
+        rev_edge_map[idx] = obj
+        idx += 1
+        
+    # Some predefined variables
+    I3 = np.eye(3)
+        
+    def get_mat_from_x(X, i, j):
+        """
+        X is a vertical stack of variables for transformation matrices (12 variables each).         
+        Returns 3x4 matrix Ti or Tij by looking into the index maps.
+        """
+
+        if j is None:
+            offset = node_map[i]*12
+        else:
+            offset = edge_map[i,j]*12
+        
+        Xij = X[offset:offset+12]
+        return Xij.reshape([3,4], order='F')
+
+
+    def f_objective (X):
+        """
+        Objective function to make transforms close to average transforms.
+        Sum of the norms of matrix differences between each Tij and 
+        """        
+        obj = 0
+        for i,j in edge_map: 
+            obj += nlg.norm(get_mat_from_x(X, i, j) - G[i][j]['avg_tfm'])
+    
+    def f_constraints (X):
+        """
+        Constraint function to force matrices to be valid transforms (R.T*R = I_3).
+        It also forces Tj = Ti*Tij.
+        Also, T0 = identity transform.
+        """
+        con = []
+        Tis, Tijs = {},{}
+        for node in node_map:
+            Tis[node] = get_mat_from_x(X, node, None)
+        for i,j in edge_map:
+            Tijs[i,j] = get_mat_from_x(X, i, j)
+        
+        # T0 --> identity transform.
+        con.append(nlg.norm(Tis[node_map.keys()[0]] - np.eye(4)[0:3,:]))
+        
+        # Constrain Ris to be valid rotations
+        for node in node_map.keys()[1:]:
+            Ri = Tis[node][0:3,0:3]
+            con.append(nlg.norm(R.T.dot(R) - I3))
+        
+        # Tj = Ti*Tij
+        # Rij.T*Rij = I
+        for i,j in edge_map:
+            Ti = np.r_[Tis[i],np.array([[0,0,0,1]])]
+            Tj = np.r_[Tis[j],np.array([[0,0,0,1]])]
+            Tij = np.r_[Tijs[i,j],np.array([[0,0,0,1]])]
+            Rij = Tij[0:3,0:3]
+              
+            con.append(nlg.norm(Tj - Ti.dot(Tij)))
+            con.append(nlg.norm)
+            
+            
+        
     
 def compute_relative_transforms (G, num_markers, min_obs=5):
     """
@@ -122,4 +228,6 @@ def compute_relative_transforms (G, num_markers, min_obs=5):
     
     assert (is_ready(G, num_markers=num_markers, min_obs=min_obs))
     
-    
+    for i,j in G.edges_iter():
+        G[i][j]['avg_tfm'] = utils.avg_transform(G[i][j]['transform_list'])
+        
