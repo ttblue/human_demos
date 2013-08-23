@@ -22,17 +22,14 @@ def update_graph_from_observations(G, tfms):
     ids.sort()
     
     for i,j in itertools.combinations(ids, 2):
-        for k in [i,j]:
-            if not G.has_node(k):
-                G.add_node(k)
         if not G.has_edge(i,j):
             G.add_edge(i,j)
-            G.edges[i][j]['transform_list'] = []
-            G.edges[i][j]['n'] = 0
+            G.edge[i][j]['transform_list'] = []
+            G.edge[i][j]['n'] = 0
         
         Tij = nlg.inv(tfms[i]).dot(tfms[j])
-        G.edges[i][j]['transform_list'].append(Tij)
-        G.edges[i][j]['n'] += 1
+        G.edge[i][j]['transform_list'].append(Tij)
+        G.edge[i][j]['n'] += 1
 
             
 def is_ready (G, num_markers, min_obs=5):
@@ -51,7 +48,7 @@ def is_ready (G, num_markers, min_obs=5):
         return False
 
 
-def optimize_for_transforms (G):
+def optimize_transforms (G):
     """
     Optimize for transforms in G. Assumes G is_ready.
     Returns a clique with relative transforms between all objects.
@@ -87,6 +84,8 @@ def optimize_for_transforms (G):
             offset = edge_map[i,j]*12
         
         Xij = X[offset:offset+12]
+        print X.shape
+        print Xij.shape
         return Xij.reshape([3,4], order='F')
 
 
@@ -134,6 +133,29 @@ def optimize_for_transforms (G):
             con.append(nlg.norm(Rij.T.dot(Rij) - I3))
             
         return np.asarray(con)
+    
+    ### Setting initial values by walking through maximal spanning tree.
+    G_init = G.copy()
+    for i,j in G_init.edges_iter():
+        G_init[i][j]['weight'] = -1*G_init[i][j]['n']
+    G_init_tree = nxa.minimum_spanning_edges(G_init, data=True)
+    
+    
+    set_nodes = []
+    for i,j,tfm in sorted(list(G_init_tree)):
+        if i not in set_nodes:
+            
+        
+    
+    
+    
+    x_init = np.zeros(12*(G.number_of_nodes() + G.number_of_edges()))
+    x_init[0:9] = I3.reshape((12,1))
+    for i,j in edge_map:
+        offset = edge_map[i,j]*12
+        x_init[offset:offset+12] = G.edge[i][j]['avg_tfm']
+    ###
+    
     
     (X, fx, _, _, _) = sco.fmin_slsqp(func=f_objective, x0=0, f_eqcons=f_constraints, iter=200, full_output=1)
     
