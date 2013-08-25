@@ -3,15 +3,18 @@ import numpy as np, numpy.linalg as nlg
 import scipy.optimize as sco
 import networkx as nx, networkx.algorithms as nxa
 import itertools
+import time
 
 import roslib; roslib.load_manifest("tf")
 import rospy, tf
 
 from hd_utils import utils, conversions
 from hd_utils.yes_or_no import yes_or_no
+from hd_utils.colorize import colorize
 
 tf_listener = None
 
+np.set_printoptions(precision=5, suppress=True)
 
 def update_graph_from_observations(G, tfms):
     """
@@ -28,6 +31,7 @@ def update_graph_from_observations(G, tfms):
             G.edge[i][j]['n'] = 0
         
         Tij = nlg.inv(tfms[i]).dot(tfms[j])
+        print "From ", i," to ", j,":\n",Tij
         G.edge[i][j]['transform_list'].append(Tij)
         G.edge[i][j]['n'] += 1
 
@@ -64,9 +68,13 @@ def optimize_transforms (G):
         node_map[obj] = idx
         rev_map[idx] = obj
         idx += 1
-    for obj in G.edges_iter():
-        edge_map[obj] = idx
-        rev_map[idx] = obj
+    for i,j in G.edges_iter():
+        if i < j:
+            edge_map[i,j] = idx
+            rev_map[idx] = i,j
+        else:
+            edge_map[j,i] = idx
+            rev_map[idx] = j,i
         idx += 1
         
     # Some predefined variables
@@ -81,11 +89,12 @@ def optimize_transforms (G):
         if j is None:
             offset = node_map[i]*12
         else:
-            offset = edge_map[i,j]*12
+            if i < j:
+                offset = edge_map[i,j]*12
+            else:
+                offset = edge_map[j,i]*12
         
         Xij = X[offset:offset+12]
-        print X.shape
-        print Xij.shape
         return Xij.reshape([3,4], order='F')
 
 
@@ -95,8 +104,8 @@ def optimize_transforms (G):
         Sum of the norms of matrix differences between each Tij and 
         """        
         obj = 0
-        for i,j in edge_map: 
-            obj += nlg.norm(get_mat_from_x(X, i, j) - G[i][j]['avg_tfm'])
+        for i,j in edge_map:
+            obj += nlg.norm(get_mat_from_x(X, i, j) - G[i][j]['avg_tfm'][0:3,:])
             
         return obj
     
@@ -119,7 +128,7 @@ def optimize_transforms (G):
         # Constrain Ris to be valid rotations
         for node in node_map.keys()[1:]:
             Ri = Tis[node][0:3,0:3]
-            con.append(nlg.norm(R.T.dot(R) - I3))
+            con.append(nlg.norm(Ri.T.dot(Ri) - I3))
         
         # Tj = Ti*Tij
         # Rij.T*Rij = I
@@ -138,31 +147,42 @@ def optimize_transforms (G):
     G_init = G.copy()
     for i,j in G_init.edges_iter():
         G_init[i][j]['weight'] = -1*G_init[i][j]['n']
-    G_init_tree = nxa.minimum_spanning_edges(G_init, data=True)
-    
-    
-    set_nodes = []
-    for i,j,tfm in sorted(list(G_init_tree)):
-        if i not in set_nodes:
-            
-        
-    
-    
+    G_init_tree = nxa.minimum_spanning_tree(G_init)
     
     x_init = np.zeros(12*(G.number_of_nodes() + G.number_of_edges()))
-    x_init[0:9] = I3.reshape((12,1))
+    
+    node0 = G_init_tree.nodes()[0]
+    offset0 = node_map[node0]
+    x_init[offset0:offset0+9] = I3.reshape(9) 
+    
+    fringe = [node0]
+    seen = []
+    while len(fringe)>0:
+        node = fringe.pop(0)
+        if node in seen: continue
+        seen.append(node)
+        for n_node in G_init_tree.neighbors(node):
+            if n_node in seen: continue
+            fringe.append(n_node)
+            offset = node_map[n_node]*12
+            tfm = G.edge[node][n_node]['avg_tfm']
+            if node > n_node:
+                tfm = nlg.inv(tfm)
+
+            x_init[offset:offset+12] = tfm[0:3,:].reshape(12, order='F')
+            
     for i,j in edge_map:
         offset = edge_map[i,j]*12
-        x_init[offset:offset+12] = G.edge[i][j]['avg_tfm']
-    ###
+        x_init[offset:offset+12] = G.edge[i][j]['avg_tfm'][0:3,:].reshape(12,order='F')
+    ### ###
     
-    
-    (X, fx, _, _, _) = sco.fmin_slsqp(func=f_objective, x0=0, f_eqcons=f_constraints, iter=200, full_output=1)
+    print "Initial x: ", x_init
+    (X, fx, _, _, _) = sco.fmin_slsqp(func=f_objective, x0=x_init, f_eqcons=f_constraints, iter=100, full_output=1)
     
     # Create output optimal graph and copy edge transforms
     G_opt = G.to_directed()
-    for i,j in G.edges_iter():
-        Tij = np.r_[get_mat_from_x(X, i, j),np.array([0,0,0,1])]
+    for i,j in edge_map:
+        Tij = np.r_[get_mat_from_x(X, i, j),np.array([[0,0,0,1]])]
         Tji = nlg.inv(Tij)
         
         G_opt.edge[i][j] = {'tfm':Tij}
@@ -170,7 +190,7 @@ def optimize_transforms (G):
         
     # Add all edges to make clique
     # Follow shortest path to get transform for edge
-    for i,j in itertools.permutations(G_opt.nodes(), 2):
+    for i,j in itertools.combinations(sorted(G_opt.nodes()), 2):
         if not G_opt.has_edge(i,j):
             ij_path = nxa.shortest_path(G_opt, i, j)
             Tij = G_opt.edge[ij_path[0]][ij_path[1]]['tfm']
@@ -182,6 +202,12 @@ def optimize_transforms (G):
             G_opt.add_edge(j,i)
             G_opt.edge[i][j] = {'tfm':Tij}
             G_opt.edge[j][i] = {'tfm':Tji}
+    
+    n = G_opt.number_of_nodes()
+    try:
+        assert G_opt.number_of_edges() == n*(n-1)
+    except AssertionError:
+        print "Not all edges found...? Fix this"
 
     return G_opt
             
@@ -214,7 +240,7 @@ def get_ar_transforms(markers, parent_frame):
         try:
             trans, rot = tf_listener.lookupTransform(parent_frame, 'ar_marker_%d'%marker, rospy.Time(0))
             ar_tfms[marker] = conversions.trans_rot_to_hmat(trans, rot)
-        except LookupException:
+        except:
             pass
     return ar_tfms
     
@@ -242,9 +268,10 @@ def create_graph_from_observations(parent_frame, num_markers, obs_info, min_obs=
     @min_obs -- 
     """
     global tf_listener
-    if rospy.get_name == '/unnamed':
+    if rospy.get_name() == '/unnamed':
         rospy.init_node('gripper_marker_calibration')
     tf_listener = tf.TransformListener()
+    tf_listener.clear()
     
     G = nx.Graph()
 
@@ -253,9 +280,10 @@ def create_graph_from_observations(parent_frame, num_markers, obs_info, min_obs=
     hydras = obs_info.get('hydras')
     ps_markers = obs_info.get('phasespace_markers')
 
-    wait_time = 5
-    print "Waiting for %f seconds before collecting data."%wait_time
-    time.sleep(wait_time)
+    if freq is not None:
+        wait_time = 5
+        print "Waiting for %f seconds before collecting data."%wait_time
+        time.sleep(wait_time)
 
     sleeper = rospy.Rate(30)
     count = 0
