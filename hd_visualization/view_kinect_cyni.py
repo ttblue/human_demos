@@ -1,0 +1,44 @@
+#!/usr/bin/env python
+import cloudprocpy, cv2, cv
+import numpy as np
+import subprocess
+import cyni
+import Image
+
+#subprocess.call("sudo killall XnSensorServer", shell=True)
+
+cmap = np.zeros((256, 3),dtype='uint8')
+cmap[:,0] = range(256)
+cmap[:,2] = range(256)[::-1]
+cmap[0] = [0,0,0]
+
+#grabber = cloudprocpy.CloudGrabber("#1")
+#grabber.startRGBD()
+#g1 = cloudprocpy.CloudGrabber("#1")
+#g1.startRGBD()
+
+
+cyni.initialize()
+device = cyni.getAnyDevice()
+device.open()
+colorStream = device.createStream("color", width=640, height=480, fps=30)
+colorStream.start()
+depthStream = device.createStream("depth", fps=30)
+depthStream.start()
+try:
+    while True:
+        rgb = colorStream.readFrame()
+        cv2.imshow("rgb", rgb.data)
+        depth = depthStream.readFrame()
+        cv2.imshow("depth", depth.data)
+        cv2.waitKey(30)
+
+        #r1, d1 = g1.getRGBD()
+        #cv2.imshow("rgb", rgb)
+        #cv2.imshow("r1", r1)
+        #cv.SetMouseCallback("rgb", on_mouse, 0)
+        #cv2.imshow("depth", cmap[np.fmin((depth*.064).astype('int'), 255)])
+        #cv2.waitKey(30)
+        #break
+except KeyboardInterrupt:
+    print "got Control-C"
