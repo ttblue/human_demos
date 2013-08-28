@@ -1,9 +1,10 @@
 #!/usr/bin/env python
-import cloudprocpy, cv2, cv
+import cloudprocpy, cv2
 import numpy as np
 import subprocess
 import cyni
 import Image
+import time
 
 #subprocess.call("sudo killall XnSensorServer", shell=True)
 
@@ -19,26 +20,22 @@ cmap[0] = [0,0,0]
 
 
 cyni.initialize()
+
 device = cyni.getAnyDevice()
+#subprocess.call("sudo killall XnSensorServer", shell=True)
 device.open()
 colorStream = device.createStream("color", width=640, height=480, fps=30)
 colorStream.start()
-depthStream = device.createStream("depth", fps=30)
+depthStream = device.createStream("depth", width=640, height = 480, fps=30)
 depthStream.start()
 try:
     while True:
+        
         rgb = colorStream.readFrame()
         cv2.imshow("rgb", rgb.data)
         depth = depthStream.readFrame()
-        cv2.imshow("depth", depth.data)
+        cv2.imshow("depth", cmap[np.fmin((depth.data*.064).astype('int'), 255)])
         cv2.waitKey(30)
-
-        #r1, d1 = g1.getRGBD()
-        #cv2.imshow("rgb", rgb)
-        #cv2.imshow("r1", r1)
-        #cv.SetMouseCallback("rgb", on_mouse, 0)
-        #cv2.imshow("depth", cmap[np.fmin((depth*.064).astype('int'), 255)])
-        #cv2.waitKey(30)
-        #break
+       
 except KeyboardInterrupt:
     print "got Control-C"
