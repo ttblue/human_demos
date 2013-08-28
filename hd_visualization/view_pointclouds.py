@@ -9,7 +9,7 @@ from hd_utils import ros_utils as ru, clouds
 
 asus_xtion_pro_f = 544.260779961
 
-def visualize_pointcloud ():
+def visualize_pointcloud (device_id="#1"):
     """
     Visualize point clouds from openni grabber through ROS.
     """
@@ -21,7 +21,7 @@ def visualize_pointcloud ():
     pc_pub = rospy.Publisher("camera_points", PointCloud2)
     sleeper = rospy.Rate(30)
     
-    grabber = cpr.CloudGrabber()
+    grabber = cpr.CloudGrabber(device_id)
     grabber.startRGBD()
     
     print "Streaming now: Pointclouds only."
