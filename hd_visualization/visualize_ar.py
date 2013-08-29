@@ -1,5 +1,4 @@
 #!/usr/bin/ipython -i
-
 import cloudprocpy as cpr
 import roslib; roslib.load_manifest('tf')
 import rospy, tf
