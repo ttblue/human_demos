@@ -44,6 +44,7 @@ class kalman:
         """
         Returns the noise covariance for the motion model.
         Assumes a diagonal structure for now.
+        TODO ::: IMP : needs to have a constant offset too.
         """
         covar = np.eye(12)
         covar[0:3,0:3]   *= ((self.x_std  * self.x_std) * t)
