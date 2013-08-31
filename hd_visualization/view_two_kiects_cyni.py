@@ -20,12 +20,17 @@ cmap[0] = [0,0,0]
 
 
 cyni.initialize()
-device = cyni.getAnyDevice()
-device.open()
-#colorStream = device.createStream("color", width=640, height=480, fps=30)
+device_list = cyni.enumerateDevices()
+d1 = cyni.Device(device_list[0]['uri'])
+d2 = cyni.Device(device_list[1]['uri'])
+d1.open()
+d2.open()
+#colorStream = d1.createStream("color", width=640, height=480, fps=30)
 #colorStream.start()
-depthStream = device.createStream("depth", width=640, height = 480, fps=30)
-depthStream.start()
+ds1 = d1.createStream("depth", width=640, height = 480, fps=30)
+ds1.start()
+ds2 = d2.createStream("depth", width=640, height = 480, fps = 30)
+ds2.start()
 emitterControl = False
 try:
     while True:
@@ -35,15 +40,18 @@ try:
         #start = time.time()
         emitterControl = not emitterControl
         print emitterControl
-        depthStream.setEmitterState(emitterControl)
-        depth = depthStream.readFrame()
-        print depth.data
+        ds1.setEmitterState(emitterControl)
+        ds2.setEmitterState(not emitterControl)
+        depth1 = ds1.readFrame()
+        depth2 = ds2.readFrame()
+        #print depth.data
         #while np.sum(depth.data) != 0:
         #    depth = depthStream.readFrame()
         #    print depth.data
         #print '%f seconds'%(time.time() - start)
         #time.sleep(1)
-        cv2.imshow("depth", cmap[np.fmin((depth.data*.064).astype('int'), 255)])
+        cv2.imshow("d1", cmap[np.fmin((depth1.data*.064).astype('int'), 255)])
+        cv2.imshow("d2", cmap[np.fmin((depth2.data*.064).astype('int'), 255)])
         #cv2.imshow("depth", depth.data)
         time.sleep(1)
         #depthStream.setEmitterState(False)

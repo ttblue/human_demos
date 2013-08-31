@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-import cloudprocpy, cv2
+import cv2
 import numpy as np
 import subprocess
 import cyni
