@@ -18,11 +18,19 @@ class kalman:
         self.ys = []
 
         ## standard deviations of the state variables in control update:
-        self.x_std  = 1  # m/s
-        self.vx_std = 1  # m/s /s
-        self.r_std  = 90 # deg/s
-        self.vr_std = 90 # deg/s /s
-       
+        ## at least this much uncertainty is injected in each update:
+        self.min_x_std  = 0.005 # m
+        self.min_vx_std = 0.005 # m/s
+        self.min_r_std  = 1     # deg
+        self.min_vr_std = 1     # deg/s
+
+        # time-dependent uncertainty : as time grows, so does the uncertainty:
+        self.x_std_t  = 1  # m/s
+        self.vx_std_t = 1  # m/s /s
+        self.r_std_t  = 90 # deg/s
+        self.vr_std_t = 90 # deg/s /s
+
+      
         ## standard deviations of the measurements:
         self.ar_x_std     = 0.001 # m / sample
         self.ar_r_std     = 30    # deg / sample
@@ -30,8 +38,10 @@ class kalman:
         self.hydra_r_std  = 0.1  # deg/ sample
         
         ## convert the above numbers to radians:
-        self.r_std       *= (np.pi/180.)
-        self.vr_std      *= (np.pi/180.)
+        self.min_r_std   *= (np.pi/180.)        
+        self.min_vr_std  *= (np.pi/180.)
+        self.r_std_t     *= (np.pi/180.)
+        self.vr_std_t    *= (np.pi/180.)
         self.ar_r_std    *= (np.pi/180.)
         self.hydra_r_std *= (np.pi/180.)
 
@@ -44,13 +54,13 @@ class kalman:
         """
         Returns the noise covariance for the motion model.
         Assumes a diagonal structure for now.
-        TODO ::: IMP : needs to have a constant offset too.
         """
         covar = np.eye(12)
-        covar[0:3,0:3]   *= ((self.x_std  * self.x_std) * t)
-        covar[3:6,3:6]   *= ((self.vx_std * self.vx_std) * t)
-        covar[6:9,6:9]   *= ((self.r_std  * self.r_std) * t)
-        covar[9:12,9:12] *= ((self.vr_std * self.vr_std) * t)
+        sq = np.square
+        covar[0:3,0:3]   *= sq(max( self.x_std_t * t,  self.min_x_std ))
+        covar[3:6,3:6]   *= sq(max( self.vx_std_t * t, self.min_vx_std))
+        covar[6:9,6:9]   *= sq(max( self.r_std_t * t,  self.min_r_std ))
+        covar[9:12,9:12] *= sq(max( self.vr_std_t * t, self.min_vr_std))
         return covar
 
 
