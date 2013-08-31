@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-import  cv2
+import cv2
 import numpy as np
 import subprocess
 import cyni
@@ -18,10 +18,13 @@ cmap[0] = [0,0,0]
 #g1 = cloudprocpy.CloudGrabber("#1")
 #g1.startRGBD()
 
-
+print 0
 cyni.initialize()
+print 1
 device = cyni.getAnyDevice()
+print 2
 device.open()
+print 3
 #colorStream = device.createStream("color", width=640, height=480, fps=30)
 #colorStream.start()
 depthStream = device.createStream("depth", width=640, height = 480, fps=30)

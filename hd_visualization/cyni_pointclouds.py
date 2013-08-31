@@ -1,6 +1,14 @@
-#/usr/bin/ipython -i
+#!/usr/bin/ipython -i
+import rospy, time
+from sensor_msgs.msg import PointCloud2
+
 import cv2
 import cyni
+
+from hd_utils import clouds, ros_utils as ru
+from hd_utils.yes_or_no import yes_or_no
+
+asus_xtion_pro_f = 544.260779961
 
 # Call cyni.initialize() before this.
 def get_device (device_id):
@@ -30,36 +38,81 @@ def get_device (device_id):
             return None
         else: return cyni.Device(device_id)
 
+CYNI_INITIALIZED = False
 
-def initialize_cyni(device_id="#1"):
+def get_ar_transform_id (depth, rgb, idm=None):    
+    """
+    In order to run this, ar_marker_service needs to be running.
+    """
+    req.pc = ru.xyzrgb2pc(clouds.depth_to_xyz(depth, asus_xtion_pro_f), rgb, '/camera_link')    
+    res = getMarkers(req)
     
-    cyni.initialize()
-    device = cyni.getAnyDevice()#get_device(device_id)
+    marker_tfm = {marker.id:conversions.pose_to_hmat(marker.pose.pose) for marker in res.markers.markers}
+    
+    if not idm: return marker_tfm
+    if idm not in marker_tfm: return None
+    return marker_tfm[idm]
+
+def get_streams(device_id="#1"):
+    global CYNI_INITIALIZED
+    if not CYNI_INITIALIZED:
+        cyni.initialize()
+        CYNI_INITIALIZED = True
+        
+    device = get_device(device_id)
     device.open()
     depthStream = device.createStream("depth", width=640, height=480, fps=30)
     colorStream = device.createStream("color", width=640, height=480, fps=30)
     device.setImageRegistrationMode("depth_to_color")
     device.setDepthColorSyncEnabled(on=True)
     
-    return depthStream, colorStream
+    return {"device": device, "depth": depthStream, "color": colorStream}
 
+NUM_CAMERAS = 1
+TOGGLE_FREQ = 1.0
 
 def visualize_pointcloud():
     """
     Visualize point clouds from cyni data.
     """
-    depthStream.start()
-    colorStream.start()
+    if rospy.get_name() == '/unnamed':
+        rospy.init_node("visualize_pointcloud")
+    
+    camera_frame="camera_depth_optical_frame"
+    
+    pc_pubs = []
+    sleeper = rospy.Rate(30)
+    
+    streams = []
+    for i in xrange(1, NUM_CAMERAS+1):
+        cam_streams = get_streams("#%d"%i)
+        if cam_streams is not None:
+            streams.append(cam_streams)
+            cam_streams["depth"].start()
+            cam_streams["depth"].setEmitterState(False)
+            cam_streams["color"].start()
+            pc_pubs.append(rospy.Publisher("camera_depth_registered_points"%i, PointCloud2))
+        else: break
+    
+    indiv_freq = TOGGLE_FREQ/NUM_CAMERAS
     
     print "Streaming now: Pointclouds only."
-    while True:
-        try:
-            
-            
-            pc = ru.xyzrgb2pc(clouds.depth_to_xyz(d, asus_xtion_pro_f), r, camera_frame)
-            pc_pub.publish(pc)
-
-            sleeper.sleep()
-        except KeyboardInterrupt:
-            print "Keyboard interrupt. Exiting."
-            break
+    try:
+        while True:
+            print "Publishing data..."
+            for (i,stream) in enumerate(streams):
+                stream["depth"].setEmitterState(True)
+                depth = stream["depth"].readFrame().data
+                rgb = cv2.cvtColor(stream["color"].readFrame().data, cv2.COLOR_RGB2BGR)
+                
+                
+#                pc = ru.xyzrgb2pc(clouds.depth_to_xyz(depth, asus_xtion_pro_f), rgb, camera_frame)
+#                pc_pubs[i].publish(pc)
+                time.sleep(1/indiv_freq*0.5)
+                stream["depth"].setEmitterState(False)
+                time.sleep(1/indiv_freq*0.5)
+                
+            if yes_or_no("Done?"): break
+            #wait for a bit?
+    except KeyboardInterrupt:
+        print "Keyboard interrupt. Exiting."
