@@ -36,14 +36,16 @@ class kalman:
         self.ar_r_std     = 30    # deg / sample
         self.hydra_vx_std = 0.01 # m/s / sample
         self.hydra_r_std  = 0.1  # deg/ sample
-        
+
+
         ## convert the above numbers to radians:
-        self.min_r_std   *= (np.pi/180.)        
-        self.min_vr_std  *= (np.pi/180.)
-        self.r_std_t     *= (np.pi/180.)
-        self.vr_std_t    *= (np.pi/180.)
-        self.ar_r_std    *= (np.pi/180.)
-        self.hydra_r_std *= (np.pi/180.)
+        self.min_r_std   = self.put_in_range(np.deg2rad(self.min_r_std))
+        self.min_vr_std  = self.put_in_range(np.deg2rad(self.min_vr_std))
+        self.r_std_t     = self.put_in_range(np.deg2rad(self.r_std_t))
+        self.vr_std_t    = self.put_in_range(np.deg2rad(self.vr_std_t))
+        self.ar_r_std    = self.put_in_range(np.deg2rad(self.ar_r_std))
+        self.hydra_r_std = self.put_in_range(np.deg2rad(self.hydra_r_std))
+
 
         # update frequency : the kalman filter updates the estimate explicitly at this rate.
         # it also updates when a measurement is given to it.
@@ -59,34 +61,34 @@ class kalman:
         self.S_filt = None
 
 
-    def get_motion_covar(self, t):
+    def get_motion_covar(self, dt):
         """
         Returns the noise covariance for the motion model.
         Assumes a diagonal structure for now.
         """
         covar = np.eye(12)
         sq = np.square
-        covar[0:3,0:3]   *= sq(max( self.x_std_t * t,  self.min_x_std ))
-        covar[3:6,3:6]   *= sq(max( self.vx_std_t * t, self.min_vx_std))
-        covar[6:9,6:9]   *= sq(max( self.r_std_t * t,  self.min_r_std ))
-        covar[9:12,9:12] *= sq(max( self.vr_std_t * t, self.min_vr_std))
+        covar[0:3,0:3]   *= sq(max( self.x_std_t * dt,  self.min_x_std ))
+        covar[3:6,3:6]   *= sq(max( self.vx_std_t * dt, self.min_vx_std))
+        covar[6:9,6:9]   *= sq(max( self.r_std_t * dt,  self.min_r_std ))
+        covar[9:12,9:12] *= sq(max( self.vr_std_t * dt, self.min_vr_std))
         return covar
 
 
-    def get_motion_mat(self, t):
+    def get_motion_mat(self, dt):
         """
         Return the matrix A in x_t+1 = Ax_t + n_t.
-        t is the time-lapsed, i.e. the value of (t+1 - t).
+        dt is the time-lapsed, i.e. the value of (t+1 - t).
         
         Return the matrix corresponding to a state of (x, vel_x, rot, vel_rot).
         """
         m = np.eye(6)
-        m[0:3, 3:6] = t*np.eye(3)
+        m[0:3, 3:6] = dt*np.eye(3)
         return scl.block_diag(m,m)
 
 
-    def get_motion_mats(self, t):
-        return (self.get_motion_mat(t), self.get_motion_covar(t))
+    def get_motion_mats(self, dt):
+        return (self.get_motion_mat(dt), self.get_motion_covar(dt))
 
 
     def get_hydra_mats(self, pos_vel=True):
@@ -136,16 +138,16 @@ class kalman:
         return (cmat, vmat)
 
 
-    def control_update(self, x_p, S_p, t=None):
+    def control_update(self, x_p, S_p, dt=None):
         """
-        Runs the motion model forward by time t, assuming previous mean is x_p
+        Runs the motion model forward by time dt, assuming previous mean is x_p
         and previous covariance is S_p.
         Returns the next mean and covariance (x_n, S_n).
         """
-        if t == None:
-            t = 1./self.freq
+        if dt == None:
+            dt = 1./self.freq
         
-        A, R = self.get_motion_mats(t)
+        A, R = self.get_motion_mats(dt)
         x_n = A.dot(x_p)
         S_n = A.dot(S_p).dot(A.T) + R
         return (x_n, S_n)
@@ -168,8 +170,103 @@ class kalman:
         return (x_n, S_n)
     
 
-    def observe_ar(self, tfm, t):
-         
-    
-    
-    
+    def init_filter(self, t, x_init, S_init):
+        """
+        Give the initial estimate for the filter.
+        t is the time of the estimate.
+        x_init is a 12 dimensional state vector.
+        S_init is the state covariance (12x12).
+        """
+        self.t_filt = t
+        self.x_filt = x_init
+        self.S_filt = S_init
+        
+        
+    def __check_time__(self, t):
+        if self.t_filt == None:
+            print colorize('[Filter ERROR:] Filter not initialized.', 'red', True)
+            return False
+            
+        if self.t_filt >= t:
+            print colorize('[Filter ERROR:] Observation behind the filter estimate in time. Ignoring update.', 'blue', True)
+            return False
+        
+        return True
+
+
+    def put_in_range(self, x):
+        """
+        Puts all the values in x in the range [-180, 180).
+        """
+        return ( (x+np.pi)%(2*np.pi) )- np.pi
+            
+
+    def closer_angle(self, x, a):
+        """
+        returns the angle f(x) which is closer to the angle a in absolute value.
+        """
+        return a + self.put_in_range(x-a)  
+
+
+    def canonicalize_obs(self, T_obs):
+        """
+        Returns the position and translation from T_obs (4x4 mat).
+        Puts the rotation in a form which makes it closer to filter's current estimate in absolute terms.
+        """
+        pos = T_obs[0:3,3]
+        rpy = self.closer_angle(tfm.euler_from_matrix(T_obs), self.x_filt[6:9])
+        return (pos, rpy)
+
+
+    def observe_ar(self, T_obs, t):
+        """
+        Update the filter to incorporate the observation from AR marker.
+        The marker transformation T_OBS is the estimate at time T.
+        
+        AR markers observe the translation to very high accuracy,
+        but rotations are very noisy. 
+        """
+        if not self.__check_time__(t):
+            return
+        
+        dt = t - self.t_filt
+        pos, rpy = self.canonicalize_obs(T_obs)
+        z_obs = np.c_['0,2', pos, rpy]
+        
+        # update the last AR marker estimate 
+        self.ar_prev = (t, z_obs)
+        
+        C,Q = self.get_ar_mats()
+        self.x_filt, self.S_filt = self.control_update(self.x_filt, self.S_filt, dt)
+        self.x_filt, self.S_filt = self.measurement_update(z_obs, C, Q, self.x_filt, self.S_filt)
+       
+
+    def observe_hydra(self, T_obs, t):
+        """
+        Update the filter to incorporate the observation from hydra.
+        The marker transformation T_OBS is the estimate at time T.
+        
+        Hydras observe rotations and the translation velocities to high accuracy.    
+        """
+        if not self.__check_time__(t):
+            return
+        
+        dt = t - self.t_filt
+        pos, rpy = self.canonicalize_obs(T_obs)
+        z_obs = np.c_['0,2', pos, rpy]           
+
+
+        if self.hydra_prev == None:   ## in this case, we cannot observe the translational velocity
+            self.hydra_prev = (t, z_obs)
+            return
+            
+        ## calculate translation velocity:
+        t_p, z_b = self.hydra_prev
+        dt_p     = t - t_p
+        vx_obs   = (z_obs[0:3] - z_b[0:3]) / dt_p
+        self.hydra_prev = (t, z_obs)
+
+        z = np.c_['0,2', vx_obs, rpy]            
+        C,Q = self.get_hyda_mats(True)
+        self.x_filt, self.S_filt = self.control_update(self.x_filt, self.S_filt, dt)
+        self.x_filt, self.S_filt = self.measurement_update(z, C, Q, self.x_filt, self.S_filt)
