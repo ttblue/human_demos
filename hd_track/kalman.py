@@ -32,7 +32,7 @@ class kalman:
 
       
         ## standard deviations of the measurements:
-        self.ar_x_std     = 0.001 # m / sample
+        self.ar_x_std     = 0.1 # m / sample
         self.ar_r_std     = 30    # deg / sample
         self.hydra_vx_std = 0.01 # m/s / sample
         self.hydra_r_std  = 0.1  # deg/ sample
@@ -105,7 +105,7 @@ class kalman:
                              otherwise only the rotational position is included.
         """
         if pos_vel: # observe translation velocity and rotation
-            cmat = np.zeros(6,12)
+            cmat = np.zeros((6,12))
             cmat[0:3, 3:6] = np.eye(3)
             cmat[3:6, 6:9] = np.eye(3)
             
@@ -115,7 +115,7 @@ class kalman:
             return (cmat, vmat)
         
         else: # can observe only the rotation
-            cmat = np.zeros(3,12)
+            cmat = np.zeros((3,12))
             cmat[0:3, 6:9] = np.eye(3)
             vmat = (self.hydra_r_std*self.hydra_r_std)*np.eye(3) 
             return (cmat, vmat)
@@ -127,7 +127,7 @@ class kalman:
                           for AR marker observations.
         AR markers observe the translation to very high accuracy, but rotations are very noisy. 
         """
-        cmat = np.zeros(6,12)
+        cmat = np.zeros((6,12))
         cmat[0:3,0:3] = np.eye(3)
         cmat[3:6,6:9] = np.eye(3)
         
@@ -161,9 +161,10 @@ class kalman:
         
         returns the updated mean x_n and the covariance S_n.
         """
+        x_b = np.reshape(x_b, (12,1))
         L = np.linalg.inv(C_obs.dot(S_b).dot(C_obs.T) + Q_obs)
         K = S_b.dot(C_obs.T).dot(L)
-        
+       
         x_n = x_b + K.dot(z_obs - C_obs.dot(x_b))
         S_n = S_b - K.dot(C_obs).dot(S_b)
         
@@ -178,7 +179,7 @@ class kalman:
         S_init is the state covariance (12x12).
         """
         self.t_filt = t
-        self.x_filt = x_init
+        self.x_filt = np.reshape(x_init, (12,1))
         self.S_filt = S_init
         
         
@@ -211,10 +212,12 @@ class kalman:
     def canonicalize_obs(self, T_obs):
         """
         Returns the position and translation from T_obs (4x4 mat).
-        Puts the rotation in a form which makes it closer to filter's current estimate in absolute terms.
+        Puts the rotation in a form which makes it closer to filter's
+        current estimate in absolute terms.
         """
         pos = T_obs[0:3,3]
-        rpy = self.closer_angle(tfm.euler_from_matrix(T_obs), self.x_filt[6:9])
+        rpy = np.array(tfm.euler_from_matrix(T_obs), ndmin=2).T
+        rpy = self.closer_angle(rpy, self.x_filt[6:9])
         return (pos, rpy)
 
 
@@ -231,6 +234,7 @@ class kalman:
         
         dt = t - self.t_filt
         pos, rpy = self.canonicalize_obs(T_obs)
+        
         z_obs = np.c_['0,2', pos, rpy]
         
         # update the last AR marker estimate 
@@ -255,15 +259,13 @@ class kalman:
         pos, rpy = self.canonicalize_obs(T_obs)
         z_obs = np.c_['0,2', pos, rpy]           
 
-
         if self.hydra_prev == None:   ## in this case, we cannot observe the translational velocity
             self.hydra_prev = (t, z_obs)
             return
             
         ## calculate translation velocity:
         t_p, z_b = self.hydra_prev
-        dt_p     = t - t_p
-        vx_obs   = (z_obs[0:3] - z_b[0:3]) / dt_p
+        vx_obs   = (z_obs[0:3] - z_b[0:3]) / (t-t_p)
         self.hydra_prev = (t, z_obs)
 
         z = np.c_['0,2', vx_obs, rpy]            
