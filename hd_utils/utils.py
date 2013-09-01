@@ -30,3 +30,14 @@ def avg_transform (tfms):
     avg_rot = avg_quaternions(np.array(rots))
 
     return conversions.trans_rot_to_hmat(avg_trans, avg_rot)
+
+def rad_angle(angle):
+    return angle/180.0*np.pi
+
+def rotation_matrix(axis,theta):
+    axis = axis/np.sqrt(np.dot(axis,axis))
+    a = np.cos(theta/2)
+    b,c,d = -axis*np.sin(theta/2)
+    return np.array([[a*a+b*b-c*c-d*d, 2*(b*c-a*d), 2*(b*d+a*c)],
+                     [2*(b*c+a*d), a*a+c*c-b*b-d*d, 2*(c*d-a*b)],
+                     [2*(b*d-a*c), 2*(c*d+a*b), a*a+d*d-b*b-c*c]])
