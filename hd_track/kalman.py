@@ -48,6 +48,15 @@ class kalman:
         # update frequency : the kalman filter updates the estimate explicitly at this rate.
         # it also updates when a measurement is given to it.
         self.freq = 30.
+    
+        ## last observations : used to calculate observation velocities.
+        self.hydra_prev = None
+        self.ar_prev    = None
+
+        ## the filter's current belief and its time:
+        self.t_filt = None
+        self.x_filt = None
+        self.S_filt = None
 
 
     def get_motion_covar(self, t):
@@ -72,7 +81,7 @@ class kalman:
         Return the matrix corresponding to a state of (x, vel_x, rot, vel_rot).
         """
         m = np.eye(6)
-        m[0:3, 3:] = t*np.eye(3)
+        m[0:3, 3:6] = t*np.eye(3)
         return scl.block_diag(m,m)
 
 
@@ -127,9 +136,40 @@ class kalman:
         return (cmat, vmat)
 
 
-    def control_update(self, x_p, S_p, t):
+    def control_update(self, x_p, S_p, t=None):
         """
         Runs the motion model forward by time t, assuming previous mean is x_p
         and previous covariance is S_p.
         Returns the next mean and covariance (x_n, S_n).
         """
+        if t == None:
+            t = 1./self.freq
+        
+        A, R = self.get_motion_mats(t)
+        x_n = A.dot(x_p)
+        S_n = A.dot(S_p).dot(A.T) + R
+        return (x_n, S_n)
+
+    
+    def measurement_update(self, z_obs, C_obs, Q_obs, x_b, S_b):
+        """
+        z_obs        : Measurement vector
+        C_obs, Q_obs : Measurement matrix and measurement noise covariance.
+        x_b, S_b     : control-prediction of mean and covariance.
+        
+        returns the updated mean x_n and the covariance S_n.
+        """
+        L = np.linalg.inv(C_obs.dot(S_b).dot(C_obs.T) + Q_obs)
+        K = S_b.dot(C_obs.T).dot(L)
+        
+        x_n = x_b + K.dot(z_obs - C_obs.dot(x_b))
+        S_n = S_b - K.dot(C_obs).dot(S_b)
+        
+        return (x_n, S_n)
+    
+
+    def observe_ar(self, tfm, t):
+         
+    
+    
+    
