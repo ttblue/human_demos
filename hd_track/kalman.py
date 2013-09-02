@@ -25,15 +25,15 @@ class kalman:
         self.min_vr_std = 1     # deg/s
 
         # time-dependent uncertainty : as time grows, so does the uncertainty:
-        self.x_std_t  = 1  # m/s
+        self.x_std_t  = 0.001  # m/s
         self.vx_std_t = 1  # m/s /s
-        self.r_std_t  = 90 # deg/s
+        self.r_std_t  = 40 # deg/s
         self.vr_std_t = 90 # deg/s /s
 
       
         ## standard deviations of the measurements:
-        self.ar_x_std     = 0.1 # m / sample
-        self.ar_r_std     = 30    # deg / sample
+        self.ar_x_std     = 0.05 # m / sample
+        self.ar_r_std     = 5    # deg / sample
         self.hydra_vx_std = 0.01 # m/s / sample
         self.hydra_r_std  = 0.1  # deg/ sample
 
