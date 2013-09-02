@@ -1,14 +1,20 @@
 #!/usr/bin/ipython -i
-import rospy, time
+import roslib, rospy, time
+from sensor_msgs.msg import PointCloud2
+roslib.load_manifest('ar_track_service')
+from ar_track_service.srv import MarkerPositions, MarkerPositionsRequest, MarkerPositionsResponse
 from sensor_msgs.msg import PointCloud2
 
 import cv2
 import cyni
 
-from hd_utils import clouds, ros_utils as ru
+from hd_utils import clouds, ros_utils as ru, conversions
 from hd_utils.yes_or_no import yes_or_no
 
 asus_xtion_pro_f = 544.260779961
+
+getMarkers = None
+req = MarkerPositionsRequest()
 
 # Call cyni.initialize() before this.
 def get_device (device_id):
@@ -75,10 +81,12 @@ def visualize_pointcloud():
     """
     Visualize point clouds from cyni data.
     """
+    global getMarkers
     if rospy.get_name() == '/unnamed':
         rospy.init_node("visualize_pointcloud")
     
     camera_frame="camera_depth_optical_frame"
+    getMarkers = rospy.ServiceProxy("getMarkers", MarkerPositions)
     
     pc_pubs = []
     sleeper = rospy.Rate(30)
@@ -91,7 +99,7 @@ def visualize_pointcloud():
             cam_streams["depth"].start()
             cam_streams["depth"].setEmitterState(False)
             cam_streams["color"].start()
-            pc_pubs.append(rospy.Publisher("camera_depth_registered_points"%i, PointCloud2))
+            pc_pubs.append(rospy.Publisher("camera/depth_registered/points", PointCloud2))
         else: break
     
     indiv_freq = TOGGLE_FREQ/NUM_CAMERAS
@@ -105,7 +113,12 @@ def visualize_pointcloud():
                 depth = stream["depth"].readFrame().data
                 rgb = cv2.cvtColor(stream["color"].readFrame().data, cv2.COLOR_RGB2BGR)
                 
+                cv2.imshow("images", rgb)
+                cv2.waitKey()
                 
+                ar_tfms = get_ar_transform_id(depth, rgb)
+                print ar_tfms
+                               
 #                pc = ru.xyzrgb2pc(clouds.depth_to_xyz(depth, asus_xtion_pro_f), rgb, camera_frame)
 #                pc_pubs[i].publish(pc)
                 time.sleep(1/indiv_freq*0.5)
