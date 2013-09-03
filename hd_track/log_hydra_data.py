@@ -10,16 +10,11 @@ import tf
 from sensor_msgs.msg import JointState
 from hd_utils import conversions
 
-def extract_joints(bag):
-    traj = []
-    stamps = []
-    for (_, msg, _) in bag.read_messages(topics=['/joint_states']):
-        traj.append(msg.position)
-        stamps.append(msg.header.stamp.to_sec())
-    assert len(traj) > 0
-    names = msg.name
-    return names, stamps, traj
 
+T_rtool_rhydra = np.array([[ 0.72076,  0.68234,  0.12211,  0.4814 ],
+ [-0.68672,  0.72687, -0.00826,  0.01968],
+ [-0.09439, -0.0779,   0.99248,  0.83744],
+ [ 0.,       0.,       0.,       1.,     ]])
 
 old_time = 0
 msgs = []
@@ -38,7 +33,7 @@ def log(msg):
     gripper_tool = '%s_gripper_tool_frame'%(gripper)
     if now - old_time > 1.0/30:
         msgs.append(msg)
-        #print msg
+        print "logging"
         old_time = now
         trans, rot = tf_listener.lookupTransform(gripper_tool, hydra_sensor, rospy.Time(0))
         T_gt_hs = conversions.trans_rot_to_hmat(trans, rot)
@@ -79,9 +74,9 @@ def process(name):
    
 import argparse
 parser = argparse.ArgumentParser()
-parser.add_argument("name")
-parser.add_argument("gripper")
-parser.add_argument("hydra")
+parser.add_argument('--name', help="Name of the log file", required=True, type=str)
+parser.add_argument('--gripper', help="PR2 gripper to track {l, r}", required=True, type=str)
+parser.add_argument('--hydra', help="Hydra sensor to track {left, right}", required=True, type=str)
 args = parser.parse_args()
 
 if __name__ == '__main__':
