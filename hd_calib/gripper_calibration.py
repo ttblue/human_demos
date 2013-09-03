@@ -1,6 +1,9 @@
 #!/usr/bin/ipython -i
 import numpy as np, numpy.linalg as nlg
 
+import IPython
+
+
 import scipy.optimize as sco
 import networkx as nx, networkx.algorithms as nxa
 import itertools
@@ -221,7 +224,7 @@ def optimize_transforms (G):
     ### ###
     
     print "Initial x: ", x_init
-    (X, fx, _, _, _) = sco.fmin_slsqp(func=f_objective, x0=x_init, f_eqcons=f_constraints, iter=10, full_output=1)
+    (X, fx, _, _, _) = sco.fmin_slsqp(func=f_objective, x0=x_init, f_eqcons=f_constraints, iter=100, full_output=1)
     
     # Create output optimal graph and copy edge transforms
     G_opt = G.to_directed()
@@ -311,9 +314,9 @@ def optimize_master_transforms (mG, init=None):
                 rot[0:3,0:3] = utils.rotation_matrix(zaxis, tot_angle)
                 
                 tfm = t1.dot(rot).dot(nlg.inv(t2))
-                
-                obj += nlg.norm(tfm - mG[g1][g2]['avg_tfm'][angle])
-            
+
+                obj += nlg.norm(tfm - mG.edge[g1][g2]['avg_tfm'][angle])
+        
         return obj
     
     def f_constraints (X):
@@ -345,7 +348,8 @@ def optimize_master_transforms (mG, init=None):
 
     print "Initial x: ", x_init
     print "Initial objective: ", f_objective(x_init)
-    (X, fx, _, _, _) = sco.fmin_slsqp(func=f_objective, x0=x_init, f_eqcons=f_constraints, iter=100, full_output=1, iprint=2)
+    
+    (X, fx, _, _, _) = sco.fmin_slsqp(func=f_objective, x0=x_init, f_eqcons=f_constraints, iter=200, full_output=1, iprint=2)
     
     mG_opt = nx.DiGraph()
     ## modify master graph

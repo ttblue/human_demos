@@ -1,3 +1,4 @@
+#!/usr/bin/python
 import networkx as nx
 import numpy as np, numpy.linalg as nlg
 
@@ -120,12 +121,14 @@ def test_gc2 (n, add_noise=False):
     
     for _ in range(n):
         theta = -15 + np.random.random()*30
+        theta2 = utils.rad_angle(theta)
+
         T7 = make_obs()
         
         R1 = np.eye(4)
-        R1[0:3,0:3] = rotation_matrix(zaxis,theta)
+        R1[0:3,0:3] = rotation_matrix(zaxis,theta2)
         R4 = np.eye(4)
-        R4[0:3,0:3] = rotation_matrix(zaxis,-theta)
+        R4[0:3,0:3] = rotation_matrix(zaxis,-theta2)
         
         if add_noise: 
             Tcor = T7.dot(T7cor)
@@ -171,7 +174,7 @@ def test_gc2 (n, add_noise=False):
     init[12:24] = nlg.inv(Tcor4)[0:3,:].reshape(12,order='F')
     init[24:36] = nlg.inv(Tcor1)[0:3,:].reshape(12,order='F')
     
-    G_opt = gc.compute_relative_transforms(masterGraph, 5, init)
+    G_opt = gc.compute_relative_transforms(masterGraph, 5)#, init)
     
     
     # 7,8 markers
@@ -228,8 +231,9 @@ def test_gc2 (n, add_noise=False):
     # Let's try random angles:
 
     theta = -15 + np.random.random()*30
+    theta2 = utils.rad_angle(theta)
     R1 = np.eye(4)
-    R1[0:3,0:3] = rotation_matrix(zaxis,theta)
+    R1[0:3,0:3] = rotation_matrix(zaxis,theta2)
     print "T71"
     print "Original:"
     print T7cor.dot(R1).dot(Tcor1)
@@ -237,6 +241,9 @@ def test_gc2 (n, add_noise=False):
     print G_opt.edge["master"]["l"]['tfm_func'](7,1,theta), '\n'
     print "norm diff:", nlg.norm(G_opt.edge["master"]["l"]['tfm_func'](7,1,theta)-T7cor.dot(R1).dot(Tcor1)), '\n'
     
-    
-    
-    
+    print "Difference between cors"
+    T7cor_calib = G_opt.node["master"]["graph"].edge[7]["cor"]["tfm"]
+    print nlg.inv(T7cor).dot(T7cor_calib)
+
+if __name__=="__main__":
+    test_gc2(10)
