@@ -1,6 +1,9 @@
 #!/usr/bin/ipython -i
 import numpy as np, numpy.linalg as nlg
 
+import IPython
+
+
 import scipy.optimize as sco
 import networkx as nx, networkx.algorithms as nxa
 import itertools
@@ -32,27 +35,27 @@ def update_graph_from_observations(G, tfms):
             G.edge[i][j]['n'] = 0
         
         Tij = nlg.inv(tfms[i]).dot(tfms[j])
-        print "From ", i," to ", j,":\n",Tij
+        #print "From ", i," to ", j,":\n",Tij
         G.edge[i][j]['transform_list'].append(Tij)
         G.edge[i][j]['n'] += 1
 
 
-def update_groups_from_observations(masterGraph, group_info, tfms, pot_reading):
+def update_groups_from_observations(masterGraph, tfms, pot_reading):
     """
     Updates graphs based on information.
     """
     ##
     # Should I do this?
     ##
-    pot_reading = np.round(pot_reading)
+    #pot_reading = np.round(pot_reading)
     group_tfms = {}
-    for group in group_info:
+    for group in masterGraph.nodes_iter():
         group_tfms[group] = {}
-        for marker in group_info[group]["markers"]:
+        for marker in masterGraph.node[group]["markers"]:
             if tfms.get(marker) is not None:
                 group_tfms[group][marker] = tfms[marker]
         
-        update_graph_from_observations(group_info[group]["graph"], group_tfms[group])
+        update_graph_from_observations(masterGraph.node[group]["graph"], group_tfms[group])
     
     for g1, g2 in itertools.combinations(masterGraph.nodes(),2):
         if masterGraph.node[g2].get("master") is not None:
@@ -60,7 +63,7 @@ def update_groups_from_observations(masterGraph, group_info, tfms, pot_reading):
 
         tfms1 = group_tfms[g1]
         tfms2 = group_tfms[g2]
-        if not tfms1 or tfms2:
+        if not tfms1 or not tfms2:
             continue
         
         for m1 in tfms1:
@@ -74,25 +77,24 @@ def update_groups_from_observations(masterGraph, group_info, tfms, pot_reading):
                 masterGraph.edge[g1][g2]["transform_list"][pot_reading].append({"from":m1,
                                                           "to":m2,
                                                           "tfm":nlg.inv(tfms1[m1]).dot(tfms2[m2])})
-                masterGraph.edge[g1][g2]['n'] += 1
-                
+        masterGraph.edge[g1][g2]['n'] += 1
 
 
-def is_ready (masterGraph, group_info, min_obs=5):
+def is_ready (masterGraph, min_obs=5):
     """
     @num_markers is the total number of markers/sensors on the rigid object.
     @min_obs is the minimum number of observations required for each relative transform, once one is seen. 
     
     Returns True when the graph has enough data to begin calibration, False otherwise.
     """
-    for group in group_info:
-        G = group_info[group]["graph"]
-        if nx.is_connected() and G.number_of_nodes() == len(group_info[group]["markers"]):
+    for group in masterGraph.nodes_iter():
+        G = masterGraph.node[group]["graph"]
+        if nx.is_connected(G) and G.number_of_nodes() == len(masterGraph.node[group]["markers"]):
             for i,j in G.edges_iter():
                 if G.edge[i][j]['n'] < min_obs:
                     return False
                 
-    for i,j in masterGraph.edge_iter():
+    for i,j in masterGraph.edges_iter():
         if masterGraph.edge[i][j]['n'] < min_obs:
             return False
     return True
@@ -248,15 +250,19 @@ def optimize_transforms (G):
             G_opt.edge[i][j] = {'tfm':Tij}
             G_opt.edge[j][i] = {'tfm':Tji}
     
+    for i in G_opt.nodes_iter():
+        G_opt.add_edge(i,i)
+        G_opt[i][i]['tfm'] = np.eye(4)
+    
     n = G_opt.number_of_nodes()
     try:
-        assert G_opt.number_of_edges() == n*(n-1)
+        assert G_opt.number_of_edges() == n**2
     except AssertionError:
         print "Not all edges found...? Fix this"
 
     return G_opt
             
-def optimize_master_transforms (mG):
+def optimize_master_transforms (mG, init=None):
     """
     Optimize transforms over the masterGraph (which is a metagraph with nodes as rigid body graphs).
     """
@@ -300,15 +306,17 @@ def optimize_master_transforms (mG):
             for angle in mG.edge[g1][g2]['avg_tfm']:
                 t1 = np.r_[get_mat_from_node(X,g1),np.array([[0,0,0,1]])]
                 t2 = np.r_[get_mat_from_node(X,g2),np.array([[0,0,0,1]])]
-                
+
                 rad = utils.rad_angle(angle)
-                tot_angle = rad*(-mG.node[g1]["scale_factor"]+mG.node[g2]["scale_factor"])
-                rot = utils.rotation_matrix(zaxis, tot_angle)
+
+                tot_angle = rad*(-mG.node[g1]["angle_scale"]+mG.node[g2]["angle_scale"])
+                rot = np.eye(4)
+                rot[0:3,0:3] = utils.rotation_matrix(zaxis, tot_angle)
                 
                 tfm = t1.dot(rot).dot(nlg.inv(t2))
-                
-                obj += nlg.norm(tfm - mG[g1][g2]['avg_tfm'][angle])
-            
+
+                obj += nlg.norm(tfm - mG.edge[g1][g2]['avg_tfm'][angle])
+        
         return obj
     
     def f_constraints (X):
@@ -326,125 +334,135 @@ def optimize_master_transforms (mG):
     
     ## Intial value assumes each rigid body has some edge with master.
     ## Averaging out over angles.
-    x_init = np.zeros(12*mG.number_of_nodes())
-    x_init[0:9] = I3.reshape(9)
-    for node in mG.neighbors_iter(master):
-        init_tfm = utils.avg_transform(mG.edge[master][node]['avg_tfm'].values())
-        offset = node_map[node]
-        x_init[offset:offset+12] = init_tfm[0:3,:].reshape(12, order='F')
-    ##
-    
+    if init is not None:
+        x_init = init
+    else:
+        x_init = np.zeros(12*mG.number_of_nodes())
+        x_init[0:9] = I3.reshape(9)
+        for node in mG.neighbors_iter(master):
+            init_tfm = utils.avg_transform(mG.edge[master][node]['avg_tfm'].values())
+            print init_tfm.dot(np.r_[np.c_[np.eye(3),np.array([0,0,0])],np.array([[0,0,0,0]])]).dot(init_tfm.T)
+            offset = node_map[node]*12
+            x_init[offset:offset+12] = init_tfm[0:3,:].reshape(12, order='F')
+        ##
+
     print "Initial x: ", x_init
-    (X, fx, _, _, _) = sco.fmin_slsqp(func=f_objective, x0=x_init, f_eqcons=f_constraints, iter=100, full_output=1)
+    print "Initial objective: ", f_objective(x_init)
+    
+    (X, fx, _, _, _) = sco.fmin_slsqp(func=f_objective, x0=x_init, f_eqcons=f_constraints, iter=200, full_output=1, iprint=2)
     
     mG_opt = nx.DiGraph()
     ## modify master graph
-    node0 = mG.node()[master].get("primary")
-    node_iter = master.neighbors_iter(node0) 
+    node0 = mG.node[master]["primary"]
     
-    master.add_node("cor")
+    masterG = mG.node[master]["graph"]
+    node_iter = masterG.neighbors(node0) 
+    masterG.add_node("cor")
     # change master primary
     mG.node[master]["primary"] = "cor"
-    master.add_edge(node0,"cor")
-    master.add_edge("cor",node0)
+    masterG.add_edge(node0,"cor")
+    masterG.add_edge("cor",node0)
     
-    Tsc = np.r_[get_mat_from_node(X, master), np.array([0,0,0,1])] 
-    master.edge[node0]["cor"]['tfm'] = Tsc
-    master.edge["cor"][node0]['tfm'] = nlg.inv(Tsc)
+    Tsc = np.r_[get_mat_from_node(X, master), np.array([[0,0,0,1]])] 
+    masterG.edge[node0]["cor"]['tfm'] = Tsc
+    masterG.edge["cor"][node0]['tfm'] = nlg.inv(Tsc)
     
     for node in node_iter:
-        master.add_edge(node,"cor")
-        master.add_edge("cor",node)
+        masterG.add_edge(node,"cor")
+        masterG.add_edge("cor",node)
         
-        tfm = master.edge[node][node0]['tfm'].dot(Tsc)
-        master.edge[node]["cor"] = tfm
-        master.edge["cor"][node] = nlg.inv(tfm)
+        tfm = masterG.edge[node][node0]['tfm'].dot(Tsc)
+        masterG.edge[node]["cor"]['tfm'] = tfm
+        masterG.edge["cor"][node]['tfm'] = nlg.inv(tfm)
         
     mG_opt.add_node(master)
-    mG_opt.node[master]["scale_factor"] = 0
+    mG_opt.node[master]["graph"] = masterG
+    mG_opt.node[master]["angle_scale"] = 0
     mG_opt.node[master]["primary"] = "cor"
     ## add edges to the rest
-    for G in mG.nodes_iter():
-        if G == master: continue
-        mG_opt.add_edge(master, G)
-        mG_opt.add_edge(G, master)
-        mG_opt.node[G]["scale_factor"] = mG.node[G]["scale_factor"]
-        mG_opt.node[G]["primary"] = mG.node[G]["primary"]
+    for group in mG.nodes_iter():
+        if group == master: continue
+        mG_opt.add_edge(master, group)
+        mG_opt.add_edge(group, master)
+        mG_opt.node[group]["graph"] = mG.node[group]["graph"]
+        mG_opt.node[group]["angle_scale"] = mG.node[group]["angle_scale"]
+        mG_opt.node[group]["primary"] = mG.node[group]["primary"]
         
-        tfm = np.r_[get_mat_from_node(X, G), np.array([0,0,0,1])]
-        mG_opt.edge[G][master]['tfm'] = tfm
-        mG_opt.edge[master][G]['tfm'] = nlg.inv(tfm)
+        tfm = np.r_[get_mat_from_node(X, group), np.array([[0,0,0,1]])]
+        mG_opt.edge[group][master]['tfm'] = tfm
+        mG_opt.edge[master][group]['tfm'] = nlg.inv(tfm)
         
         def get_tfm(master_node, child_node, angle):
-            mprimary_node = mG_opt.node[master]["primary"] 
-            if mprimary_node == master_node:
-                mtfm = np.eye(4)
-            else:
-                mtfm = master.edge[master_node][mprimary_node]['tfm']
-            
-            rot = utils.rotation_matrix(np.array([0,0,0,1]), angle*mG_opt[G]["scale_factor"])
-            
-            cprimary_node = mG_opt.node[G]["primary"] 
-            if cprimary_node == child_node:
-                ctfm = np.eye(4)
-            else:
-                ctfm = G.edge[child_node][cprimary_node]['tfm']
-                
-            return mtfm.dot(rot).dot(ctfm)
+            # angle in degrees
+            mprimary_node = mG_opt.node[master]["primary"]
+            #print masterG.edge[master_node][mprimary_node]
+            mtfm = masterG.edge[master_node][mprimary_node]['tfm']
+            angle = utils.rad_angle(angle)
+            rot = np.eye(4)
+            rot[0:3,0:3] = utils.rotation_matrix(np.array([0,0,1]), angle*mG_opt.node[group]["angle_scale"])
+            cprimary_node = mG_opt.node[group]["primary"]
+            ctfm = mG_opt.node[group]["graph"].edge[cprimary_node][child_node]['tfm']
+
+            return mtfm.dot(rot).dot(mG_opt.edge[master][group]['tfm']).dot(ctfm)
         
         def get_tfm_inv(child_node, master_node, angle):
+            # angle in degrees
             return nlg.inv(get_tfm(master_node,child_node,angle))
         
-        mG_opt.edge[master][G]['tfm_func'] = get_tfm
-        mG_opt.edge[G][master]['tfm_func'] = get_tfm_inv
+        mG_opt.edge[master][group]['tfm_func'] = get_tfm
+        mG_opt.edge[group][master]['tfm_func'] = get_tfm_inv
         
     return mG_opt
                 
         
 
     
-def compute_relative_transforms (masterGraph, group_info, min_obs=5):
+def compute_relative_transforms (masterGraph, min_obs=5, init=None):
     """
     Takes in a transform graph @G such that it has enough data to begin calibration (is_ready(G) returns true).
     Optimizes and computes final relative transforms between all nodes (markers).
     Returns a graph final_G with the all edges (clique) and final transforms stored in edges.
     """
 
-    assert (is_ready(masterGraph, group_info, min_obs=min_obs))
+    assert (is_ready(masterGraph, min_obs=min_obs))
 
     new_mG = nx.DiGraph()
     graph_map = {} 
-    for G in masterGraph.nodes():
+    for group in masterGraph.nodes():
+        G = masterGraph.node[group]["graph"]
         for i,j in G.edges_iter():
             G[i][j]['avg_tfm'] = utils.avg_transform(G[i][j]['transform_list'])
         # Optimize rigid body transforms.
         graph_map[G] = optimize_transforms(G)
-        new_mG.add_node(graph_map[G])
-        if masterGraph.node[G].get("master"):
-            new_mG.node[graph_map[G]]["master"] = 1
-        new_mG.node[graph_map[G]]["scale_factor"] = masterGraph.node[G]["scale_factor"] 
+        new_mG.add_node(group)
+        new_mG.node[group]["graph"] = graph_map[G]
+        if masterGraph.node[group].get("master"):
+            new_mG.node[group]["master"] = 1
+        new_mG.node[group]["angle_scale"] = masterGraph.node[group]["angle_scale"] 
     
     for g in masterGraph.nodes_iter():
-        masterGraph.node[g]["primary"] = g.nodes()[0]
+        masterGraph.node[g]["primary"] = masterGraph.node[g]["graph"].nodes()[0]
+        new_mG.node[g]["primary"] = masterGraph.node[g]["primary"] 
 
     for g1,g2 in masterGraph.edges_iter():
-        mg1  = graph_map[g1]
-        mg2  = graph_map[g2]
-        new_mG.add_edge(mg1, mg2)
+        mg1  = graph_map[masterGraph.node[g1]["graph"]]
+        mg2  = graph_map[masterGraph.node[g2]["graph"]]
+        new_mG.add_edge(g1, g2)
     
-        node1 = new_mG.node[mg1].get("primary")
-        node2 = new_mG.node[mg2].get("primary")
+        node1 = new_mG.node[g1].get("primary")
+        node2 = new_mG.node[g2].get("primary")
         
-        new_mG[mg1][mg2]['avg_tfm'] = {}
+        new_mG[g1][g2]['avg_tfm'] = {}
         for angle, tfm_data in masterGraph[g1][g2]['transform_list'].items():
             transforms = []
             # Converting all transforms to standard transform between two fixed nodes.
             for tfm in tfm_data:
-                transforms.append(mg1.edge[node1][tfm['from']]['tfm'].dot(tfm['tfm']).dot(mg2.edge[tfm['to']][node2]['tfm']))
-            new_mG[mg1][mg2]['avg_tfm'][angle] = utils.avg_transform(transforms)
+                transforms.append(mg1.edge[node1][tfm['from']]['tfm'].dot(tfm['tfm'])\
+                                  .dot(mg2.edge[tfm['to']][node2]['tfm']))
+            new_mG[g1][g2]['avg_tfm'][angle] = utils.avg_transform(transforms)
 
     # Optimize over angles to get master graph with transforms.
-    mG_opt = optimize_master_transforms(new_mG)
+    mG_opt = optimize_master_transforms(new_mG, init)
     
     return mG_opt
 
@@ -502,7 +520,6 @@ def create_graph_from_observations(parent_frame, calib_info, min_obs=5, n_avg=5,
     tf_listener = tf.TransformListener()
     tf_listener.clear()
 
-    group_info = {group:{} for group in calib_info}
     masterGraph = nx.DiGraph()
     ar_markers = []
     hydras = []
@@ -510,19 +527,26 @@ def create_graph_from_observations(parent_frame, calib_info, min_obs=5, n_avg=5,
     
     # Setup the groups
     for group in calib_info:
-        group_info[group]["graph"] = nx.Graph()
-        masterGraph.add_node(group_info[group]["graph"])
-        masterGraph.node[group_info[group]["graph"]]['angle_scale'] = calib_info[group]['angle_scale']
+        masterGraph.add_node(group)
+        masterGraph.node[group]["graph"] = nx.Graph()
+        masterGraph.node[group]["angle_scale"] = calib_info[group]['angle_scale']
         
-        if calib_obs[group].get("master_group") is not None:
-            masterGraph.node[group_info[group]["graph"]]["master"] = 1
-            masterGraph.node[group_info[group]["graph"]]['angle_scale'] = 0
+        if calib_info[group].get("ar_markers") is None:
+            calib_info[group]["ar_markers"] = []
+        if calib_info[group].get("hydras") is None:
+            calib_info[group]["hydras"] = []
+        if calib_info[group].get("ps_markers") is None:
+            calib_info[group]["ps_markers"] = []
+        
+        if calib_info[group].get("master_group") is not None:
+            masterGraph.node[group]["master"] = 1
+            masterGraph.node[group]['angle_scale'] = 0
 
-        group_info[group]["markers"] = calib_info["ar_markers"] + calib_info["hydras"] + calib_info["ps_markers"]
-        group_info[group]["calib_info"] = calib_info[group]
-        ar_markers.extend(calib_info["ar_markers"])
-        hydras.extend(calib_info["hydras"])
-        ps_markers.extend(calib_info["ps_markers"])
+        masterGraph.node[group]["markers"] = calib_info[group]["ar_markers"] + calib_info[group]["hydras"] + calib_info[group]["ps_markers"]
+        masterGraph.node[group]["calib_info"] = calib_info[group]
+        ar_markers.extend(calib_info[group]["ar_markers"])
+        hydras.extend(calib_info[group]["hydras"])
+        ps_markers.extend(calib_info[group]["ps_markers"])
 
 
     if freq is not None:
@@ -560,10 +584,10 @@ def create_graph_from_observations(parent_frame, calib_info, min_obs=5, n_avg=5,
         for marker in avg_tfms:
             avg_tfms[marker] = utils.avg_transform(avg_tfms[marker])
 
-        update_groups_from_observations(masterGraph, group_info, avg_tfms, pot_angle)
+        update_groups_from_observations(masterGraph, avg_tfms, pot_angle)
 
         count += 1
-        if is_ready(masterGraph, group_info, min_obs):
+        if is_ready(masterGraph, min_obs):
             if freq:
                 break
             elif not yes_or_no("Enough data has been gathered. Would you like to gather more data anyway?"):
@@ -571,6 +595,6 @@ def create_graph_from_observations(parent_frame, calib_info, min_obs=5, n_avg=5,
 
     print "Finished gathering data in %d iterations."%count
     print "Calibrating for optimal transforms between markers..."
-    G_opt = compute_relative_transforms (masterGraph, group_info, min_obs=min_obs)
+    G_opt = compute_relative_transforms (masterGraph, min_obs=min_obs)
     print "Finished calibrating."
     return G_opt
