@@ -8,6 +8,7 @@ import numpy as np
 from hd_track.kalman import kalman
 from hd_utils import transformations as tfms
 import argparse
+import matplotlib.pylab as plt
 
 def put_in_range(x):
     """
@@ -72,6 +73,7 @@ def state_from_tfms(Ts, dt=1./30.):
 
     return Xs
 
+
 def fit_process_noise(fname, f=30.):
     """
     Gets the motion-model noise covariance.
@@ -103,17 +105,61 @@ def fit_process_noise(fname, f=30.):
     return (l_err, l_covar, r_err, r_covar)
 
 
-def fit_hydra_noise(T_bg, T_bh, Tf=30.):
+def fit_hydra_noise(Ts_bg, Ts_bh, T_gh, f=30.):
+    """
+    Get the hydra measurement covariance.
+    Ts_bg : list of transforms from pr2's base to its gripper holding the hydra.
+    Ts_bh : list of transforms from pr2's base to hydra sensor.
+    T_gh :  One offset transform from pr2's gripper holding the hydra and the hydra sensor.
+    f    : the frequency at which the data is logged. 
+    """
     dt = 1./f
+    
+    assert len(Ts_bg) == len(Ts_bh), "Number of hydra and pr2 transforms not equal."
+    Ts_bg_gh = [t.dot(T_gh) for t in Ts_bg]
+    
+    ## plot the translation:
+    axlabels = ['x','y','z']
+    for i in range(3):
+        plt.subplot(3,2,i+1)
+        plt.plot(np.array([t[i,3] for t in Ts_bh]), label='hydra')
+        plt.plot(np.array([t[i,3] for t in Ts_bg_gh]), label='pr2')
+        plt.ylabel(axlabels[i])
+        plt.legend()
+    
+    ## plot the rotation:
+    X_bh    = state_from_tfms(Ts_bh, dt).T
+    X_bg_gh = state_from_tfms(Ts_bg_gh, dt).T
+    X_bg_gh[6:9,:] = closer_angle(X_bg_gh[6:9,:], X_bh[6:9,:])
+
+    axlabels = ['roll','pitch','yaw']
+    for i in range(3):
+        plt.subplot(3,2,i+4)      
+        plt.plot(X_bh[i+6,:], label='hydra')
+        plt.plot(X_bg_gh[i+6,:], label='pr2')
+        plt.ylabel(axlabels[i])
+        plt.legend()
+    
+    plt.show()
+    
+    
+def plot_hydra_data():
+    fname = '/home/ankush/sandbox444/human_demos/hd_track/data/good_calib_hydra_pr2/test04'
+    dat = cPickle.load(open(fname, 'rb'))
+    T_gh = cPickle.load(open('/home/ankush/sandbox444/human_demos/hd_track/data/good_calib_hydra_pr2/T_gh'))
+    Ts_bh = dat['T_bh']
+    Ts_bg = dat['T_bg']
+    fit_hydra_noise(Ts_bg, Ts_bh, T_gh)    
     
     
     
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--fname", help="joints file name.", required=True)
-    args = parser.parse_args()
+    pass
+    #parser = argparse.ArgumentParser()
+    #parser.add_argument("--fname", help="joints file name.", required=True)
+    #args = parser.parse_args()
     
-    le, lc, re, rc = fit_process_noise(args.fname)    
-    print "LEFT COVAR : ", lc
-    print "RIGHT COVAR : ", rc
+    #le, lc, re, rc = fit_process_noise(args.fname)    
+    #print "LEFT COVAR : ", lc
+    #print "RIGHT COVAR : ", rc
