@@ -107,7 +107,7 @@ class kalman:
             
             vmat = np.eye(6)
             vmat[0:3,0:3] *= (self.hydra_vx_std*self.hydra_vx_std)
-            vmat[3:6,3,6] *= (self.hydra_r_std*self.hydra_r_std) 
+            vmat[3:6,3:6] *= (self.hydra_r_std*self.hydra_r_std) 
             return (cmat, vmat)
         
         else: # can observe only the rotation
