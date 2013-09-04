@@ -29,14 +29,12 @@ class kalman:
         self.vx_std_t = 1  # m/s /s
         self.r_std_t  = 40 # deg/s
         self.vr_std_t = 90 # deg/s /s
-
       
         ## standard deviations of the measurements:
         self.ar_x_std     = 0.05 # m / sample
         self.ar_r_std     = 5    # deg / sample
         self.hydra_vx_std = 0.01 # m/s / sample
         self.hydra_r_std  = 0.1  # deg/ sample
-
 
         ## convert the above numbers to radians:
         self.min_r_std   = self.put_in_range(np.deg2rad(self.min_r_std))
@@ -45,7 +43,6 @@ class kalman:
         self.vr_std_t    = self.put_in_range(np.deg2rad(self.vr_std_t))
         self.ar_r_std    = self.put_in_range(np.deg2rad(self.ar_r_std))
         self.hydra_r_std = self.put_in_range(np.deg2rad(self.hydra_r_std))
-
 
         # update frequency : the kalman filter updates the estimate explicitly at this rate.
         # it also updates when a measurement is given to it.
@@ -59,7 +56,6 @@ class kalman:
         self.t_filt = None
         self.x_filt = None
         self.S_filt = None
-
 
     def get_motion_covar(self, dt):
         """
