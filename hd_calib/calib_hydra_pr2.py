@@ -7,7 +7,8 @@ from __future__ import division
 import roslib
 #roslib.load_manifest('calib_hydra_pr2')
 import rospy
-import tf; roslib.load_manifest('tf')
+roslib.load_manifest('tf')
+import tf; 
 
 import argparse
 import numpy as np, numpy.linalg as nlg
@@ -43,11 +44,11 @@ def get_transforms(arm, hydra, n_tfm , n_avg):
 
     pr2_frame = 'base_footprint'
     assert arm=='right' or 'left'
-    arm_frame  = '%s_gripper_toolframe' % {'right':'r', 'left':'l'}[arm]
+    arm_frame  = '%s_gripper_tool_frame' % {'right':'r', 'left':'l'}[arm]
 
     hydra_frame  = 'hydra_base'
     assert hydra=='right' or hydra=='left'
-    paddle_frame = 'hydra_%s_pivot'%hydra
+    paddle_frame = 'hydra_%s'%hydra
 
     tf_sub = tf.TransformListener()
 
