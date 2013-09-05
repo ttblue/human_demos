@@ -6,6 +6,9 @@ import time
 from hd_utils import ros_utils as ru, clouds, conversions, utils
 from hd_utils.colorize import *
 
+from cyni_cameras import cyni_cameras
+import get_marker_transform as gmt
+
 asus_xtion_pro_f = 544.260779961
 
 """
@@ -51,31 +54,6 @@ def find_rigid_tfm (points1, points2, homogeneous=True):
     else:
         return R,t
 
-
-def get_ar_marker_poses (rgb, depth):
-    """
-    In order to run this, ar_marker_service needs to be running.
-    """
-    if rospy.get_name() == '/unnamed':
-        rospy.init_node('keypoints')
-    
-    getMarkers = rospy.ServiceProxy("getMarkers", MarkerPositions)
-    
-    #xyz = svi.transform_pointclouds(depth, tfm)
-    xyz = clouds.depth_to_xyz(depth, asus_xtion_pro_f)
-    pc = ru.xyzrgb2pc(xyz, rgb, '/base_footprint')
-    
-    req = MarkerPositionsRequest()
-    req.pc = pc
-    
-    marker_tfm = {}
-    res = getMarkers(req)
-    for marker in res.markers.markers:
-        marker_tfm[marker.id] = conversions.pose_to_hmat(marker.pose.pose)
-    
-    #print "Marker ids found: ", marker_tfm.keys()
-    
-    return marker_tfm
    
 def find_common_ar_markers (ar_pos1, ar_pos2):
     """
@@ -110,23 +88,26 @@ def convert_hmats_to_points (hmats):
 
 class camera_calibrator:
     """
-    This calibrator uses Cyni to calibrate between cameras.
+    This class uses Cyni to calibrate between cameras.
     """
     
-    devices = {}
-    streams = {}
+    cameras = None
+    # keeping this as fixed for now. Simple fix to change it to arbitrary frame.
+    parent_frame = None
     num_cameras = 0
     # Maybe you don't need this if acquiring information is going to take some time.
     emitter_flip_time = 0.5
-    camera_transforms = []
+    camera_transforms = {}
     
-    def __init__(self, num_cameras=2):
+    def __init__(self, cameras, parent_frame = "camera1_depth_optical_frame"):
         
-        assert num_cameras > 0
-        self.num_cameras = num_cameras
-        self.parent_frame = "camera1_depth_optical_frame"
+        self.cameras = cameras
+        self.num_cameras = self.cameras.num_cameras
         
-        cyni.initialize()
+        assert self.num_cameras > 0
+        
+        self.parent_frame = parent_frame
+
         
     def find_transform_between_cameras_from_obs (self, c1, c2):
         """
@@ -154,37 +135,13 @@ class camera_calibrator:
 
         
     def initialize_calibration(self):
-        self.allDevices = cyni.enumerateDevices()
-        
-        if len(self.allDevices) == 0:
-            raise Exception("No devices found! Cyni not initialized properly or, devices actually not present.")
-        if num_cameras > len(self.allDevices):
-            redprint("Warning: Requesting more devices than available. Getting all devices.")
-        
-        self.num_cameras = min(num_markers,len(self.allDevices))
-        
-        for i in xrange(self.num_cameras):
-            device = cyni.Device(self.allDevices[i]['uri'])
-            device.open()
-            
-            self.devices[i] = device
-            self.streams[i] = {}
-            self.stream[i]['color'] = device.createStream("depth", width=640, height=480, fps=30)
-            self.stream[i]['depth'] = device.createStream("color", width=640, height=480, fps=30)
-            device.setImageRegistrationMode("depth_to_color")
-            device.setDepthColorSyncEnabled(on=True)
-
         if self.num_cameras == 1:
             redprint("Only one camera. You don't need to calibrate.")
             return
 
-        for i in streams:
-            streams[i]['color'].start()
-            streams[i]['depth'].start()
-            streams[i]['depth'].setEmitterState(False)
-
         # Stores transforms between cameras 
         self.transform_list = {}
+        self.cameras.start_streaming()
     
     def process_observation(self, n_avg=5):
         """
@@ -197,24 +154,20 @@ class camera_calibrator:
         raw_input(colorize("Press return when you're ready to take the next observation from the cameras.",'green',True))
         yellowprint("Please hold still for a few seconds.")
 
-        self.observation_info = {i:[] for i in streams}
-        self.observed_ar_transforms = {i:{} for i in streams}
+        self.observation_info = {i:[] for i in xrange(self.num_cameras)}
+        self.observed_ar_transforms = {i:{} for i in xrange(self.num_cameras)}
 
         # Get RGBD observations
         for i in xrange(n_avg):
             print colorize("Transform %d out of %d for averaging."%(i,n_avg),'yellow',False)
-            for j,stream in streams.items():
-                stream["depth"].setEmitterState(True)
-                depth = stream["depth"].readFrame().data
-                rgb = cv2.cvtColor(stream["color"].readFrame().data, cv2.COLOR_RGB2BGR)
-                self.observation_info[j].append({'rgb':rgb, 'depth':depth})
-                time.sleep(self.emitter_flip_time)
-                stream["depth"].setEmitterState(False)
+            data = self.cameras.get_RGBD()
+            for j,cam_data in data.items():
+                self.observation_info[j].append(cam_data)
         
         # Find AR transforms from RGBD observations and average out transforms.
         for i in self.observation_info:
             for obs in self.observation_info[i]:
-                ar_pos = get_ar_marker_poses (obs['rgb'], obs['depth'])
+                ar_pos = gmt.get_ar_marker_poses (obs['rgb'], obs['depth'])
                 for marker in ar_pos:
                     if self.observed_ar_transforms[i].get(marker) is None:
                         self.observed_ar_transforms[i][marker] = []
@@ -241,9 +194,12 @@ class camera_calibrator:
         for c1,c2 in self.transform_list:
             cam_transform= {}
             cam_transform['tfm'] = utils.avg_transform(self.transform_list[key])
-            cam_transform['parent'] = 'camera%d_depth_optical_frame'%c1
-            cam_transform['child'] = 'camera%d_depth_optical_frame'%c2
-            self.camera_transforms.append(cam_transform)
+            cam_transform['parent'] = 'camera%d_depth_optical_frame'%(c1+1)
+            cam_transform['child'] = 'camera%d_depth_optical_frame'%(c2+1)
+            self.camera_transforms[c1,c2] = cam_transform
+            
+        self.cameras.stop_streaming()
+        self.cameras.store_calibrated_transforms(self.camera_transforms)
     
         return True
     
@@ -253,32 +209,24 @@ class camera_calibrator:
             return
         
         self.initialize_calibration()
-        for _ in range(n_obs)
+        for i in range(n_obs)
+            yellowprint ("Transform %d out of %d."%(i,n_obs))
             process_observation(n_avg)
         self.calibrated = finish_calibration()
         
     def get_transforms(self):
         if self.num_cameras == 1:
             yellowprint("Only have one camera. No transforms.")
-            return false
+            return
         if not self.calibrated:
             redprint("Cameras not calibrated.")
-            return false
+            return
         
-        return self.camera_transforms
+        return self.camera_transforms.values()
         
         
     def reset_calibration (self):
         self.calibrated = False
-        
-        for i in streams:
-            streams[i]['color'].stop()
-            streams[i]['color'].destroy()
-            streams[i]['depth'].stop()
-            streams[i]['depth'].destroy()
-        for i in self.devices:
-            self.devices[i].close
-        
-        self.devices = {}
-        self.streams = {}
-        self.camera_transforms = []
+        self.camera_transforms = {}
+        self.cameras.stop_streaming()
+        self.cameras.stored_tfms = {}

@@ -1,6 +1,8 @@
 #!/usr/bin/ipython -i
 import numpy as np, numpy.linalg as nlg
 
+import IPython
+
 import scipy.optimize as sco
 import networkx as nx, networkx.algorithms as nxa
 import itertools
@@ -13,7 +15,7 @@ from hd_utils import utils, conversions
 from hd_utils.yes_or_no import yes_or_no
 from hd_utils.colorize import colorize
 
-import get_marker_transforms as gmt 
+tf_listener = None
 
 np.set_printoptions(precision=5, suppress=True)
 
@@ -464,123 +466,145 @@ def compute_relative_transforms (masterGraph, min_obs=5, init=None):
     return mG_opt
 
 
-class gripper_calibrator:
+# These three functions assume calibration has taken place.
+def get_ar_transforms(markers, parent_frame):
+    """
+    Takes in a list of @markers (AR marker ids) and a @parent_frame.
+    Returns a dict of transforms with keys as found marker ids and values as transforms.
+    """
+    if markers is None: return {}
+    ar_tfms = {}
+    for marker in markers:
+        try:
+            trans, rot = tf_listener.lookupTransform(parent_frame, 'ar_marker_%d'%marker, rospy.Time(0))
+            ar_tfms[marker] = conversions.trans_rot_to_hmat(trans, rot)
+        except:
+            pass
+    return ar_tfms
     
-    calib_info = None
-    
-    masterGraph = None
-    transform_graph = None
-    ar_markers = None
-    hydras = None
-    iterations = 0
-    
-    parent_frame = None
-    
-    cameras = None
-    calibrated = False
-    
-    def __init__(self, cameras, calib_info=None, parent_frame = 'camera1_depth_optical_frame'):
-        self.cameras = cameras
-        self.parent_frame = parent_frame
-        self.calib_info = calib_info
-    
-    def update_calib_info (self, calib_info):
-        self.reset_calibration()
-        self.calib_info = calib_info
-        
-    def initialize_calibration (self):
-        assert self.cameras.calibrated
-        self.cameras.start_streaming()
-        # assert hydras are calibrated
+def get_hydra_transforms(hydras, parent_frame):
+    """
+    Transform finder for hydras. Nothing for now.
+    """
+    return {}
 
-        self.masterGraph = nx.DiGraph()
-        
-        for group in self.calib_info:
-            self.masterGraph.add_node(group)
-            self.masterGraph.node[group]["graph"] = nx.Graph()
-            self.masterGraph.node[group]["angle_scale"] = self.calib_info[group]['angle_scale']
-            
-            if self.calib_info[group].get("ar_markers") is None:
-                self.calib_info[group]["ar_markers"] = []
-            if self.calib_info[group].get("hydras") is None:
-                self.calib_info[group]["hydras"] = []
-            
-            if self.calib_info[group].get("master_group") is not None:
-                self.masterGraph.node[group]["master"] = 1
-                self.masterGraph.node[group]['angle_scale'] = 0
-    
-            self.masterGraph.node[group]["markers"] = self.calib_info[group]["ar_markers"] + self.calib_info[group]["hydras"]
-            self.ar_markers.extend(self.calib_info[group]["ar_markers"])
-            self.hydras.extend(self.calib_info[group]["hydras"])
+def get_phasespace_transforms(ps_markers, parent_frame):
+    """
+    Transform finder for hydras. Nothing for now.
+    """
+    return {}
 
+def get_potentiometer_angle():
+    """
+    Finds the angle of the potentiometer. Nothing yet.
+    """
+    return 0
+
+
+def create_graph_from_observations(parent_frame, calib_info, min_obs=5, n_avg=5, freq=None):
+    """
+    Runs a loop till graph has enough data and user is happy with data.
+    Or run with frequency specified until enough data is gathered.
     
-    def process_observation (self, n_avg=5):
-        self.iterations += 1
-        raw_input(colorize("Iteration %d: Press return when ready to capture transforms."%self.iterations, "red", True))
+    @parent_frame -- frame to get observations in.
+    @num_markers -- total_number of markers.
+    @calib_info -- dict with information on what groups and markers to search for.
+                   also gives information on which is the master group and how the angle affects group.
+    @min_obs -- minimum number of observations for transform required after finding it once.
+    @n_avg -- number of times to average transform per observation.
+    """
+    global tf_listener
+    if rospy.get_name() == '/unnamed':
+        rospy.init_node('gripper_marker_calibration')
+    tf_listener = tf.TransformListener()
+    tf_listener.clear()
+
+    masterGraph = nx.DiGraph()
+    ar_markers = []
+    hydras = []
+    ps_markers = []
+    
+    # Setup the groups
+    for group in calib_info:
+        masterGraph.add_node(group)
+        masterGraph.node[group]["graph"] = nx.Graph()
+        masterGraph.node[group]["angle_scale"] = calib_info[group]['angle_scale']
+        
+        if calib_info[group].get("ar_markers") is None:
+            calib_info[group]["ar_markers"] = []
+        if calib_info[group].get("hydras") is None:
+            calib_info[group]["hydras"] = []
+        if calib_info[group].get("ps_markers") is None:
+            calib_info[group]["ps_markers"] = []
+        
+        if calib_info[group].get("master_group") is not None:
+            masterGraph.node[group]["master"] = 1
+            masterGraph.node[group]['angle_scale'] = 0
+
+        masterGraph.node[group]["markers"] = calib_info[group]["ar_markers"] + calib_info[group]["hydras"] + calib_info[group]["ps_markers"]
+        masterGraph.node[group]["calib_info"] = calib_info[group]
+        ar_markers.extend(calib_info[group]["ar_markers"])
+        hydras.extend(calib_info[group]["hydras"])
+        ps_markers.extend(calib_info[group]["ps_markers"])
+
+
+    if freq is not None:
+        wait_time = 5
+        print "Waiting for %f seconds before collecting data."%wait_time
+        time.sleep(wait_time)
+
+    sleeper = rospy.Rate(30)
+    count = 0
+    while True:
+        if freq is None:
+            raw_input(colorize("Iteration %d: Press return when ready to capture transforms."%count, "red", True))
+        else: 
+            print colorize("Iteration %d"%count, "red", True)
         
         avg_tfms = {}
         for j in xrange(n_avg):
-            print colorize('\tGetting averaging transform : %d of %d ...'%(j,n_avg-1), "blue", True)            
+            print colorize('\tGetting averaging transform : %d of %d ...'%(j,n_avg-1), "blue", True)
+            
 
             tfms = {}
-            tfms.update(gmt.get_ar_transforms(self.cameras, parent_frame=self.parent_frame, markers=self.ar_markers))
-            tfms.update(gmt.get_hydra_transforms(parent_frame=parent_frame, hydras = self.hydras))
-
-            pot_angle = gmt.get_pot_angle()
+            tfms.update(get_ar_transforms(ar_markers, parent_frame))
+            tfms.update(get_hydra_transforms(hydras, parent_frame))
+            tfms.update(get_phasespace_transforms(ps_markers, parent_frame))
+            
+            pot_angle = get_potentiometer_angle()
                         
             for marker in tfms:
                 if marker not in avg_tfms:
                     avg_tfms[marker] = []
                 avg_tfms[marker].append(tfms[marker])
-
+            
+            sleeper.sleep()
         
         for marker in avg_tfms:
             avg_tfms[marker] = utils.avg_transform(avg_tfms[marker])
 
-        update_groups_from_observations(self.masterGraph, avg_tfms, pot_angle)
+        update_groups_from_observations(masterGraph, avg_tfms, pot_angle)
 
+        count += 1
         if is_ready(masterGraph, min_obs):
             if freq:
                 break
             elif not yes_or_no("Enough data has been gathered. Would you like to gather more data anyway?"):
                 break
 
-
-    def finish_calibration (self):
-        """
-        Finishes calibration by performing the optimization.
-        Takes several seconds.
-        """
-        assert is_ready (self.masterGraph, self.min_obs)
-        self.transform_graph = compute_relative_transforms(self.masterGraph, min_obs = min_obs)
-        return True
+    print "Finished gathering data in %d iterations."%count
+    print "Calibrating for optimal transforms between markers..."
+    G_opt = compute_relative_transforms (masterGraph, min_obs=min_obs)
+    print "Finished calibrating."
+    return G_opt
 
 
-    def calibrate (self, min_obs=5, n_avg=5):
-        self.initialize_calibration()
-
-        while True:
-            process_observation(n_avg)
-            if is_ready(self.masterGraph, min_obs):
-                if not yes_or_no("Enough data has been gathered. Would you like to gather more data anyway?"):
-                    break
-
-        self.calibrated = self.finish_calibration()
-
-    def reset_calibration (self):
-        self.calibrated = False
-        self.calib_info = None
-
-        self.masterGraph = None
-        self.transform_graph = None
-        self.ar_markers = []
-        self.hydras = []
-        self.iterations = 0
-
-    def get_transform_graph (self):
+class gripper_calibrator:
+    
+    transform_graph = None
+    cameras = None
+    calib_info = None
+    
+    def __init__(self, cameras, calib_info):
         
-        if not self.calibrated:
-            redprint("Gripper not calibrated.")
-            return
-
-        return self.transform_graph
+        
