@@ -43,6 +43,9 @@ class Arduino:
 
 
     def poll_arduino(self):
+        """
+        Polls the arduino in a separate thread.
+        """
         buffer = ''
         while True:
             buffer = buffer + self.ser.read(self.ser.inWaiting())
@@ -53,4 +56,12 @@ class Arduino:
 
 
     def get_reading(self):
-        return int(self.reading)
+        """
+        return the latest reading read from the arduino.
+        """
+        while True:
+            try:
+                val =  int(self.reading)
+                return val
+            except:
+                pass
