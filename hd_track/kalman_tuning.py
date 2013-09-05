@@ -125,7 +125,7 @@ def fit_hydra_noise(Ts_bg, Ts_bh, T_gh, f):
     X_bg_gh = state_from_tfms(Ts_bg_gh, dt).T
     X_bg_gh[6:9,:] = closer_angle(X_bg_gh[6:9,:], X_bh[6:9,:])
     
-    C = kalman().get_hydra_mats(True)[0]
+    C = kalman().get_hydra_mats()[0]
     
     err = C.dot(X_bh) - C.dot(X_bg_gh)
     covar = (err.dot(err.T))/err.shape[1]
@@ -185,7 +185,7 @@ def plot_and_fit_hydra(plot=True, f=30.):
     return fit_hydra_noise(Ts_bg, Ts_bh, T_gh, f)
     
 
-def save_kalman_covars(out_file='./data/covars.cpickle'):
+def save_kalman_covars(out_file='./data/covars-xyz-rpy.cpickle'):
     """
     Computes the process noise covariance and the hydra-measurement noise covariances
     from data and saves them to a cpickle file.
@@ -195,8 +195,7 @@ def save_kalman_covars(out_file='./data/covars.cpickle'):
     
     dict = {'process': (lc+rc)/2, 'hydra':hc}
     cPickle.dump(dict, open(out_file, 'wb'))
-   
-    
+
 
 if __name__ == '__main__':
     pass

@@ -56,19 +56,22 @@ class kalman:
         self.t_filt = None
         self.x_filt = None
         self.S_filt = None
+        
+        self.motion_covar = None
+        self.hydra_covar = None
+
+        ## store the observation matrix for the hydras:
+        self.hydra_mat = np.zeros((6,12))
+        self.hydra_mat[0:3, 0:3] = np.eye(3)
+        self.hydra_mat[3:6, 6:9] = np.eye(3)
+
 
     def get_motion_covar(self, dt):
         """
         Returns the noise covariance for the motion model.
         Assumes a diagonal structure for now.
         """
-        covar = np.eye(12)
-        sq = np.square
-        covar[0:3,0:3]   *= sq(max( self.x_std_t * dt,  self.min_x_std ))
-        covar[3:6,3:6]   *= sq(max( self.vx_std_t * dt, self.min_vx_std))
-        covar[6:9,6:9]   *= sq(max( self.r_std_t * dt,  self.min_r_std ))
-        covar[9:12,9:12] *= sq(max( self.vr_std_t * dt, self.min_vr_std))
-        return covar
+        return self.motion_covar
 
 
     def get_motion_mat(self, dt):
@@ -87,7 +90,7 @@ class kalman:
         return (self.get_motion_mat(dt), self.get_motion_covar(dt))
 
 
-    def get_hydra_mats(self, pos_vel=True):
+    def get_hydra_mats(self):
         """
         Returns a tuple : 1. The observation matrix mapping the state to the observation.
                           2. The noise covariance matrix
@@ -96,26 +99,10 @@ class kalman:
 
         Assumed that we observe the translation velocity and the rotation position from the hydras.
         Absolute position from the hydras is not that great.
-        
-        If pos_vel is True : then the translation velocity is also included in the observation.
-                             otherwise only the rotational position is included.
         """
-        if pos_vel: # observe translation velocity and rotation
-            cmat = np.zeros((6,12))
-            cmat[0:3, 3:6] = np.eye(3)
-            cmat[3:6, 6:9] = np.eye(3)
-            
-            vmat = np.eye(6)
-            vmat[0:3,0:3] *= (self.hydra_vx_std*self.hydra_vx_std)
-            vmat[3:6,3:6] *= (self.hydra_r_std*self.hydra_r_std) 
-            return (cmat, vmat)
+        return (self.hydra_mat, self.hydra_covar)
         
-        else: # can observe only the rotation
-            cmat = np.zeros((3,12))
-            cmat[0:3, 6:9] = np.eye(3)
-            vmat = (self.hydra_r_std*self.hydra_r_std)*np.eye(3) 
-            return (cmat, vmat)
-        
+
 
     def get_ar_mats(self):
         """
@@ -146,9 +133,10 @@ class kalman:
         A, R = self.get_motion_mats(dt)
         x_n = A.dot(x_p)
         S_n = A.dot(S_p).dot(A.T) + R
+        x_n[6:9] = self.put_in_range(x_n[6:9])
         return (x_n, S_n)
 
-    
+
     def measurement_update(self, z_obs, C_obs, Q_obs, x_b, S_b):
         """
         z_obs        : Measurement vector
@@ -164,10 +152,12 @@ class kalman:
         x_n = x_b + K.dot(z_obs - C_obs.dot(x_b))
         S_n = S_b - K.dot(C_obs).dot(S_b)
         
+        x_n[6:9] = self.put_in_range(x_n[6:9])
+
         return (x_n, S_n)
     
 
-    def init_filter(self, t, x_init, S_init):
+    def init_filter(self, t, x_init, S_init, motion_covar, hydra_covar):
         """
         Give the initial estimate for the filter.
         t is the time of the estimate.
@@ -177,6 +167,8 @@ class kalman:
         self.t_filt = t
         self.x_filt = np.reshape(x_init, (12,1))
         self.S_filt = S_init
+        self.motion_covar = motion_covar
+        self.hydra_covar  = hydra_covar
         
         
     def __check_time__(self, t):
@@ -258,13 +250,13 @@ class kalman:
         if self.hydra_prev == None:   ## in this case, we cannot observe the translational velocity
             self.hydra_prev = (t, z_obs)
             return
-            
+
         ## calculate translation velocity:
         t_p, z_b = self.hydra_prev
         vx_obs   = (z_obs[0:3] - z_b[0:3]) / (t-t_p)
         self.hydra_prev = (t, z_obs)
 
-        z = np.c_['0,2', vx_obs, rpy]            
-        C,Q = self.get_hyda_mats(True)
+        z = z_obs#np.c_['0,2', vx_obs, rpy]            
+        C,Q = self.get_hydra_mats()
         self.x_filt, self.S_filt = self.control_update(self.x_filt, self.S_filt, dt)
         self.x_filt, self.S_filt = self.measurement_update(z, C, Q, self.x_filt, self.S_filt)
