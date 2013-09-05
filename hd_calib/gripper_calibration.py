@@ -3,7 +3,6 @@ import numpy as np, numpy.linalg as nlg
 
 import IPython
 
-
 import scipy.optimize as sco
 import networkx as nx, networkx.algorithms as nxa
 import itertools
