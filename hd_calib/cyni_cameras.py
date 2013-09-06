@@ -19,7 +19,7 @@ class cyni_cameras:
     num_cameras = 0
     # Maybe you don't need this if acquiring information is going to take some time.
     emitter_flip_time = 0.5
-    flip_emitter = True
+    flip_emitter = False
     initialized = False
     streaming = {}
     # Transforms calculated by calibration
@@ -27,39 +27,40 @@ class cyni_cameras:
     parent_frame = None
     stored_tfms = {}
 
+    calibrated = False
+
     def __init__(self, num_cameras=2):
         
-        assert num_cameras > 0
-        self.num_cameras = num_cameras
-        cyni.initialize()
-        
+        assert num_cameras > 0        
         # Corresponds to camera 1
         self.parent_frame = 'camera1_depth_optical_frame'
         
         if rospy.get_name() == '/unnamed':
             rospy.init_node('cam_calibrator')
-        self.tf_l = tf.tranformListener()
-
+        self.tf_l = tf.TransformListener()
         
-        
-    def initialize_cameras(self):
+        cyni.initialize()
         self.allDevices = cyni.enumerateDevices()
 
         if len(self.allDevices) == 0:
             raise Exception("No devices found! Cyni not initialized properly or, devices actually not present.")
-        if num_cameras > len(self.allDevices):
+        if self.num_cameras > len(self.allDevices):
             redprint("Warning: Requesting more devices than available. Getting all devices.")
 
-        self.num_cameras = min(num_markers,len(self.allDevices))
+        self.num_cameras = min(num_cameras,len(self.allDevices))
 
+    def set_flip_emitter (self, flip):
+        self.flip_emitter = not not flip
+
+    def initialize_cameras(self):
         for i in xrange(self.num_cameras):
             device = cyni.Device(self.allDevices[i]['uri'])
             device.open()
 
             self.devices[i] = device
             self.streams[i] = {}
-            self.stream[i]['color'] = device.createStream("depth", width=640, height=480, fps=30)
-            self.stream[i]['depth'] = device.createStream("color", width=640, height=480, fps=30)
+            self.streams[i]['depth'] = device.createStream("depth", width=640, height=480, fps=30)
+            self.streams[i]['color'] = device.createStream("color", width=640, height=480, fps=30)
             device.setImageRegistrationMode("depth_to_color")
             device.setDepthColorSyncEnabled(on=True)
             
@@ -69,49 +70,52 @@ class cyni_cameras:
             
     def start_streaming(self, cam=None):
         if cam is not None and self.streaming.get(cam) is False:
-            streams[cam]['color'].start()
-            streams[cam]['depth'].start()
-            streams[cam]['depth'].setEmitterState(False)
+            self.streams[cam]['color'].start()
+            self.streams[cam]['depth'].start()
+            self.streams[cam]['depth'].setEmitterState(False)
             self.streaming[cam] = True
         else:
-            for i in streams:
+            for i in self.streams:
                 if self.streaming.get(i) is False:
-                    streams[i]['color'].start()
-                    streams[i]['depth'].start()
-                    streams[i]['depth'].setEmitterState(False)
-                    self.streaming[cam] = True
+                    self.streams[i]['color'].start()
+                    self.streams[i]['depth'].start()
+                    if self.flip_emitter: self.streams[i]['depth'].setEmitterState(False)
+                    self.streaming[i] = True
 
     
     def stop_streaming(self, cam=None):
         if cam is not None and self.streaming[cam] is True:
-            streams[cam]['color'].stop()
-            streams[cam]['depth'].stop()
+            self.streams[cam]['color'].stop()
+            self.streams[cam]['depth'].stop()
             self.streaming[cam] = False
         else:
-            for i in streams:
-                if self.streaming[cam] is True:
-                    streams[i]['color'].stop()
-                    streams[i]['depth'].stop()
+            for i in self.streams:
+                if self.streaming[i] is True:
+                    self.streams[i]['color'].stop()
+                    self.streams[i]['depth'].stop()
                     self.streaming[cam] = False
 
     def get_RGBD (self, cams=None):
 
         if cams is None or cams[0] is None:
-            cams = [i for i in streams]
+            cams = [i for i in self.streams]
         data = {i:{} for i in cams}
         for i in cams:
-            stream = streams[i]
+            stream = self.streams[i]
             if not self.streaming.get(i):
                 redprint("Not streaming from camera %d"%i)
                 data[i]['depth'] = None
                 data[i]['rgb'] = None
                 continue
-            if flip_emitter: stream["depth"].setEmitterState(True)
+            if self.flip_emitter: stream["depth"].setEmitterState(True)
             data[i]['depth'] = stream["depth"].readFrame().data
             data[i]['rgb'] = cv2.cvtColor(stream["color"].readFrame().data, cv2.COLOR_RGB2BGR)
-            time.sleep(self.emitter_flip_time)
-            stream["depth"].setEmitterState(False)
+            if self.flip_emitter: time.sleep(self.emitter_flip_time)
+            if self.flip_emitter: stream["depth"].setEmitterState(False)
         return data
+    
+    def set_calibrated(self, calibrated):
+        self.calibrated = calibrated
     
     # Make clique
     def store_calibrated_transforms (self, transforms):
@@ -140,7 +144,7 @@ class cyni_cameras:
         Stores transforms when found. Assumes offset does not change between frame and camera.
         """
         if frame not in self.stored_tfms:
-            trans, rot = self.tf_l.lookupTransform(frame, self.parent_frame, rospy.Time.now(0))
+            trans, rot = self.tf_l.lookupTransform(frame, self.parent_frame, rospy.Time(0))
             self.stored_tfms[frame] = conversions.trans_rot_to_hmat(trans, rot)
         
-        return self.stored_tfms[frame].dot(self.get_transform(0, cam))
+        return self.stored_tfms[frame].dot(self.get_camera_transform(0, cam))

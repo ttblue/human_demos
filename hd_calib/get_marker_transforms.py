@@ -1,11 +1,11 @@
 import serial
 
-import roslib; roslib.load_manifest('ar_marker_service')
+import roslib; roslib.load_manifest('ar_track_service')
 from ar_track_service.srv import MarkerPositions, MarkerPositionsRequest, MarkerPositionsResponse
 roslib.load_manifest('tf')
-import tf
+import rospy, tf
 
-from hd_utils import clouds, rosutils as ru, conversions, utils
+from hd_utils import clouds, ros_utils as ru, conversions, utils
 
 from cyni_cameras import cyni_cameras
 
@@ -21,7 +21,7 @@ pot_initialized = False
 
 asus_xtion_pro_f = 544.260779961
 
-def get_ar_marker_poses (rgb, depth):
+def get_ar_marker_poses (rgb, depth, pc=None):
     """
     In order to run this, ar_marker_service needs to be running.
     """
@@ -33,9 +33,10 @@ def get_ar_marker_poses (rgb, depth):
         getMarkers = rospy.ServiceProxy("getMarkers", MarkerPositions)
         req = MarkerPositionsRequest()
         ar_initialized = True
-
-    xyz = clouds.depth_to_xyz(depth, asus_xtion_pro_f)
-    pc = ru.xyzrgb2pc(xyz, rgb, '/camera_frame')
+    
+    if pc is None:
+        xyz = clouds.depth_to_xyz(depth, asus_xtion_pro_f)
+        pc = ru.xyzrgb2pc(xyz, rgb, '/camera_frame')
     
     req.pc = pc
     
@@ -67,7 +68,7 @@ def get_ar_markers_from_cameras (cameras, parent_frame = None, cams = None, mark
         for marker in ar_cam:    
             if ar_markers.get(marker) is None:
                 ar_markers[marker] = []
-            ar_marker.append(tfm.dot(ar_cam[marker]))
+            ar_markers[marker].append(tfm.dot(ar_cam[marker]))
     
     for marker in ar_markers:
         ar_markers[marker] = utils.avg_transform(ar_markers[marker])
@@ -87,7 +88,7 @@ def get_hydra_transforms(parent_frame, hydras=None):
     if not hydra_initialized:
         if rospy.get_name() == '/unnamed':
             rospy.init_node('hydra_tfm')
-        tf_l = tf.transformListener()
+        tf_l = tf.TransformListener()
         hydra_initialized = False
         
     if hydras is None:
@@ -96,7 +97,7 @@ def get_hydra_transforms(parent_frame, hydras=None):
     hydra_transforms = {}
     for hydra in hydras:
         hydra_frame = 'hydra_%s_pivot'%hydra
-        trans, rot = tf_sub.lookupTransform(parent_frame, hydra_frame, rospy.Time(0))
+        trans, rot = tf_l.lookupTransform(parent_frame, hydra_frame, rospy.Time(0))
         hydra_transforms[hydra] = conversions.trans_rot_to_hmat(trans, rot)
     
     return hydra_transforms

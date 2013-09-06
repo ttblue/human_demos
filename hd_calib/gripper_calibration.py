@@ -414,14 +414,13 @@ def optimize_master_transforms (mG, init=None):
         
 
     
-def compute_relative_transforms (masterGraph, min_obs=5, init=None):
+def compute_relative_transforms (masterGraph, init=None):
     """
     Takes in a transform graph @G such that it has enough data to begin calibration (is_ready(G) returns true).
     Optimizes and computes final relative transforms between all nodes (markers).
     Returns a graph final_G with the all edges (clique) and final transforms stored in edges.
+    Make sure the graph is ready before this by calling is_ready(graph,min_obs).
     """
-
-    assert (is_ready(masterGraph, min_obs=min_obs))
 
     new_mG = nx.DiGraph()
     graph_map = {} 
@@ -470,8 +469,8 @@ class gripper_calibrator:
     
     masterGraph = None
     transform_graph = None
-    ar_markers = None
-    hydras = None
+    ar_markers = []
+    hydras = []
     iterations = 0
     
     parent_frame = None
@@ -488,10 +487,11 @@ class gripper_calibrator:
         self.reset_calibration()
         self.calib_info = calib_info
         
-    def initialize_calibration (self):
-        assert self.cameras.calibrated
-        self.cameras.start_streaming()
-        # assert hydras are calibrated
+    def initialize_calibration (self, fake_data=False):
+        if not fake_data:
+            assert self.cameras.calibrated
+            self.cameras.start_streaming()
+            # assert hydras are calibrated
 
         self.masterGraph = nx.DiGraph()
         
@@ -523,7 +523,7 @@ class gripper_calibrator:
             print colorize('\tGetting averaging transform : %d of %d ...'%(j,n_avg-1), "blue", True)            
 
             tfms = {}
-            tfms.update(gmt.get_ar_transforms(self.cameras, parent_frame=self.parent_frame, markers=self.ar_markers))
+            tfms.update(gmt.get_ar_markers_from_cameras(self.cameras, parent_frame=self.parent_frame, markers=self.ar_markers))
             tfms.update(gmt.get_hydra_transforms(parent_frame=parent_frame, hydras = self.hydras))
 
             pot_angle = gmt.get_pot_angle()
@@ -532,27 +532,20 @@ class gripper_calibrator:
                 if marker not in avg_tfms:
                     avg_tfms[marker] = []
                 avg_tfms[marker].append(tfms[marker])
-
         
         for marker in avg_tfms:
             avg_tfms[marker] = utils.avg_transform(avg_tfms[marker])
 
         update_groups_from_observations(self.masterGraph, avg_tfms, pot_angle)
 
-        if is_ready(masterGraph, min_obs):
-            if freq:
-                break
-            elif not yes_or_no("Enough data has been gathered. Would you like to gather more data anyway?"):
-                break
-
 
     def finish_calibration (self):
         """
         Finishes calibration by performing the optimization.
+        Make sure graph is ready before running this by checking is_ready(graph,min_obs)
         Takes several seconds.
         """
-        assert is_ready (self.masterGraph, self.min_obs)
-        self.transform_graph = compute_relative_transforms(self.masterGraph, min_obs = min_obs)
+        self.transform_graph = compute_relative_transforms(self.masterGraph)
         return True
 
 
@@ -565,6 +558,7 @@ class gripper_calibrator:
                 if not yes_or_no("Enough data has been gathered. Would you like to gather more data anyway?"):
                     break
 
+        assert is_ready (self.masterGraph, min_obs)
         self.calibrated = self.finish_calibration()
 
     def reset_calibration (self):

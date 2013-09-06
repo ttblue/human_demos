@@ -1,17 +1,14 @@
 from __future__ import division
 
-import roslib
-roslib.load_manifest('calib_hydra_kinect')
-import rospy
-import tf; roslib.load_manifest('tf')
+import roslib; roslib.load_manifest('tf')
+import rospy, tf
 
-import argparse
 import numpy as np, numpy.linalg as nlg
 import scipy as scp, scipy.optimize as sco
-from colorize import colorize
 
 from hd_utils import conversions, utils
 from hd_utils.solve_sylvester import solve4
+from hd_utils.colorize import *
 
 import get_marker_transforms as gmt
 
@@ -63,11 +60,10 @@ class hydra_calibrator:
         for j in xrange(n_avg):
             print colorize('\tGetting averaging transform : %d of %d ...'%(j,n_avg-1), "blue", True)
 
-            ar_transforms = gmt.get_ar_marker_poses_from_cameras(self.cameras, cams = [self.calib_camera], markers = [self.ar_marker])
+            ar_transforms = gmt.get_ar_markers_from_cameras(self.cameras, cams = [self.calib_camera], markers = [self.ar_marker])
             hydra_transforms = gmt.get_hydra_transforms('hydra_base', [self.calib_hydra])
             ar_avg_tfm.append(ar_transforms[self.ar_marker])
             hydra_avg_tfm.append(hydra_transforms[self.ar_marker][self.calib_hydra])
-            
             
         self.ar_transforms.append(utils.avg_transform(ar_avg_tfm))
         self.hydra_transforms.append(utils.avg_transform(hydra_avg_tfm))
@@ -91,8 +87,8 @@ class hydra_calibrator:
         self.initialize_calibration()
         for i in range(n_obs):
             yellowprint ("Transform %d out of %d."%(i,n_obs))
-            process_observation(n_avg)
-        self.calibrated = finish_calibration()
+            self.process_observation(n_avg)
+        self.calibrated = self.finish_calibration()
         
     def get_transforms(self):
         if not self.calibrated:

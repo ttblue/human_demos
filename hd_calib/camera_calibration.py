@@ -7,7 +7,7 @@ from hd_utils import ros_utils as ru, clouds, conversions, utils
 from hd_utils.colorize import *
 
 from cyni_cameras import cyni_cameras
-import get_marker_transform as gmt
+import get_marker_transforms as gmt
 
 asus_xtion_pro_f = 544.260779961
 
@@ -55,7 +55,7 @@ def find_rigid_tfm (points1, points2, homogeneous=True):
         return R,t
 
    
-def find_common_ar_markers (ar_pos1, ar_pos2):
+def common_ar_markers (ar_pos1, ar_pos2):
     """
     Finds the common markers between two sets of markers.
     """
@@ -120,8 +120,8 @@ class camera_calibrator:
         if c1 == c2:
             return np.eye(4)
 
-        if not self.observed_ar_transforms or 
-           not self.observed_ar_transforms[c1] or 
+        if not self.observed_ar_transforms or \
+           not self.observed_ar_transforms[c1] or \
            not self.observed_ar_transforms[c2]:
             yellowprint("Not enough information to find transform.")
             return
@@ -130,8 +130,8 @@ class camera_calibrator:
         if not ar1 or not ar2:
             yellowprint("Did not find common visible AR markers between cameras %d and %d."%(c1,c2))
         
-        transform = rigid_tfm(convert_hmat_to_points(ar1.values()),
-                              convert_hmat_to_points(ar2.values()))
+        transform = find_rigid_tfm(convert_hmats_to_points(ar1.values()),
+                              convert_hmats_to_points(ar2.values()))
 
         
     def initialize_calibration(self):
@@ -147,11 +147,7 @@ class camera_calibrator:
         """
         Get an observation and update transform list.
         """
-        if self.num_cameras == 1:
-            redprint ("Only one camera. You don't need to calibrate.", True)
-            return
         
-        raw_input(colorize("Press return when you're ready to take the next observation from the cameras.",'green',True))
         yellowprint("Please hold still for a few seconds.")
 
         self.observation_info = {i:[] for i in xrange(self.num_cameras)}
@@ -175,10 +171,10 @@ class camera_calibrator:
             for marker in self.observed_ar_transforms[i]:
                 self.observed_ar_transforms[i][marker] = utils.avg_transform(self.observed_ar_transforms[i][marker]) 
 
-        for i in xrange(1:self.num_cameras)
-            transform = self.find_transform_between_cameras(0, i)
+        for i in xrange(1,self.num_cameras):
+            transform = self.find_transform_between_cameras_from_obs(0, i)
             if transform is None:
-                yellowprint("Did not find a transform between cameras 0 and %d"%i)
+                redprint("Did not find a transform between cameras 0 and %d"%i)
                 continue
             if self.transform_list.get(0,i) is None:
                self.transform_list[0,i] = []
@@ -203,16 +199,22 @@ class camera_calibrator:
     
         return True
     
-    def calibrate (self, n_obs=10, n_avg=5):
-        if num_cameras == 1:
+    def calibrate (self, n_obs=10, n_avg=5, tfm_pub=None):
+        if self.num_cameras == 1:
             redprint ("Only one camera. You don't need to calibrate.", True)
+            self.calibrated = True
+            self.cameras.set_calibrated(True)
             return
         
         self.initialize_calibration()
-        for i in range(n_obs)
+        for i in range(n_obs):
             yellowprint ("Transform %d out of %d."%(i,n_obs))
-            process_observation(n_avg)
-        self.calibrated = finish_calibration()
+            if tfm_pub is not None: tfm_pub.set_publish_pc(True)
+            raw_input(colorize("Press return when you're ready to take the next observation from the cameras.",'green',True))
+            if tfm_pub is not None: tfm_pub.set_publish_pc(False)
+            self.process_observation(n_avg)
+        self.calibrated = self.finish_calibration()
+        self.cameras.set_calibrated(self.calibrated)
         
     def get_transforms(self):
         if self.num_cameras == 1:
@@ -227,6 +229,7 @@ class camera_calibrator:
         
     def reset_calibration (self):
         self.calibrated = False
+        self.cameras.set_calibrated(self.calibrated)
         self.camera_transforms = {}
         self.cameras.stop_streaming()
         self.cameras.stored_tfms = {}

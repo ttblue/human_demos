@@ -597,14 +597,3 @@ def create_graph_from_observations(parent_frame, calib_info, min_obs=5, n_avg=5,
     G_opt = compute_relative_transforms (masterGraph, min_obs=min_obs)
     print "Finished calibrating."
     return G_opt
-
-
-class gripper_calibrator:
-    
-    transform_graph = None
-    cameras = None
-    calib_info = None
-    
-    def __init__(self, cameras, calib_info):
-        
-        

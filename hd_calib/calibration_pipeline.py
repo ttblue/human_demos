@@ -29,14 +29,16 @@ Steps to be taken:
     3.  Calibrate potentiometer.
         ******** DONE
         Calibrate gripper + angle.
+        ******** DONE
         Publish transform or make graph available to get transforms.
+        ******** DONE
     
 """
-
+asus_xtion_pro_f = 544.260779961
 
 class transform_publisher(Thread):
 
-    def __init__(self):
+    def __init__(self, cameras=None):
         Thread.__init__(self)
         
         if rospy.get_name() == '/unnamed':
@@ -46,12 +48,38 @@ class transform_publisher(Thread):
         self.ready = False
         self.rate = 30.0
         self.tf_broadcaster = tf.TransformBroadcaster()
+        
+        self.cameras = cameras
+        self.publish_pc = False
+        
+        if self.cameras is not None:
+            self.pc_pubs = {i:rospy.Publisher('camera%d_points'%i) for i in xrange(self.cameras.num_cameras)}
+
+        
 
     def run (self):
         """
         Publishes the transforms stored.
         """
         while True:
+            if self.publish_pc and self.cameras is not None:
+                data=self.cameras.get_RGBD()
+                for i,rgbd in data.items():
+                    xyz = clouds.depth_to_xyz(rgbd['depth'], asus_xtion_pro_f)
+                    pc = ru.xyzrgb2pc(xyz, rgbd['rgb'], '/camera_frame')
+                    ar_cam = get_ar_marker_poses(None, None, pc=pc)
+                    
+                    self.pc_pubs[i].publish(pc)
+                    marker_frame = 'ar_marker%d_camera%d'
+                    camera_frame = 'camera%d_depth_optical_frame'%(i+1)
+                    for marker in ar_cam:
+                        trans, rot = conversions.hmat_to_trans_rot(ar_cam[marker])
+                        self.tf_broadcaster.sendTransform(trans, rot,
+                                                          rospy.Time.now(),
+                                                          marker_frame%(marker,i+1), 
+                                                          camera_frame)
+                    
+
             if self.ready:
                 for parent, child in self.transforms:
                     trans, rot = self.transforms[parent, child]
@@ -59,11 +87,21 @@ class transform_publisher(Thread):
                                                       rospy.Time.now(),
                                                       child, parent)
             time.sleep(1/self.rate)
+            
+    def set_publish_pc(self, publish_pc):
+        if self.pubish_pc and self.cameras is not None:
+            self.publish_pc = True
+            self.cameras.start_streaming()
+        else:
+            self.publish_pc = False
+            
 
     def add_transforms(self, transforms):
         """
         Takes a list of dicts with relevant transform information.
         """
+        if transforms is None:
+            return
         for transform in transforms:
             trans, rot = conversions.hmat_to_trans_rot(transform['tfm'])
             self.transforms[transform['parent'],transform['child']] = (trans,rot)
@@ -81,6 +119,7 @@ def run_calibration_sequence ():
     
     NUM_CAMERAS = 2
     cameras = cyni_cameras(NUM_CAMERAS)
+    cameras.initialize_cameras()
         
     greenprint("Step 1. Calibrating mutliple cameras.")
     CAM_N_OBS = 10
@@ -102,12 +141,12 @@ def run_calibration_sequence ():
                 cam_calib.reset_calibration()
 
     greenprint("Mutliple cameras calibrated.")
-    
+
     greenprint("Step 2. Calibrating hydra and kinect.")
     HYDRA_N_OBS = 10
     HYDRA_N_AVG = 5
     HYDRA_AR_MARKER = 0
-    
+
     hydra_calib = hydra_calibrator(cameras, ar_marker = HYDRA_AR_MARKER)
 
     done = False
@@ -125,7 +164,7 @@ def run_calibration_sequence ():
                 hydra_calib.reset_calibration()
 
     greenprint("Hydra base calibrated.")
-    
+
     greenprint("Step 3. Calibrating relative transforms of markers on gripper.")
 
     GRIPPER_MIN_OBS = 5
