@@ -3,6 +3,8 @@ import rospy
 from hd_calib.camera_calibration import camera_calibrator
 from hd_calib.cyni_cameras import cyni_cameras
 from hd_calib.calibration_pipeline import transform_publisher
+from hd_utils.colorize import *
+from hd_utils.yes_or_no import yes_or_no
 
 
 def test_cam_calib ():
@@ -36,6 +38,14 @@ def test_cam_calib ():
                 yellowprint("Calibrating cameras again.")
                 cam_calib.reset_calibration()
     
-    tfm_pub.publish_pc(True)
+    tfm_pub.set_publish_pc(True)
     greenprint("Mutliple cameras calibrated.")
+    print tfm_pub.publish_pc
+    
+    import time
+    try:
+        while True:
+            time.sleep(0.1)
+    except KeyboardInterrupt:
+        pass
  

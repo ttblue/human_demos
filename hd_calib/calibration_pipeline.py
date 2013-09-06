@@ -7,15 +7,17 @@ import time
 import roslib, rospy
 roslib.load_manifest('tf')
 import tf
+from sensor_msgs.msg import PointCloud2
 
 from hd_utils.colorize import *
 from hd_utils.yes_or_no import yes_or_no
-from hd_utils import conversions
+from hd_utils import conversions, clouds, ros_utils as ru
 
 from cyni_cameras import cyni_cameras
 from camera_calibration import camera_calibrator
 from hydra_calibration import hydra_calibrator
 from gripper_calibration import gripper_calibrator
+import get_marker_transforms as gmt
 """
 Steps to be taken:
     1.  Calibrate cameras w.r.t. each other.
@@ -53,7 +55,8 @@ class transform_publisher(Thread):
         self.publish_pc = False
         
         if self.cameras is not None:
-            self.pc_pubs = {i:rospy.Publisher('camera%d_points'%i) for i in xrange(self.cameras.num_cameras)}
+            self.pc_pubs = {i:rospy.Publisher('camera%d_points'%(i+1), PointCloud2)\
+                             for i in xrange(self.cameras.num_cameras)}
 
         
 
@@ -65,13 +68,16 @@ class transform_publisher(Thread):
             if self.publish_pc and self.cameras is not None:
                 data=self.cameras.get_RGBD()
                 for i,rgbd in data.items():
+                    if rgbd['depth'] is None or rgbd['rgb'] is None:
+                        print 'wut'
+                        continue
+                    camera_frame = 'camera%d_depth_optical_frame'%(i+1)
                     xyz = clouds.depth_to_xyz(rgbd['depth'], asus_xtion_pro_f)
-                    pc = ru.xyzrgb2pc(xyz, rgbd['rgb'], '/camera_frame')
-                    ar_cam = get_ar_marker_poses(None, None, pc=pc)
+                    pc = ru.xyzrgb2pc(xyz, rgbd['rgb'], camera_frame)
+                    ar_cam = gmt.get_ar_marker_poses(None, None, pc=pc)
                     
                     self.pc_pubs[i].publish(pc)
                     marker_frame = 'ar_marker%d_camera%d'
-                    camera_frame = 'camera%d_depth_optical_frame'%(i+1)
                     for marker in ar_cam:
                         trans, rot = conversions.hmat_to_trans_rot(ar_cam[marker])
                         self.tf_broadcaster.sendTransform(trans, rot,
@@ -89,9 +95,9 @@ class transform_publisher(Thread):
             time.sleep(1/self.rate)
             
     def set_publish_pc(self, publish_pc):
-        if self.pubish_pc and self.cameras is not None:
-            self.publish_pc = True
+        if publish_pc and self.cameras is not None:
             self.cameras.start_streaming()
+            self.publish_pc = True
         else:
             self.publish_pc = False
             
