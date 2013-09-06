@@ -1,0 +1,18 @@
+<launch>
+	<arg name="marker_size" default="4.4" />
+	<arg name="max_new_marker_error" default="0.08" />
+	<arg name="max_track_error" default="0.2" />
+
+	<arg name="camera" default="camera1" />
+	<arg name="cam_image_topic" default="/$(arg camera)/depth_registered/points" />
+	<arg name="cam_info_topic" default="/$(arg camera)/rgb/camera_info" />
+	<arg name="output_frame" default="/$(arg camera)_depth_optical_frame" />
+
+  	<node pkg="dynamic_reconfigure" 
+        	type="dynparam" 
+	        name="dynparam"
+        	args="set /$(arg camera)/driver depth_registration true" />
+
+
+	<node name="ar_track_service" pkg="ar_track_service" type="marker_node" respawn="false" output="screen" args="$(arg marker_size) $(arg max_new_marker_error) $(arg max_track_error) $(arg cam_image_topic) $(arg cam_info_topic) $(arg output_frame)" />
+</launch>
