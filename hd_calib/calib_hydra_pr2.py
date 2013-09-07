@@ -13,7 +13,7 @@ import tf;
 import argparse
 import numpy as np, numpy.linalg as nlg
 import scipy as scp, scipy.optimize as sco
-
+import cPickle
 from hd_utils.colorize import colorize
 from hd_utils import conversions
 
@@ -298,6 +298,16 @@ if __name__ == '__main__':
         avg_rot = avg_quaternions(np.array(rots))
         
         T_ch = conversions.trans_rot_to_hmat(avg_trans, avg_rot)
-        
-        print T_ch
-        publish_tf(T_ch, 'base_footprint', 'hydra_base')                                
+        T_arm_sensor = [np.linalg.inv(arm_tfms[i]).dot(T_ch).dot(hydra_tfms[i]) for i in xrange(len(arm_tfms))]
+        trans_rots = [conversions.hmat_to_trans_rot(tfm) for tfm in T_arm_sensor]
+        trans = np.asarray([trans for (trans, rot) in trans_rots])
+        avg_trans = np.sum(trans,axis=0)/trans.shape[0]
+        rots = [rot for (trans, rot) in trans_rots]
+        avg_rot = avg_quaternions(np.array(rots))
+        T_as = conversions.trans_rot_to_hmat(avg_trans, avg_rot)
+
+        cPickle.dump(T_as, open('T_as', 'wb'))
+        publish_tf(T_ch, 'base_footprint', 'hydra_base')
+        #arm_frame  = '%s_gripper_tool_frame' % {'right':'r', 'left':'l'}[vals.arm]
+        #sensor_frame = 'hydra_calib'
+        #publish_tf(T_as, arm_frame, sensor_frame)

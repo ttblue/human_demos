@@ -6,10 +6,9 @@ from hd_calib.calibration_pipeline import transform_publisher
 from hd_utils.colorize import *
 from hd_utils.yes_or_no import yes_or_no
 
-
+rospy.init_node('calibration')
 def test_cam_calib ():
 
-    rospy.init_node('calibration')    
     yellowprint("Beginning calibration sequence.")
 
     NUM_CAMERAS = 2

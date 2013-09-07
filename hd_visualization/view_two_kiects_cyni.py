@@ -38,10 +38,10 @@ try:
         #rgb = colorStream.readFrame()
         #cv2.imshow("rgb", rgb.data)
         #start = time.time()
-        emitterControl = not emitterControl
-        print emitterControl
-        ds1.setEmitterState(emitterControl)
-        ds2.setEmitterState(not emitterControl)
+        #emitterControl = not emitterControl
+        #print emitterControl
+        #ds1.setEmitterState(emitterControl)
+        #ds2.setEmitterState(not emitterControl)
         depth1 = ds1.readFrame()
         depth2 = ds2.readFrame()
         #print depth.data
