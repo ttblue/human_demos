@@ -27,15 +27,16 @@ device.open()
 colorStream = device.createStream("color", width=640, height=480, fps=30)
 colorStream.start()
 depthStream = device.createStream("depth", width=640, height = 480, fps=30)
-depthStream.start()
+depthStream.start() 
 try:
     while True:
-        
+        start = time.time()
         rgb = colorStream.readFrame()
         cv2.imshow("rgb", rgb.data)
         depth = depthStream.readFrame()
         cv2.imshow("depth", cmap[np.fmin((depth.data*.064).astype('int'), 255)])
-        cv2.waitKey(30)
+        cv2.waitKey(3)
+        print time.time() - start
        
 except KeyboardInterrupt:
     print "got Control-C"

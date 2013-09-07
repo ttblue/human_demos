@@ -40,6 +40,8 @@ try:
         #start = time.time()
         emitterControl = not emitterControl
         print emitterControl
+        #emitterControl = not emitterControl
+        #print emitterControl
         #ds1.setEmitterState(emitterControl)
         #ds2.setEmitterState(not emitterControl)
         depth1 = ds1.readFrame()

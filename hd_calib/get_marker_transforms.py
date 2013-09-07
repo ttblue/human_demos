@@ -4,12 +4,15 @@ import roslib; roslib.load_manifest('ar_track_service')
 from ar_track_service.srv import MarkerPositions, MarkerPositionsRequest, MarkerPositionsResponse
 roslib.load_manifest('tf')
 import rospy, tf
+import time
 
 from hd_utils import clouds, ros_utils as ru, conversions, utils
 from cyni_cameras import cyni_cameras
 
+
 import read_arduino 
 
+ar_lock = False
 getMarkers = None
 req = None
 tf_l = None
@@ -26,8 +29,12 @@ def get_ar_marker_poses (rgb, depth, pc=None):
     """
     In order to run this, ar_marker_service needs to be running.
     """
-    global getMarkers, req, ar_initialized
+    global getMarkers, req, ar_initialized, ar_lock
     
+    while(ar_lock):
+        time.sleep(0.01)
+        
+    ar_lock = True
     if not ar_initialized:
         if rospy.get_name() == '/unnamed':
             rospy.init_node('ar_tfm')
@@ -45,7 +52,8 @@ def get_ar_marker_poses (rgb, depth, pc=None):
     res = getMarkers(req)
     for marker in res.markers.markers:
         marker_tfm[marker.id] = conversions.pose_to_hmat(marker.pose.pose)
-
+    
+    ar_lock = False
     return marker_tfm
 
 
