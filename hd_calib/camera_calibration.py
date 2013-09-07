@@ -6,13 +6,14 @@ import time
 from hd_utils import ros_utils as ru, clouds, conversions, utils
 from hd_utils.colorize import *
 
-from cyni_cameras import cyni_cameras
+from ros_cameras import ros_cameras
 import get_marker_transforms as gmt
 
 asus_xtion_pro_f = 544.260779961
 
 """
 Calibrates based on AR markers.
+TODO: if three kinects work together, maybe do graph optimization.
 """
 
 
@@ -95,27 +96,25 @@ class camera_calibrator:
     # keeping this as fixed for now. Simple fix to change it to arbitrary frame.
     parent_frame = None
     num_cameras = 0
-    # Maybe you don't need this if acquiring information is going to take some time.
-    emitter_flip_time = 0.5
+
     camera_transforms = {}
     
     def __init__(self, cameras, parent_frame = "camera1_depth_optical_frame"):
         
-        self.cameras = cameras
-        self.num_cameras = self.cameras.num_cameras
-        
         assert self.num_cameras > 0
         
+        self.cameras = cameras
+        self.num_cameras = self.cameras.num_cameras
+        self.calibrated = num_cameras == 1
         self.parent_frame = parent_frame
-
         
     def find_transform_between_cameras_from_obs (self, c1, c2):
         """
         Finds transform between cameras from latest stored observation.
         """
-        if c1 > self.num_cameras:
+        if c1 > self.num_cameras or c1 < 0:
             raise Exception("Index out of range: %d"%c1)
-        if c2 > self.num_cameras:
+        if c2 > self.num_cameras or c2 < 0:
             raise Exception("Index out of range: %d"%c2)
         if c1 == c2:
             return np.eye(4)
@@ -135,41 +134,32 @@ class camera_calibrator:
 
         
     def initialize_calibration(self):
-        if self.num_cameras == 1:
-            redprint("Only one camera. You don't need to calibrate.")
-            return
-
         # Stores transforms between cameras 
         self.transform_list = {}
-        self.cameras.start_streaming()
+        
     
     def process_observation(self, n_avg=5):
         """
         Get an observation and update transform list.
         """
         
-        yellowprint("Please hold still for a few seconds.")
-
-        self.observation_info = {i:[] for i in xrange(self.num_cameras)}
+        yellowprint("Please hold still for a few seconds. Make sure the transforms look good on rviz.")
         self.observed_ar_transforms = {i:{} for i in xrange(self.num_cameras)}
-
-        # Get RGBD observations
-        for i in xrange(n_avg):
-            print colorize("Transform %d out of %d for averaging."%(i,n_avg),'yellow',False)
-            data = self.cameras.get_RGBD()
-            for j,cam_data in data.items():
-                self.observation_info[j].append(cam_data)
         
-        # Find AR transforms from RGBD observations and average out transforms.
-        for i in self.observation_info:
-            for obs in self.observation_info[i]:
-                ar_pos = gmt.get_ar_marker_poses (obs['rgb'], obs['depth'])
-                for marker in ar_pos:
-                    if self.observed_ar_transforms[i].get(marker) is None:
-                        self.observed_ar_transforms[i][marker] = []
-                    self.observed_ar_transforms[i][marker].append(ar_pos[marker])
+        sleeper = rospy.Rate(30)
+        for i in n_avg:
+            greenprint("Averaging %d out of %d"%(i+1,n_avg), False)
+            for j in xrange(self.num_cameras):
+                tfms = self.cameras.get_ar_markers(camera=j)
+                for marker in tfms: 
+                    if marker not in self.observed_ar_transforms[j]:
+                        self.observed_ar_transforms[j] = []
+                    self.observed_ar_transforms[j].append(tfms[marker])
+            sleeper.sleep()
+
+        for i in self.observed_ar_transforms:
             for marker in self.observed_ar_transforms[i]:
-                self.observed_ar_transforms[i][marker] = utils.avg_transform(self.observed_ar_transforms[i][marker]) 
+                self.observed_ar_transforms[i][marker] = utils.avg_transform(self.observed_ar_transforms[i][marker])        
 
         for i in xrange(1,self.num_cameras):
             transform = self.find_transform_between_cameras_from_obs(0, i)
@@ -193,25 +183,20 @@ class camera_calibrator:
             cam_transform['parent'] = 'camera%d_depth_optical_frame'%(c1+1)
             cam_transform['child'] = 'camera%d_depth_optical_frame'%(c2+1)
             self.camera_transforms[c1,c2] = cam_transform
-            
-        self.cameras.stop_streaming()
-        self.cameras.store_calibrated_transforms(self.camera_transforms)
-    
+
+        self.cameras.store_calibrated_transforms(self.camera_transforms)    
         return True
     
     def calibrate (self, n_obs=10, n_avg=5, tfm_pub=None):
         if self.num_cameras == 1:
             redprint ("Only one camera. You don't need to calibrate.", True)
             self.calibrated = True
-            self.cameras.set_calibrated(True)
+            self.cameras.calibrated = True
             return
         
         self.initialize_calibration()
         for i in range(n_obs):
-            yellowprint ("Transform %d out of %d."%(i,n_obs))
-            if tfm_pub is not None: tfm_pub.set_publish_pc(True)
             raw_input(colorize("Press return when you're ready to take the next observation from the cameras.",'green',True))
-            if tfm_pub is not None: tfm_pub.set_publish_pc(False)
             self.process_observation(n_avg)
         self.calibrated = self.finish_calibration()
         self.cameras.set_calibrated(self.calibrated)
@@ -228,8 +213,8 @@ class camera_calibrator:
         
         
     def reset_calibration (self):
-        self.calibrated = False
-        self.cameras.set_calibrated(self.calibrated)
-        self.camera_transforms = {}
-        self.cameras.stop_streaming()
-        self.cameras.stored_tfms = {}
+        if self.num_cameras >1:
+            self.calibrated = False
+            self.cameras.set_calibrated(self.calibrated)
+            self.camera_transforms = {}
+            self.cameras.stored_tfms = {}

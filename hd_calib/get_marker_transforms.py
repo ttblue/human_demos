@@ -6,13 +6,14 @@ roslib.load_manifest('tf')
 import rospy, tf
 
 from hd_utils import clouds, ros_utils as ru, conversions, utils
-
 from cyni_cameras import cyni_cameras
+
+import read_arduino 
 
 getMarkers = None
 req = None
 tf_l = None
-pot_ser = None
+arduino = None
 
 ar_initialized = False
 hydra_initialized = False
@@ -50,6 +51,7 @@ def get_ar_marker_poses (rgb, depth, pc=None):
 
 def get_ar_markers_from_cameras (cameras, parent_frame = None, cams = None, markers=None):
     """
+    The cameras here are cyni cameras.
     Returns all the ar_markers in the frame of camera 0.
     This would potentially take a while.
     Do this after all collecting data from everywhere else.
@@ -103,21 +105,16 @@ def get_hydra_transforms(parent_frame, hydras=None):
     return hydra_transforms
 
 
-def initialize_potentiometer(port):
-    """
-    Need to call this with correct port number before getting angle from potentiometer.
-    """
-    global pot_ser, pot_intialized
-    pot_ser = serial.Serial(port)
-    pot_initialized = True
-
 
 def get_pot_angle ():
     """
     Get angle of gripper from potentiometer.
     """
-    assert pot_initialized 
+    global pot_intialized, arduino
+    if not pot_initialized:
+        arduino = read_arduino.Arduino()
+        pot_initialized = True
 
-    pot_reading = float(pot_ser.readline())    
+    pot_reading = arduino.get_reading()    
     return (pot_reading-584.0)/10.167
     

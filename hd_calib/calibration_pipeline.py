@@ -1,6 +1,5 @@
 #!/usr/bin/python
 import numpy as np
-import cyni
 from threading import Thread
 import time
 
@@ -13,7 +12,7 @@ from hd_utils.colorize import *
 from hd_utils.yes_or_no import yes_or_no
 from hd_utils import conversions, clouds, ros_utils as ru
 
-from cyni_cameras import cyni_cameras
+from cameras import ros_cameras
 from camera_calibration import camera_calibrator
 from hydra_calibration import hydra_calibrator
 from gripper_calibration import gripper_calibrator
@@ -50,42 +49,12 @@ class transform_publisher(Thread):
         self.ready = False
         self.rate = 30.0
         self.tf_broadcaster = tf.TransformBroadcaster()
-        
-        self.cameras = cameras
-        self.publish_pc = False
-        
-        if self.cameras is not None:
-            self.pc_pubs = {i:rospy.Publisher('camera%d_points'%(i+1), PointCloud2)\
-                             for i in xrange(self.cameras.num_cameras)}
-
-        
 
     def run (self):
         """
         Publishes the transforms stored.
         """
         while True:
-            if self.publish_pc and self.cameras is not None:
-                data=self.cameras.get_RGBD()
-                for i,rgbd in data.items():
-                    if rgbd['depth'] is None or rgbd['rgb'] is None:
-                        print 'wut'
-                        continue
-                    camera_frame = 'camera%d_depth_optical_frame'%(i+1)
-                    xyz = clouds.depth_to_xyz(rgbd['depth'], asus_xtion_pro_f)
-                    pc = ru.xyzrgb2pc(xyz, rgbd['rgb'], camera_frame)
-                    ar_cam = gmt.get_ar_marker_poses(None, None, pc=pc)
-                    
-                    self.pc_pubs[i].publish(pc)
-                    marker_frame = 'ar_marker%d_camera%d'
-                    for marker in ar_cam:
-                        trans, rot = conversions.hmat_to_trans_rot(ar_cam[marker])
-                        self.tf_broadcaster.sendTransform(trans, rot,
-                                                          rospy.Time.now(),
-                                                          marker_frame%(marker,i+1), 
-                                                          camera_frame)
-                    
-
             if self.ready:
                 for parent, child in self.transforms:
                     trans, rot = self.transforms[parent, child]
@@ -93,14 +62,6 @@ class transform_publisher(Thread):
                                                       rospy.Time.now(),
                                                       child, parent)
             time.sleep(1/self.rate)
-            
-    def set_publish_pc(self, publish_pc):
-        if publish_pc and self.cameras is not None:
-            self.cameras.start_streaming()
-            self.publish_pc = True
-        else:
-            self.publish_pc = False
-            
 
     def add_transforms(self, transforms):
         """
@@ -123,9 +84,8 @@ def run_calibration_sequence ():
     tfm_pub = transform_publisher()
     tfm_pub.start()
     
-    NUM_CAMERAS = 2
-    cameras = cyni_cameras(NUM_CAMERAS)
-    cameras.initialize_cameras()
+    NUM_CAMERAS = 1
+    cameras = ros_cameras(NUM_CAMERAS)
         
     greenprint("Step 1. Calibrating mutliple cameras.")
     CAM_N_OBS = 10

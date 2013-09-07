@@ -45,8 +45,6 @@ class hydra_calibrator:
         self.ar_transforms = []
         self.hydra_transforms = []
         assert self.cameras.calibrated
-        self.cameras.start_streaming()
-        
 
     def process_observation(self, n_avg=5):
         """
@@ -60,7 +58,7 @@ class hydra_calibrator:
         for j in xrange(n_avg):
             print colorize('\tGetting averaging transform : %d of %d ...'%(j,n_avg-1), "blue", True)
 
-            ar_transforms = gmt.get_ar_markers_from_cameras(self.cameras, cams = [self.calib_camera], markers = [self.ar_marker])
+            ar_transforms = self.cameras.get_ar_markers(markers=[self.ar_marker], camera=self.calib_camera)
             hydra_transforms = gmt.get_hydra_transforms('hydra_base', [self.calib_hydra])
             ar_avg_tfm.append(ar_transforms[self.ar_marker])
             hydra_avg_tfm.append(hydra_transforms[self.ar_marker][self.calib_hydra])
@@ -79,8 +77,6 @@ class hydra_calibrator:
         
         avg_hydra_base_transforms = [ar_tfm.dot(Tas).dot(hydra_tfm) for ar_tfm, hydra_tfm in zip(self.ar_transforms, self.hydra_transforms)]
         self.hydra_base_transform = utils.avg_transform(avg_hydra_base_transforms)
-        
-        self.cameras.stop_streaming()
         return True
     
     def calibrate(self, n_obs, n_avg):
@@ -105,4 +101,3 @@ class hydra_calibrator:
         self.calibrated = False
         self.ar_transforms = []
         self.hydra_transforms = []
-        self.cameras.stop_streaming()

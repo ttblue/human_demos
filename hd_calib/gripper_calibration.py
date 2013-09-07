@@ -44,7 +44,7 @@ def update_groups_from_observations(masterGraph, tfms, pot_reading):
     ##
     # Should I do this?
     ##
-    #pot_reading = np.round(pot_reading)
+    pot_reading = np.round(pot_reading)
     group_tfms = {}
     for group in masterGraph.nodes_iter():
         group_tfms[group] = {}
@@ -490,7 +490,6 @@ class gripper_calibrator:
     def initialize_calibration (self, fake_data=False):
         if not fake_data:
             assert self.cameras.calibrated
-            self.cameras.start_streaming()
             # assert hydras are calibrated
 
         self.masterGraph = nx.DiGraph()
@@ -523,7 +522,8 @@ class gripper_calibrator:
             print colorize('\tGetting averaging transform : %d of %d ...'%(j,n_avg-1), "blue", True)            
 
             tfms = {}
-            tfms.update(gmt.get_ar_markers_from_cameras(self.cameras, parent_frame=self.parent_frame, markers=self.ar_markers))
+            # Fuck the frames bullshit
+            tfms.update(self.cameras.get_ar_markers(markers=self.ar_markers))
             tfms.update(gmt.get_hydra_transforms(parent_frame=parent_frame, hydras = self.hydras))
 
             pot_angle = gmt.get_pot_angle()
