@@ -18,19 +18,23 @@ class ar_markers_ros:
     latest_time = 0
     
     def __init__(self, camera_frame):
+        
         if camera_frame[0] == "/":
-            frame_topic = frame_topic[1:]
-            self.camera_name = frame_topic.split("_")[0]
-            self.marker_topic = 'ar_pose_marker_'+self.camera_name
-            
-            if rospy.get_name() == '/unnamed':
-                rospy.init_node('ar_markers_'+self.camera_name)
-            
-            self.ar_sub = rospy.Subscriber(self.marker_topic, AlvarMarkers, callback = self.store_last_callback) 
+            camera_frame = camera_frame[1:]
+        
+        self.camera_name = camera_frame.split("_")[0]
+        self.marker_topic = 'ar_pose_marker_'+self.camera_name
+        
+        if rospy.get_name() == '/unnamed':
+            rospy.init_node('ar_markers_'+self.camera_name)
+        
+        self.ar_sub = rospy.Subscriber(self.marker_topic, AlvarMarkers, callback = self.store_last_callback) 
             
     def store_last_callback (self, data):
+        if len(data.markers) == 0:
+            return
         self.latest_markers = data
-        self.latest_time = data.header.time_stamp.to_sec()
+        self.latest_time = data.header.stamp.to_sec()
         
     def get_marker_transforms(self, markers=None, time_thresh=1):
         """
@@ -38,7 +42,7 @@ class ar_markers_ros:
         """
         if self.latest_markers is None: return {}
         
-        time_now = rospy.Time.now()
+        time_now = rospy.Time.now().to_sec()
         if time_now - self.latest_time > time_thresh: return {}
         
         if markers is None:
@@ -54,8 +58,6 @@ class ros_cameras:
     """
     This class uses ROS to get camera data.
     """
-
-    num_cameras = 0
     # Making assumptions on the frames.
     camera_frames = {}
     camera_markers = {}
@@ -77,7 +79,7 @@ class ros_cameras:
         
         for i in xrange(self.num_cameras):
             self.camera_frames[i] = camera_frame%(i+1)
-            self.camera_markers[i] = ar_marker_ros(camera_frame%(i+1))
+            self.camera_markers[i] = ar_markers_ros(camera_frame%(i+1))
                 
         self.parent_frame = 'camera1_depth_optical_frame'
     
