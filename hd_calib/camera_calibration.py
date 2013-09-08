@@ -148,7 +148,7 @@ class camera_calibrator:
         self.observed_ar_transforms = {i:{} for i in xrange(self.num_cameras)}
         
         sleeper = rospy.Rate(30)
-        for i in n_avg:
+        for i in xrange(n_avg):
             greenprint("Averaging %d out of %d"%(i+1,n_avg), False)
             for j in xrange(self.num_cameras):
                 tfms = self.cameras.get_ar_markers(camera=j)
@@ -162,14 +162,18 @@ class camera_calibrator:
             for marker in self.observed_ar_transforms[i]:
                 self.observed_ar_transforms[i][marker] = utils.avg_transform(self.observed_ar_transforms[i][marker])        
 
+        got_something = False
         for i in xrange(1,self.num_cameras):
             transform = self.find_transform_between_cameras_from_obs(0, i)
             if transform is None:
                 redprint("Did not find a transform between cameras 0 and %d"%i)
                 continue
+            got_something = True
             if self.transform_list.get(0,i) is None:
                self.transform_list[0,i] = []
             self.transform_list[0,i].append(transform)
+        
+        return got_something
 
     def finish_calibration(self):
         """
@@ -196,11 +200,14 @@ class camera_calibrator:
             return
         
         self.initialize_calibration()
-        for i in range(n_obs):
-            raw_input(colorize("Press return when you're ready to take the next observation from the cameras.",'green',True))
-            self.process_observation(n_avg)
+        i = 0
+        while i < n_obs:
+            raw_input(colorize("Observation %d from %d. Press return when ready."%(i,n_obs),'green',True))
+            got_something =  self.process_observation(n_avg)
+            if got_something: i += 1
+
         self.calibrated = self.finish_calibration()
-        self.cameras.set_calibrated(self.calibrated)
+        self.cameras.calibrated  = self.calibrated
         
     def get_transforms(self):
         if self.num_cameras == 1:

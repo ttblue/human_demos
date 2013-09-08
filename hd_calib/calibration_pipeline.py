@@ -84,8 +84,8 @@ def run_calibration_sequence ():
     tfm_pub = transform_publisher()
     tfm_pub.start()
     
-    NUM_CAMERAS = 1
-    cameras = ros_cameras(NUM_CAMERAS)
+    NUM_CAMERAS = 2
+    cameras = ros_cameras(num_cameras=NUM_CAMERAS)
         
     greenprint("Step 1. Calibrating mutliple cameras.")
     CAM_N_OBS = 10

@@ -113,7 +113,7 @@ class ros_cameras:
                 marker_tfms[marker] = utils.avg_transform(marker_tfms[marker])
         else:
             assert camera in range(self.num_cameras)
-            marker_tfms = self.camera_markers[i].get_marker_transforms(markers)
+            marker_tfms = self.camera_markers[camera].get_marker_transforms(markers)
             if parent_frame is True:
                 if not self.calibrated:
                     redprint('Cameras not calibrated. Cannot get transforms from all cameras.')
