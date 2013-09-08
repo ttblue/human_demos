@@ -6,7 +6,7 @@ import time
 from hd_utils import ros_utils as ru, clouds, conversions, utils
 from hd_utils.colorize import *
 
-from ros_cameras import ros_cameras
+from cameras import ros_cameras
 import get_marker_transforms as gmt
 
 asus_xtion_pro_f = 544.260779961
@@ -101,11 +101,12 @@ class camera_calibrator:
     
     def __init__(self, cameras, parent_frame = "camera1_depth_optical_frame"):
         
-        assert self.num_cameras > 0
-        
         self.cameras = cameras
         self.num_cameras = self.cameras.num_cameras
-        self.calibrated = num_cameras == 1
+        
+        assert self.num_cameras > 0
+        
+        self.calibrated = self.num_cameras == 1
         self.parent_frame = parent_frame
         
     def find_transform_between_cameras_from_obs (self, c1, c2):
