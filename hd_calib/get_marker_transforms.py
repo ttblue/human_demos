@@ -1,41 +1,53 @@
+import numpy as np
 import serial
 
-import roslib; roslib.load_manifest('ar_marker_service')
+import roslib; roslib.load_manifest('ar_track_service')
 from ar_track_service.srv import MarkerPositions, MarkerPositionsRequest, MarkerPositionsResponse
 roslib.load_manifest('tf')
-import tf
+import rospy, tf
+import time
 
-from hd_utils import clouds, rosutils as ru, conversions, utils
-
+from hd_utils import clouds, ros_utils as ru, conversions, utils
 from cyni_cameras import cyni_cameras
 
+import read_arduino 
+
+np.set_printoptions(precision=5, suppress=True)
+
+ar_lock = False
 getMarkers = None
 req = None
 tf_l = None
-pot_ser = None
+arduino = None
 
 ar_initialized = False
 hydra_initialized = False
+tf_initialized = False
 pot_initialized = False
 
 
 asus_xtion_pro_f = 544.260779961
 
-def get_ar_marker_poses (rgb, depth):
+def get_ar_marker_poses (rgb, depth, pc=None):
     """
     In order to run this, ar_marker_service needs to be running.
     """
-    global getMarkers, req, ar_initialized
+    global getMarkers, req, ar_initialized, ar_lock
     
+    while(ar_lock):
+        time.sleep(0.01)
+        
+    ar_lock = True
     if not ar_initialized:
         if rospy.get_name() == '/unnamed':
             rospy.init_node('ar_tfm')
         getMarkers = rospy.ServiceProxy("getMarkers", MarkerPositions)
         req = MarkerPositionsRequest()
         ar_initialized = True
-
-    xyz = clouds.depth_to_xyz(depth, asus_xtion_pro_f)
-    pc = ru.xyzrgb2pc(xyz, rgb, '/camera_frame')
+    
+    if pc is None:
+        xyz = clouds.depth_to_xyz(depth, asus_xtion_pro_f)
+        pc = ru.xyzrgb2pc(xyz, rgb, '/camera_frame')
     
     req.pc = pc
     
@@ -43,12 +55,14 @@ def get_ar_marker_poses (rgb, depth):
     res = getMarkers(req)
     for marker in res.markers.markers:
         marker_tfm[marker.id] = conversions.pose_to_hmat(marker.pose.pose)
-
+    
+    ar_lock = False
     return marker_tfm
 
 
 def get_ar_markers_from_cameras (cameras, parent_frame = None, cams = None, markers=None):
     """
+    The cameras here are cyni cameras.
     Returns all the ar_markers in the frame of camera 0.
     This would potentially take a while.
     Do this after all collecting data from everywhere else.
@@ -67,7 +81,7 @@ def get_ar_markers_from_cameras (cameras, parent_frame = None, cams = None, mark
         for marker in ar_cam:    
             if ar_markers.get(marker) is None:
                 ar_markers[marker] = []
-            ar_marker.append(tfm.dot(ar_cam[marker]))
+            ar_markers[marker].append(tfm.dot(ar_cam[marker]))
     
     for marker in ar_markers:
         ar_markers[marker] = utils.avg_transform(ar_markers[marker])
@@ -87,8 +101,9 @@ def get_hydra_transforms(parent_frame, hydras=None):
     if not hydra_initialized:
         if rospy.get_name() == '/unnamed':
             rospy.init_node('hydra_tfm')
-        tf_l = tf.transformListener()
-        hydra_initialized = False
+        if tf_l is not None:
+            tf_l = tf.TransformListener()
+        hydra_initialized = True
         
     if hydras is None:
         hydras = ['left','right']
@@ -96,27 +111,35 @@ def get_hydra_transforms(parent_frame, hydras=None):
     hydra_transforms = {}
     for hydra in hydras:
         hydra_frame = 'hydra_%s_pivot'%hydra
-        trans, rot = tf_sub.lookupTransform(parent_frame, hydra_frame, rospy.Time(0))
+        trans, rot = tf_l.lookupTransform(parent_frame, hydra_frame, rospy.Time(0))
         hydra_transforms[hydra] = conversions.trans_rot_to_hmat(trans, rot)
     
     return hydra_transforms
 
 
-def initialize_potentiometer(port):
+def get_transform_frames (parent_frame, child_frame):
     """
-    Need to call this with correct port number before getting angle from potentiometer.
+    Gets transform between frames.
     """
-    global pot_ser, pot_intialized
-    pot_ser = serial.Serial(port)
-    pot_initialized = True
+    if tf_initialized is False:
+        if rospy.get_name() == '/unnamed':
+            rospy.init_node('tf_finder')
+        if tf_l is None:
+            tf_l = tf.TransformListener()
+        tf_initialized = True
+        trans, quat = listener.lookupTransform(parent_frame, child_frame, rospy.Time(0))
+        return conversions.trans_rot_to_hmat(trans, quat)
 
-
+       
 def get_pot_angle ():
     """
     Get angle of gripper from potentiometer.
     """
-    assert pot_initialized 
+    global pot_intialized, arduino
+    if not pot_initialized:
+        arduino = read_arduino.Arduino()
+        pot_initialized = True
 
-    pot_reading = float(pot_ser.readline())    
+    pot_reading = arduino.get_reading()    
     return (pot_reading-584.0)/10.167
     

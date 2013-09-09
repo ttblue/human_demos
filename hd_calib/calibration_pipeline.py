@@ -1,21 +1,24 @@
 #!/usr/bin/python
 import numpy as np
-import cyni
 from threading import Thread
 import time
 
 import roslib, rospy
 roslib.load_manifest('tf')
 import tf
+from sensor_msgs.msg import PointCloud2
 
 from hd_utils.colorize import *
 from hd_utils.yes_or_no import yes_or_no
-from hd_utils import conversions
+from hd_utils import conversions, clouds, ros_utils as ru
 
-from cyni_cameras import cyni_cameras
+from cameras import ros_cameras
 from camera_calibration import camera_calibrator
 from hydra_calibration import hydra_calibrator
 from gripper_calibration import gripper_calibrator
+import get_marker_transforms as gmt
+
+np.set_printoptions(precision=5, suppress=True)
 """
 Steps to be taken:
     1.  Calibrate cameras w.r.t. each other.
@@ -29,14 +32,16 @@ Steps to be taken:
     3.  Calibrate potentiometer.
         ******** DONE
         Calibrate gripper + angle.
+        ******** DONE
         Publish transform or make graph available to get transforms.
+        ******** DONE
     
 """
-
+asus_xtion_pro_f = 544.260779961
 
 class transform_publisher(Thread):
 
-    def __init__(self):
+    def __init__(self, cameras=None):
         Thread.__init__(self)
         
         if rospy.get_name() == '/unnamed':
@@ -64,6 +69,8 @@ class transform_publisher(Thread):
         """
         Takes a list of dicts with relevant transform information.
         """
+        if transforms is None:
+            return
         for transform in transforms:
             trans, rot = conversions.hmat_to_trans_rot(transform['tfm'])
             self.transforms[transform['parent'],transform['child']] = (trans,rot)
@@ -80,11 +87,11 @@ def run_calibration_sequence ():
     tfm_pub.start()
     
     NUM_CAMERAS = 2
-    cameras = cyni_cameras(NUM_CAMERAS)
+    cameras = ros_cameras(num_cameras=NUM_CAMERAS)
         
     greenprint("Step 1. Calibrating mutliple cameras.")
     CAM_N_OBS = 10
-    CAM_N_AVG = 5
+    CAM_N_AVG = 50
     cam_calib = camera_calibrator(cameras)
 
     done = False
@@ -102,12 +109,12 @@ def run_calibration_sequence ():
                 cam_calib.reset_calibration()
 
     greenprint("Mutliple cameras calibrated.")
-    
+
     greenprint("Step 2. Calibrating hydra and kinect.")
     HYDRA_N_OBS = 10
     HYDRA_N_AVG = 5
     HYDRA_AR_MARKER = 0
-    
+
     hydra_calib = hydra_calibrator(cameras, ar_marker = HYDRA_AR_MARKER)
 
     done = False
@@ -125,7 +132,7 @@ def run_calibration_sequence ():
                 hydra_calib.reset_calibration()
 
     greenprint("Hydra base calibrated.")
-    
+
     greenprint("Step 3. Calibrating relative transforms of markers on gripper.")
 
     GRIPPER_MIN_OBS = 5
