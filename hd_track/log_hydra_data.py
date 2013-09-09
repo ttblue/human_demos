@@ -11,11 +11,6 @@ from sensor_msgs.msg import JointState
 from hd_utils import conversions
 
 
-T_rtool_rhydra = np.array([[ 0.72076,  0.68234,  0.12211,  0.4814 ],
- [-0.68672,  0.72687, -0.00826,  0.01968],
- [-0.09439, -0.0779,   0.99248,  0.83744],
- [ 0.,       0.,       0.,       1.,     ]])
-
 old_time = 0
 msgs = []
 tool_transforms = []
