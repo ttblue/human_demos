@@ -5,6 +5,7 @@ import time
 
 from hd_utils import ros_utils as ru, clouds, conversions, utils
 from hd_utils.colorize import *
+from hd_utils.defaults import tfm_link_rof
 
 from cameras import ros_cameras
 import get_marker_transforms as gmt
@@ -99,7 +100,7 @@ class camera_calibrator:
 
     camera_transforms = {}
     
-    def __init__(self, cameras, parent_frame = "camera1_depth_optical_frame"):
+    def __init__(self, cameras, parent_frame = "camera1_rgb_optical_frame"):
         
         self.cameras = cameras
         self.num_cameras = self.cameras.num_cameras
@@ -130,8 +131,13 @@ class camera_calibrator:
         if not ar1 or not ar2:
             yellowprint("Did not find common visible AR markers between cameras %d and %d."%(c1,c2))
         
-        transform = find_rigid_tfm(convert_hmats_to_points(ar1.values()),
-                              convert_hmats_to_points(ar2.values()))
+        if len(ar1.keys()) == 1:
+            transform = ar1.values()[0].dot(np.linalg.inv(ar2.values()[0]))
+        else:
+            transform = find_rigid_tfm(convert_hmats_to_points(ar1.values()),
+                                       convert_hmats_to_points(ar2.values()))
+
+        return transform
 
         
     def initialize_calibration(self):
@@ -154,10 +160,11 @@ class camera_calibrator:
                 tfms = self.cameras.get_ar_markers(camera=j)
                 for marker in tfms: 
                     if marker not in self.observed_ar_transforms[j]:
-                        self.observed_ar_transforms[j] = []
-                    self.observed_ar_transforms[j].append(tfms[marker])
+                        self.observed_ar_transforms[j][marker] = []
+                    self.observed_ar_transforms[j][marker].append(tfms[marker])
             sleeper.sleep()
 
+        #print self.observed_ar_transforms
         for i in self.observed_ar_transforms:
             for marker in self.observed_ar_transforms[i]:
                 self.observed_ar_transforms[i][marker] = utils.avg_transform(self.observed_ar_transforms[i][marker])        
@@ -169,7 +176,7 @@ class camera_calibrator:
                 redprint("Did not find a transform between cameras 0 and %d"%i)
                 continue
             got_something = True
-            if self.transform_list.get(0,i) is None:
+            if self.transform_list.get((0,i)) is None:
                self.transform_list[0,i] = []
             self.transform_list[0,i].append(transform)
         
@@ -184,15 +191,19 @@ class camera_calibrator:
 
         for c1,c2 in self.transform_list:
             cam_transform= {}
-            cam_transform['tfm'] = utils.avg_transform(self.transform_list[key])
-            cam_transform['parent'] = 'camera%d_depth_optical_frame'%(c1+1)
-            cam_transform['child'] = 'camera%d_depth_optical_frame'%(c2+1)
-            self.camera_transforms[c1,c2] = cam_transform
+            cam_transform['parent'] = 'camera%d_link'%(c1+1)
+            print self.transform_list[c1,c2]
+            tfm = utils.avg_transform(self.transform_list[c1,c2])
+            cam_transform['child'] = 'camera%d_link'%(c2+1)
+            cam_transform['tfm'] = tfm_link_dof.dot(tfm).dot(np.linalg.inv(tfm_link_dof))
 
+            self.camera_transforms[c1,c2] = cam_transform
+        
+        self.cameras.calibrated = True
         self.cameras.store_calibrated_transforms(self.camera_transforms)    
         return True
     
-    def calibrate (self, n_obs=10, n_avg=5, tfm_pub=None):
+    def calibrate (self, n_obs=10, n_avg=5):
         if self.num_cameras == 1:
             redprint ("Only one camera. You don't need to calibrate.", True)
             self.calibrated = True
