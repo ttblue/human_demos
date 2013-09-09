@@ -11,6 +11,8 @@ import matplotlib.pylab as plt
 import os.path as osp
 from kalman_tuning import state_from_tfms, closer_angle
 import scipy.linalg as scl
+from l1 import l1
+import cvxopt as cvx 
 
 data_dir = '/home/ankush/sandbox444/human_demos/hd_track/data/'
 
@@ -25,7 +27,7 @@ def run_kalman(T_obs, x_init, covar_init, f=30.):
     ## load the noise covariance matrices:
     covar_mats = cPickle.load(open(osp.join(data_dir, 'covars-xyz-rpy.cpickle')))
     motion_covar = covar_mats['process']
-    hydra_covar  = 1e10*covar_mats['hydra']
+    hydra_covar  = 1e5*covar_mats['hydra']
 
     ## initialize the filter:
     KF = kalman()  
@@ -72,8 +74,23 @@ def get_auto_mat(X, k):
         amat[i,:] = X[i : i+k]
     return amat
 
+def get_auto_mat2(X, k):
+    """
+    Returns a matrix of (n-k+1) x 2k dimensions,
+    which is the auto-correlation matrix.
+    X is an n-dimensional vector. 
+    
+    squared terms are also included.
+    
+    """
+    n = len(X)
+    amat = np.empty((n-k+1, 2*k))
+    for i in xrange(n-k+1):
+        amat[i,:] = np.r_[X[i : i+k], np.square(X[i : i+k])] 
+    return amat
 
-def fit_auto(X,Y, k):
+
+def fit_auto(X,Y, k, do_l1=False):
     """
     Yi = [Xi-1  Xi-2 ... Xi-1-k]*[a1 a2 ... ak]T
     Solves for a_k's : auto-regression.
@@ -82,26 +99,36 @@ def fit_auto(X,Y, k):
     assert X.ndim==1 and Y.ndim==1, "Vectors are not one-dimensional."
     assert len(X)==len(Y), "Vectors are not of the same size."
     
-    A = get_auto_mat(X, k)
+    A = get_auto_mat2(X, k)
     A = np.c_[A, np.ones(A.shape[0])]
     b = Y[k-1:]
-    return [A, b, np.linalg.lstsq(A, b)[0]]
+    
+    if do_l1:
+        sol = np.array(l1(cvx.matrix(A), cvx.matrix(b)))
+        sol = np.reshape(sol, np.prod(sol.shape))
+    else:
+        sol = np.linalg.lstsq(A, b)[0]
+ 
+    return [A, b, sol]
     
 
-def fit_calib_auto(X_bh, X_bg_gh):
+def fit_calib_auto(X_bh, X_bg_gh, do_l1=False):
     """
     Does auto-regression on the 6-DOF variables : x,y,z,r,p,y.
     """
     assert X_bh.shape[0]==X_bg_gh.shape[0]==12, "calib data has unknown shape."
-       
+    
+    #X_bh = X_bh[:,500:1000]
+    #X_bg_gh = X_bg_gh[:,500:1000]
+    
     axlabels = ['x','y','z','roll','pitch','yaw']
-    for k in xrange(10,100, 10):
+    for k in xrange(1,100, 10):
         print "order : k=", k
         plt.clf()
-        W = np.empty((6, k+1))    
+        W = np.empty((6, 2*k+1))    
         for i in xrange(6):
             j = i+4 if i > 2 else i
-            Ai, bi, W[i,:] = fit_auto(X_bh[j,:], X_bg_gh[j,:], k)
+            Ai, bi, W[i,:] = fit_auto(X_bh[j,:], X_bg_gh[j,:], k, do_l1)
             est = Ai.dot(W[i,:])
             print "  norm err : ", np.linalg.norm(bi - est)
     
@@ -114,9 +141,9 @@ def fit_calib_auto(X_bh, X_bg_gh):
         plt.show()
         
     
-def show_regress():
-    Ts_bh, Ts_bg, T_gh, X_bh, X_bg_gh = load_data()
-    fit_calib_auto(X_bh, X_bg_gh)
+def show_regress(do_l1=False):
+    Ts_bh, Ts_bg, T_gh, Ts_bg_gh, X_bh, X_bg_gh = load_data()
+    fit_calib_auto(X_bh, X_bg_gh, do_l1)
 
 
 def load_data():
@@ -136,7 +163,7 @@ def load_data():
 
     X_bg_gh[6:9,:] = closer_angle(X_bg_gh[6:9,:], X_bh[6:9,:])
 
-    return (Ts_bh, Ts_bg, T_gh, X_bh, X_bg_gh) 
+    return (Ts_bh, Ts_bg, T_gh, Ts_bg_gh, X_bh, X_bg_gh) 
 
 
 def run_kf_and_plot():
@@ -144,12 +171,12 @@ def run_kf_and_plot():
     Runs the kalman filter and plots the results.
     """
     dt = 1/30.
-    Ts_bh, Ts_bg, T_gh, X_bh, X_bg_gh = load_data()
+    Ts_bh, Ts_bg, T_gh, Ts_bg_gh, X_bh, X_bg_gh = load_data()
    
     ## initialize the kalman belief: 
     x_init = X_bg_gh[:,0]
     I3 = np.eye(3)
-    S_init = 1e3*scl.block_diag(1e-6*I3, 1e-3*I3, 1e-4*I3, 1e-1*I3)
+    S_init = scl.block_diag(1e-6*I3, 1e-3*I3, 1e-4*I3, 1e-1*I3)
     
     ## run the kalman filter:
     X_kf = run_kalman(Ts_bh, x_init, S_init, 1./dt)
