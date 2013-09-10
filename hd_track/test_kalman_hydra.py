@@ -14,7 +14,7 @@ import scipy.linalg as scl
 from l1 import l1
 import cvxopt as cvx 
 
-data_dir = '/home/ankush/sandbox444/human_demos/hd_track/data/'
+data_dir = '/home/henrylu/henry_sandbox/human_demos/hd_track/data/'
 
 
 def run_kalman(T_obs, x_init, covar_init, f=30.):
