@@ -101,7 +101,7 @@ class ros_cameras:
                 redprint('Cameras not calibrated. Cannot get transforms from all cameras.')
                 return {}
             
-            markers_tfms = {}
+            marker_tfms = {}
             for i in range(self.num_cameras):
                 ctfm = self.get_camera_transform(0, i)
                 tfms = self.camera_markers[i].get_marker_transforms(markers)
@@ -142,7 +142,7 @@ class ros_cameras:
 
         if c1==c2:
             return np.eye(4)
-        elif self.camera_transforms.get((c1,c2)) is None or self.camera_transforms.get((c2,c1)) is None:
+        if self.camera_transforms.get((c1,c2)) is None and self.camera_transforms.get((c2,c1)) is None:
             print "Transform not found."
             return None
         tfm = self.camera_transforms.get((c1,c2))

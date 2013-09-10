@@ -76,27 +76,25 @@ class transform_publisher(Thread):
             self.transforms[transform['parent'],transform['child']] = (trans,rot)
         self.ready = True
 
+#Global variables
+cameras = None
+tfm_pub = None
 
-def run_calibration_sequence ():
+CAM_N_OBS = 1
+CAM_N_AVG = 5
+
+
+def calibrate_cameras ():
+    global cameras, tfm_pub
     
-    rospy.init_node('calibration')
-    
-    yellowprint("Beginning calibration sequence.")
-    
-    tfm_pub = transform_publisher()
-    tfm_pub.start()
-    
-    NUM_CAMERAS = 2
-    cameras = ros_cameras(num_cameras=NUM_CAMERAS)
-        
     greenprint("Step 1. Calibrating mutliple cameras.")
-    CAM_N_OBS = 10
-    CAM_N_AVG = 50
     cam_calib = camera_calibrator(cameras)
 
     done = False
     while not done:
         cam_calib.calibrate(CAM_N_OBS, CAM_N_AVG)
+        if cameras.num_cameras == 1:
+            break
         if not cam_calib.calibrated:
             redprint("Camera calibration failed.")
             cam_calib.reset_calibration()
@@ -108,23 +106,27 @@ def run_calibration_sequence ():
                 yellowprint("Calibrating cameras again.")
                 cam_calib.reset_calibration()
 
-    greenprint("Mutliple cameras calibrated.")
+    greenprint("Cameras calibrated.")
 
+HYDRA_N_OBS = 20
+HYDRA_N_AVG = 100
+CALIB_CAMERA = 0
+
+def calibrate_hydras ():
+    global cameras, tfm_pub
+    
     greenprint("Step 2. Calibrating hydra and kinect.")
-    HYDRA_N_OBS = 10
-    HYDRA_N_AVG = 5
-    HYDRA_AR_MARKER = 0
-
-    hydra_calib = hydra_calibrator(cameras, ar_marker = HYDRA_AR_MARKER)
+    HYDRA_AR_MARKER = input('Enter the ar_marker you are using for calibration.')
+    hydra_calib = hydra_calibrator(cameras, ar_marker = HYDRA_AR_MARKER, calib_camera=CALIB_CAMERA)
 
     done = False
     while not done:
-        hydra_calib.calibrate(HYDRA_N_OBS, HYDRA_N_AVG)
+        hydra_calib.calibrate('camera', HYDRA_N_OBS, HYDRA_N_AVG)
         if not hydra_calib.calibrated:
-            redprint("Camera calibration failed.")
+            redprint("Hydra calibration failed.")
             hydra_calib.reset_calibration()
         else:
-            tfm_pub.add_transforms(hydra_calib.get_transforms())
+            tfm_pub.add_transforms(hydra_calib.get_transforms('camera'))
             if yes_or_no("Are you happy with the calibration? Check RVIZ."):
                 done = True
             else:
@@ -133,10 +135,14 @@ def run_calibration_sequence ():
 
     greenprint("Hydra base calibrated.")
 
-    greenprint("Step 3. Calibrating relative transforms of markers on gripper.")
 
-    GRIPPER_MIN_OBS = 5
-    GRIPPER_N_AVG = 5
+GRIPPER_MIN_OBS = 5
+GRIPPER_N_AVG = 5
+
+def calibrate_grippers ():
+    global cameras, tfm_pub
+
+    greenprint("Step 3. Calibrating relative transforms of markers on gripper.")
 
     greenprint("Step 3.1 Calibrate l gripper.")
     l_gripper_calib = gripper_calibrator(cameras)
@@ -195,7 +201,25 @@ def run_calibration_sequence ():
             r_gripper_calib.reset_calibration()
 
     greenprint("Done with r gripper calibration.")
-    
+
+
+NUM_CAMERAS = 1
+def initialize_calibration():
+    global cameras, tfm_pub
+    rospy.init_node('calibration')
+    tfm_pub = transform_publisher()
+    tfm_pub.start()
+    cameras = ros_cameras(num_cameras=NUM_CAMERAS)
+
+
+
+def run_calibration_sequence ():
+        
+    yellowprint("Beginning calibration sequence.")
+    calibrate_cameras()
+    calibrate_hydras() 
+    calibrate_grippers ()
+
     greenprint("Done with all the calibration.")
     
     while True:

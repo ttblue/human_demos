@@ -54,12 +54,13 @@ class hydra_calibrator:
     
     def get_hydra_transform(self):
         tfms = gmt.get_hydra_transforms('hydra_base', [self.calib_hydra])
+        if tfms is None: return None
         return tfms[self.calib_hydra]
     
     def get_ar_transform (self):
         ar_transforms = self.cameras.get_ar_markers(markers=[self.ar_marker], camera=self.calib_camera)
         if not ar_transforms:
-            return ar_transforms
+            return None
         return ar_transforms[self.ar_marker]
     
     def get_pr2_transform (self):
@@ -73,7 +74,7 @@ class hydra_calibrator:
         self.calib_func = {'pr2':self.get_pr2_transform,
                            'camera':self.get_ar_transform}[calib_type]
         
-        assert self.cameras.calibrated
+        assert self.cameras.calibrated or self.calib_camera is not None
 
     def process_observation(self, n_avg=5):
         """
@@ -84,26 +85,34 @@ class hydra_calibrator:
         calib_avg_tfm = []
         hydra_avg_tfm = []
         j = 0
+        thresh = n_avg*2
+        
+        sleeper = rospy.Rate(30)
         while j < n_avg:
             print colorize('\tGetting averaging transform : %d of %d ...'%(j,n_avg-1), "blue", True)
 
             calib_tfm = self.calib_func()
             hydra_tfm = self.get_hydra_transform()
-            if not calib_tfm or not hydra_tfm:
+            if calib_tfm is None or hydra_tfm is None:
                 yellowprint('Could not find all required transforms.')
+                thresh -= 1
+                if thresh == 0: return False
                 continue
+                
             calib_avg_tfm.append(calib_tfm)
             hydra_avg_tfm.append(hydra_tfm)
             j += 1
+            sleeper.sleep()
 
         self.calib_transforms.append(utils.avg_transform(calib_avg_tfm))
         self.hydra_transforms.append(utils.avg_transform(hydra_avg_tfm))
+        return True
     
     def finish_calibration(self, calib_type='camera'):
         """
         Finds the final transform between parent_frame and hydra_base.
         """
-        if not self.calib_transforms or self.hydra_transforms: return False
+        if not self.calib_transforms or not self.hydra_transforms: return False
         if len(self.calib_transforms) != len(self.hydra_transforms): return False
         
         Tas = solve4(self.calib_transforms, self.hydra_transforms)
@@ -116,22 +125,27 @@ class hydra_calibrator:
             pf = self.parent_frame[calib_type]
             cname = pf.split('_')[0]
             tfm['parent'] = cname+'_link'
-            self.transforms[calib_type] = tfm_link_rof.dot(tfm)
+            tfm['tfm'] = tfm_link_rof.dot(tfm['tfm'])
         else:
             tfm['parent'] = self.parent_frame[calib_type]
-            self.transforms[calib_type] = tfm
 
-        tfm['parent'] = self.parent_frame[calib_type]
-        tfm['child'] = 'hydra_base'
+        tfm['child'] = 'hydra_base'            
+        self.transforms[calib_type] = tfm 
+
 
         return True
     
     def calibrate(self, calib_type, n_obs, n_avg):
         self.initialize_calibration(calib_type)
-        for i in range(n_obs):
+        i = 0
+        while i < n_obs:
             yellowprint ("Transform %d out of %d."%(i,n_obs))
-            self.process_observation(n_avg)
-        self.calibrated = self.finish_calibration()
+            worked = self.process_observation(n_avg)
+            if not worked:
+                yellowprint("Something went wrong. Try again.")
+            else:
+                i += 1
+        self.calibrated = self.finish_calibration(calib_type)
         
     def get_transforms(self, calib_type):
         if not self.calibrated:

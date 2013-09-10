@@ -62,7 +62,8 @@ def get_transforms(arm, hydra, n_tfm , n_avg):
     kinect_tfms = []
     head_tfms = []
     i = 0 
-    ar_markers = ar_markers_ros('/camera_')
+    ar_markers = ar_markers_ros('/camera1_')
+    dont = 0
     while (i < n_tfm):
         raw_input(colorize("Transform %d of %d : Press return when ready to capture transforms"%(i, n_tfm), "red", True))
        
@@ -81,11 +82,12 @@ def get_transforms(arm, hydra, n_tfm , n_avg):
         while(j < n_avg):
             print colorize('\tGetting averaging transform : %d of %d ...'%(j,n_avg-1), "blue", True)
             
-            kinect_tfm = ar_markers.get_marker_transforms(markers=[13], time_thresh=0)
+            kinect_tfm = ar_markers.get_marker_transforms(markers=[13], time_thresh=0.5)
             if kinect_tfm == {}:
                 print "Lost sight of AR marker. Breaking..."
-                continue
-
+                dont = 1
+                break
+            dont = 0
             ptrans, prot = tf_sub.lookupTransform(pr2_frame, head_frame, rospy.Time(0))
             gtrans, grot = tf_sub.lookupTransform(pr2_frame, arm_frame, rospy.Time(0))
             htrans, hrot = tf_sub.lookupTransform(hydra_frame, paddle_frame, rospy.Time(0))
@@ -121,7 +123,8 @@ def get_transforms(arm, hydra, n_tfm , n_avg):
         hydra_tfms.append(hydra_tfm)
         kinect_tfms.append(kinect_tfm)
         head_tfms.append(head_tfm)
-        i = i + 1
+        if dont == 0:
+            i = i + 1
 
     return (gripper_tfms, hydra_tfms, kinect_tfms, head_tfms)
 

@@ -101,7 +101,7 @@ def get_hydra_transforms(parent_frame, hydras=None):
     if not hydra_initialized:
         if rospy.get_name() == '/unnamed':
             rospy.init_node('hydra_tfm')
-        if tf_l is not None:
+        if tf_l is None:
             tf_l = tf.TransformListener()
         hydra_initialized = True
         
@@ -110,9 +110,12 @@ def get_hydra_transforms(parent_frame, hydras=None):
     
     hydra_transforms = {}
     for hydra in hydras:
-        hydra_frame = 'hydra_%s_pivot'%hydra
-        trans, rot = tf_l.lookupTransform(parent_frame, hydra_frame, rospy.Time(0))
-        hydra_transforms[hydra] = conversions.trans_rot_to_hmat(trans, rot)
+        hydra_frame = 'hydra_%s'%hydra
+        try:
+            trans, rot = tf_l.lookupTransform(parent_frame, hydra_frame, rospy.Time(0))
+            hydra_transforms[hydra] = conversions.trans_rot_to_hmat(trans, rot)
+        except (tf.LookupException, tf.ExtrapolationException, tf.ConnectivityException):
+            return None
     
     return hydra_transforms
 

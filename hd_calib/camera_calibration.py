@@ -195,7 +195,7 @@ class camera_calibrator:
             print self.transform_list[c1,c2]
             tfm = utils.avg_transform(self.transform_list[c1,c2])
             cam_transform['child'] = 'camera%d_link'%(c2+1)
-            cam_transform['tfm'] = tfm_link_dof.dot(tfm).dot(np.linalg.inv(tfm_link_dof))
+            cam_transform['tfm'] = tfm_link_rof.dot(tfm).dot(np.linalg.inv(tfm_link_rof))
 
             self.camera_transforms[c1,c2] = cam_transform
         
@@ -234,6 +234,6 @@ class camera_calibrator:
     def reset_calibration (self):
         if self.num_cameras >1:
             self.calibrated = False
-            self.cameras.set_calibrated(self.calibrated)
+            self.cameras.calibrated = False
             self.camera_transforms = {}
             self.cameras.stored_tfms = {}
