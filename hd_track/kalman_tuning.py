@@ -138,6 +138,9 @@ def fit_ar_noise(Ts_ba, Ts_bg, T_ga, f):
     """
     dt = 1./f
     
+    raise NotImplementedError()
+
+    """
     assert len(Ts_bg) == len(Ts_bh), "Number of hydra and pr2 transforms not equal."
     Ts_bg_gh = [t.dot(T_gh) for t in Ts_bg]
 
@@ -151,10 +154,8 @@ def fit_ar_noise(Ts_ba, Ts_bg, T_ga, f):
     err = C.dot(X_bh) - C.dot(X_bg_gh)
     covar = (err.dot(err.T))/err.shape[1]
     return (err, covar)
-
+    """
     
-    
-
 
 def plot_hydra_data(Ts_bg, Ts_bh, T_gh, f):
     """
