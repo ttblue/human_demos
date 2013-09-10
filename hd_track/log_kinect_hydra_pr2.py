@@ -53,9 +53,12 @@ start = time.time()
 while(i < args.n_tfm):
         
     kinect_tfm = ar_markers.get_marker_transforms(markers=[13], time_thresh=0)
-        if kinect_tfm == {}:
-            print "Lost sight of AR marker. Breaking..."
-            continue
+    if kinect_tfm == {}:
+        print "Lost sight of AR marker..."
+        ar_tfms.append(None)
+    else:
+        ar_tfms.append(kinect_tfm[13])
+    
     tool_trans, tool_quat = listener.lookupTransform(base_frame, gripper_frame, rospy.Time(0))
     head_trans, head_quat = listener.lookupTransform(base_frame, head_frame, rospy.Time(0))
     hydra_trans, hydra_quat = listener.lookupTransform(base_frame, hydra_sensor, rospy.Time(0))
@@ -64,7 +67,6 @@ while(i < args.n_tfm):
     hydra_tfm = conversions.trans_rot_to_hmat(hydra_trans, hydra_quat)
     tool_tfms.append(tool_tfm)
     head_tfms.append(head_tfm)
-    ar_tfms.append(kinect_tfm[13])
     hydra_tfms.append(hydra_tfm)
     #trans, rot = conversions.hmat_to_trans_rot(tfm)
     print i
@@ -73,9 +75,12 @@ end = time.time()
 
 ar_in_base_tfms = []
 for i in xrange(len(ar_tfms)):
-    head_frame_ar = T_h_k.dot(ar_tfms[i])
-    base_frame_ar = head_tfms[i].dot(head_frame_ar)
-    ar_in_base_tfms.append(base_frame_ar)
+    if ar_tfms[i] == None:
+        ar_in_base_tfms.append(None)
+    else:
+        head_frame_ar = T_h_k.dot(ar_tfms[i])
+        base_frame_ar = head_tfms[i].dot(head_frame_ar)
+        ar_in_base_tfms.append(base_frame_ar)
 
 dic = {}
 dic['kinect'] = ar_in_base_tfms

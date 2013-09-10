@@ -12,7 +12,7 @@ import os.path as osp
 from kalman_tuning import state_from_tfms, closer_angle
 import scipy.linalg as scl
 
-data_dir = '/home/ankush/sandbox444/human_demos/hd_track/data/'
+data_dir = '/home/henrylu/henry_sandbox/human_demos/hd_track/data/'
 
 
 def run_kalman(T_obs, x_init, covar_init, f=30.):
