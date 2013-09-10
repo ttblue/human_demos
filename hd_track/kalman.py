@@ -56,17 +56,21 @@ class kalman:
         self.t_filt = None
         self.x_filt = None
         self.S_filt = None
-        
+
         self.motion_covar = None
         self.hydra_covar = None
+        self.ar_covar = None
 
-        ## store the observation matrix for the hydras:
+        ## store the observation matrix for the hydras and AR markers:
+        ##  both hydra and ar markers observe xyz and rpy only:
         self.hydra_mat = np.zeros((6,12))
         self.hydra_mat[0:3, 0:3] = np.eye(3)
         self.hydra_mat[3:6, 6:9] = np.eye(3)
+        
+        self.ar_mat = self.hydra_mat
 
 
-    def get_motion_covar(self, dt):
+    def get_motion_covar(self, dt=1./30.):
         """
         Returns the noise covariance for the motion model.
         Assumes a diagonal structure for now.
@@ -96,13 +100,9 @@ class kalman:
                           2. The noise covariance matrix
 
         Hydras observe rotations and the translation velocities to high accuracy.
-
-        Assumed that we observe the translation velocity and the rotation position from the hydras.
-        Absolute position from the hydras is not that great.
         """
         return (self.hydra_mat, self.hydra_covar)
         
-
 
     def get_ar_mats(self):
         """
@@ -110,16 +110,8 @@ class kalman:
                           for AR marker observations.
         AR markers observe the translation to very high accuracy, but rotations are very noisy. 
         """
-        cmat = np.zeros((6,12))
-        cmat[0:3,0:3] = np.eye(3)
-        cmat[3:6,6:9] = np.eye(3)
+        return (self.ar_mat, self.ar_covar)
         
-        vmat = np.eye(6)
-        vmat[0:3,0:3] *= (self.ar_x_std*self.ar_x_std)        
-        vmat[3:6,3:6] *= (self.ar_r_std*self.ar_r_std)
-        
-        return (cmat, vmat)
-
 
     def control_update(self, x_p, S_p, dt=None):
         """
@@ -129,7 +121,7 @@ class kalman:
         """
         if dt == None:
             dt = 1./self.freq
-        
+
         A, R = self.get_motion_mats(dt)
         x_n = A.dot(x_p)
         S_n = A.dot(S_p).dot(A.T) + R
@@ -157,7 +149,7 @@ class kalman:
         return (x_n, S_n)
     
 
-    def init_filter(self, t, x_init, S_init, motion_covar, hydra_covar):
+    def init_filter(self, t, x_init, S_init, motion_covar, hydra_covar, ar_covar):
         """
         Give the initial estimate for the filter.
         t is the time of the estimate.
@@ -169,8 +161,9 @@ class kalman:
         self.S_filt = S_init
         self.motion_covar = motion_covar
         self.hydra_covar  = hydra_covar
+        self.ar_covar     = ar_covar
         
-        
+
     def __check_time__(self, t):
         if self.t_filt == None:
             print colorize('[Filter ERROR:] Filter not initialized.', 'red', True)
@@ -251,7 +244,7 @@ class kalman:
             self.hydra_prev = (t, z_obs)
             return
 
-        ## calculate translation velocity:
+        ## calculate translation velocity : NOT BEING USED CURRENTLY
         t_p, z_b = self.hydra_prev
         vx_obs   = (z_obs[0:3] - z_b[0:3]) / (t-t_p)
         self.hydra_prev = (t, z_obs)
@@ -260,3 +253,46 @@ class kalman:
         C,Q = self.get_hydra_mats()
         self.x_filt, self.S_filt = self.control_update(self.x_filt, self.S_filt, dt)
         self.x_filt, self.S_filt = self.measurement_update(z, C, Q, self.x_filt, self.S_filt)
+
+
+    def register_observation(self, t, T_ar=None, T_hy=None):
+        """
+        New interface function to update the filter
+        with observations.
+        
+        Can pass in both or any one of the hydra/ ar-marker estimate.
+        t is the time of the observation.
+        
+        NOTE: This does not update the {ar, hydra}_prev variables:
+              THIS WILL CAUSE ERRORS if using velocities in observation updates.
+              ======================
+        """ 
+        if not self.__check_time__(t):
+            return
+        
+        dt = t - self.t_filt
+        self.x_filt, self.S_filt = self.control_update(self.x_filt, self.S_filt, dt)
+       
+        # observe just the hydras:
+        z_obs, C, Q = None, None, None
+        if T_ar==None and T_hy != None:
+            pos, rpy = self.canonicalize_obs(T_hy)
+            z_obs = np.c_['0,2', pos, rpy]
+            C,Q = self.get_hydra_mats()
+        elif T_ar!=None and T_hy == None: # observe just the ar:
+            pos, rpy = self.canonicalize_obs(T_ar)
+            z_obs = np.c_['0,2', pos, rpy]
+            C,Q = self.get_ar_mats()
+        elif T_ar != None and T_hy != None: # observe both
+            p1, th1 = self.canonicalize_obs(T_ar)
+            C1,Q1   = self.get_ar_mats()
+            p2, th2 = self.canonicalize_obs(T_hy)
+            C2,Q2   = self.get_hydra_mats()
+
+            z_obs = np.c_['0,2', p1, th1, p2, th2]
+            C = scl.block_diag(C1, C2)
+            Q = scl.block_diag(Q1, Q2)
+
+        if (z_obs != None):
+            self.x_filt, self.S_filt = self.measurement_update(z_obs, C, Q, self.x_filt, self.S_filt)
+        

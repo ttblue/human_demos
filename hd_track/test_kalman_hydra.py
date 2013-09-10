@@ -82,6 +82,7 @@ def get_auto_mat2(X, k):
     
     squared terms are also included.
     
+    TODO : add cross-terms and see if this does any better?
     """
     n = len(X)
     amat = np.empty((n-k+1, 2*k))

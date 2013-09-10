@@ -132,6 +132,29 @@ def fit_hydra_noise(Ts_bg, Ts_bh, T_gh, f):
     return (err, covar)
 
     
+def fit_ar_noise(Ts_ba, Ts_bg, T_ga, f):
+    """
+    Similar to the function above. 
+    """
+    dt = 1./f
+    
+    assert len(Ts_bg) == len(Ts_bh), "Number of hydra and pr2 transforms not equal."
+    Ts_bg_gh = [t.dot(T_gh) for t in Ts_bg]
+
+    ## extract the full state vector:    
+    X_bh    = state_from_tfms(Ts_bh, dt).T
+    X_bg_gh = state_from_tfms(Ts_bg_gh, dt).T
+    X_bg_gh[6:9,:] = closer_angle(X_bg_gh[6:9,:], X_bh[6:9,:])
+    
+    C = kalman().get_hydra_mats()[0]
+    
+    err = C.dot(X_bh) - C.dot(X_bg_gh)
+    covar = (err.dot(err.T))/err.shape[1]
+    return (err, covar)
+
+    
+    
+
 
 def plot_hydra_data(Ts_bg, Ts_bh, T_gh, f):
     """
