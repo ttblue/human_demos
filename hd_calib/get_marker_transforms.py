@@ -1,3 +1,4 @@
+import numpy as np
 import serial
 
 import roslib; roslib.load_manifest('ar_track_service')
@@ -9,8 +10,9 @@ import time
 from hd_utils import clouds, ros_utils as ru, conversions, utils
 from cyni_cameras import cyni_cameras
 
-
 import read_arduino 
+
+np.set_printoptions(precision=5, suppress=True)
 
 ar_lock = False
 getMarkers = None
@@ -20,6 +22,7 @@ arduino = None
 
 ar_initialized = False
 hydra_initialized = False
+tf_initialized = False
 pot_initialized = False
 
 
@@ -98,8 +101,9 @@ def get_hydra_transforms(parent_frame, hydras=None):
     if not hydra_initialized:
         if rospy.get_name() == '/unnamed':
             rospy.init_node('hydra_tfm')
-        tf_l = tf.TransformListener()
-        hydra_initialized = False
+        if tf_l is not None:
+            tf_l = tf.TransformListener()
+        hydra_initialized = True
         
     if hydras is None:
         hydras = ['left','right']
@@ -113,7 +117,20 @@ def get_hydra_transforms(parent_frame, hydras=None):
     return hydra_transforms
 
 
+def get_transform_frames (parent_frame, child_frame):
+    """
+    Gets transform between frames.
+    """
+    if tf_initialized is False:
+        if rospy.get_name() == '/unnamed':
+            rospy.init_node('tf_finder')
+        if tf_l is None:
+            tf_l = tf.TransformListener()
+        tf_initialized = True
+        trans, quat = listener.lookupTransform(parent_frame, child_frame, rospy.Time(0))
+        return conversions.trans_rot_to_hmat(trans, quat)
 
+       
 def get_pot_angle ():
     """
     Get angle of gripper from potentiometer.

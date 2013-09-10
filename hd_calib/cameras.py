@@ -62,6 +62,8 @@ class ros_cameras:
     camera_frames = {}
     camera_markers = {}
     
+    calibrated = False
+    
     camera_transforms = None
     parent_frame = None
     stored_tfms = {}
@@ -72,7 +74,7 @@ class ros_cameras:
 
         self.num_cameras = num_cameras
         
-        camera_frame = 'camera%d_depth_optical_frame'
+        camera_frame = 'camera%d_rgb_optical_frame'
         
         if rospy.get_name() == '/unnamed':
             rospy.init_node('cam_calibrator')
@@ -81,7 +83,7 @@ class ros_cameras:
             self.camera_frames[i] = camera_frame%(i+1)
             self.camera_markers[i] = ar_markers_ros(camera_frame%(i+1))
                 
-        self.parent_frame = 'camera1_depth_optical_frame'
+        self.parent_frame = 'camera1_rgb_optical_frame'
     
     def get_ar_markers (self, markers=None, camera=None, parent_frame=False):
         """
@@ -113,7 +115,7 @@ class ros_cameras:
                 marker_tfms[marker] = utils.avg_transform(marker_tfms[marker])
         else:
             assert camera in range(self.num_cameras)
-            marker_tfms = self.camera_markers[i].get_marker_transforms(markers)
+            marker_tfms = self.camera_markers[camera].get_marker_transforms(markers)
             if parent_frame is True:
                 if not self.calibrated:
                     redprint('Cameras not calibrated. Cannot get transforms from all cameras.')

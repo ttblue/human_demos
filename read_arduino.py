@@ -33,7 +33,7 @@ class Arduino:
         try:
             self.ser = serial.Serial(arduino, 9600, timeout=1)
         except serial.SerialException as e:
-            print("Error opening serial port '{}': {}".format(arduino, e))
+            raise RuntimeError(colorize("Error opening serial port '{}': {}".format(arduino, e), "red", True))
 
         self.poll_thread = Thread(target=self.poll_arduino)
         self.poll_thread.start()
@@ -65,3 +65,10 @@ class Arduino:
                 return val
             except:
                 pass
+
+
+if __name__ == '__main__':
+    ard = Arduino()
+    while True:
+        print "reading : ", ard.get_reading()
+        time.sleep(1)

@@ -478,7 +478,7 @@ class gripper_calibrator:
     cameras = None
     calibrated = False
     
-    def __init__(self, cameras, calib_info=None, parent_frame = 'camera1_depth_optical_frame'):
+    def __init__(self, cameras, calib_info=None, parent_frame = 'camera1_rgb_optical_frame'):
         self.cameras = cameras
         self.parent_frame = parent_frame
         self.calib_info = calib_info

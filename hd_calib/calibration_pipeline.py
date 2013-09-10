@@ -17,6 +17,8 @@ from camera_calibration import camera_calibrator
 from hydra_calibration import hydra_calibrator
 from gripper_calibration import gripper_calibrator
 import get_marker_transforms as gmt
+
+np.set_printoptions(precision=5, suppress=True)
 """
 Steps to be taken:
     1.  Calibrate cameras w.r.t. each other.
@@ -84,12 +86,12 @@ def run_calibration_sequence ():
     tfm_pub = transform_publisher()
     tfm_pub.start()
     
-    NUM_CAMERAS = 1
-    cameras = ros_cameras(NUM_CAMERAS)
+    NUM_CAMERAS = 2
+    cameras = ros_cameras(num_cameras=NUM_CAMERAS)
         
     greenprint("Step 1. Calibrating mutliple cameras.")
     CAM_N_OBS = 10
-    CAM_N_AVG = 5
+    CAM_N_AVG = 50
     cam_calib = camera_calibrator(cameras)
 
     done = False
