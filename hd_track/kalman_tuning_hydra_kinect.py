@@ -201,6 +201,7 @@ def plot_kinect_data(Ts_bg, Ts_bk, T_gk, f):
         if t == None:
             Ts_bk_kg.append(np.zeros((4,4)))
         else:
+            #print len(t)
             Ts_bk_kg.append(t.dot(np.linalg.inv(T_gk)))
 
     ## plot the translation:
@@ -208,7 +209,7 @@ def plot_kinect_data(Ts_bg, Ts_bk, T_gk, f):
     for i in range(3):
         plt.subplot(3,2,i+1)
         plt.plot(np.array([t[i,3] for t in Ts_bg]), label='pr2')
-        plt.plot(np.array([t[i,3] for t in Ts_bk_kg]),'o', label='kinect')
+        plt.plot(np.array([t[i,3] for t in Ts_bk_kg]),'.', label='kinect')
         plt.ylabel(axlabels[i])
         plt.legend()
 
@@ -247,27 +248,22 @@ def plot_and_fit_hydra(plot=True, f=30.):
 
 def plot_and_fit_kinect(plot=True, f=30.):
 
-    Ts_bk = []
-    Ts_bg = []
-    T_gk = cPickle.load(open('/home/henrylu/henry_sandbox/human_demos/hd_track/data/good_calib_hydra_kinect_pr2/T_gk'))
-
-    for fid in [1,2,3]:
-        fname = '/home/henrylu/henry_sandbox/human_demos/hd_track/data/good_calib_hydra_kinect_pr2/complete%d.cpickle'%fid
-        dat = cPickle.load(open(fname, 'rb'))
-        Ts_bk += dat['kinect']
-        Ts_bg += dat['pr2']
-
+    dic = cPickle.load(open('/home/henrylu/henry_sandbox/human_demos/hd_track/data/pr2-hydra-kinect-trajectory-transforms.cpickle'))
+    Ts_bg = dic['Ts_bg']
+    Ts_bk = dic['Ts_bk']
+    #rint len(Ts_bk)
+    T_gk = dic['T_gk']
     if plot:
         plot_kinect_data(Ts_bg, Ts_bk, T_gk, f)
 
     #return fit_kinect_noise(Ts_bg, Ts_bk, T_gk, f)
 
-def save_kalman_covars(out_file='./data/covars-xyz-rpy-kinect-hydra.cpickle'):
+def save_kalman_covars():
     """
     Computes the process noise covariance and the hydra-measurement noise covariances
     from data and saves them to a cpickle file.
     """
-    le,lc,re,rc = fit_process_noise()
+    #le,lc,re,rc = fit_process_noise()
     #he, hc = plot_and_fit_hydra(True)
     #ke, kc = plot_and_fit_kinect(True)
     plot_and_fit_kinect(True)
