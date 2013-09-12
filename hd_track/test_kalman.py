@@ -34,23 +34,23 @@ def add_noise(Ts, rotn = 5, xn = 0.0):
 
 def gen_tfms(n=100, f=30):
     dt = 1./f
-    
+
     rax  = np.array((1,0,0))
     v_rx  = np.deg2rad(180)
-    
+
     v_x   = 1
     xax = np.array((1,1,0)) 
 
     ts = dt*np.arange(n)
     Ts = []
-    
+
     x_init = np.zeros(3)
     r_init = np.zeros(3)
     
     for t in ts:
         x = x_init  + t*v_x*xax
         r = r_init  + t*v_rx*rax
-        
+
         T = tfms.euler_matrix(r[0], r[1], r[2])
         T[0:3,3] = x
         Ts.append(T)
