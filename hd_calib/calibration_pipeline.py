@@ -108,8 +108,8 @@ def calibrate_cameras ():
 
     greenprint("Cameras calibrated.")
 
-HYDRA_N_OBS = 20
-HYDRA_N_AVG = 100
+HYDRA_N_OBS = 5
+HYDRA_N_AVG = 30
 CALIB_CAMERA = 0
 
 def calibrate_hydras ():

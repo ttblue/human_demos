@@ -85,7 +85,7 @@ class hydra_calibrator:
         calib_avg_tfm = []
         hydra_avg_tfm = []
         j = 0
-        thresh = n_avg*2
+        thresh = n_avg*3
         
         sleeper = rospy.Rate(30)
         while j < n_avg:
@@ -116,7 +116,7 @@ class hydra_calibrator:
         if len(self.calib_transforms) != len(self.hydra_transforms): return False
         
         Tas = solve4(self.calib_transforms, self.hydra_transforms)
-        avg_hydra_base_transforms = [calib_tfm.dot(Tas).dot(hydra_tfm) for calib_tfm, hydra_tfm in zip(self.calib_transforms, self.hydra_transforms)]
+        avg_hydra_base_transforms = [calib_tfm.dot(Tas).dot(np.linalg.inv(hydra_tfm)) for calib_tfm, hydra_tfm in zip(self.calib_transforms, self.hydra_transforms)]
         
         tfm = {}
         tfm['tfm'] = utils.avg_transform(avg_hydra_base_transforms)
