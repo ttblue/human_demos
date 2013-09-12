@@ -422,5 +422,5 @@ def test_gc3 (n, add_noise=False):
 
 
 if __name__=="__main__":
-    test_gc3(10, True)
+    test_gc3(10, False)
     
