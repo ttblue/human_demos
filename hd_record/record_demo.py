@@ -66,7 +66,7 @@ try:
         """
         Store stuff.
         """
-        1
+        12
     
 except KeyboardInterrupt:
     greenprint("got control-c")
