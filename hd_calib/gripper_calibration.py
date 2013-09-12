@@ -465,10 +465,130 @@ def compute_relative_transforms (masterGraph, init=None):
     
     return mG_opt
 
+class Gripper:
+    
+    transform_graph = None
+    tt_calculated = False
+    lr = None
+    
+    def __init__ (self, lr, transform_graph):
+        self.transform_graph = transform_graph
+        
+    
+    def calculate_tool_tip_transform (self, m1, m2):
+        """
+        Assuming that the gripper has "master", "l" and "r"
+        m1 and m2 are markers on the tool tip. 
+        """
+        if m1 in self.transform_graph.node['r']['graph']:
+            assert m2 in self.transform_graph.node['l']['graph']
+            m1, m2 = m2, m1
+        else:
+            assert m1 in self.transform_graph.node['l']['graph']
+            assert m2 in self.transform_graph.node['r']['graph']
 
-class gripper_calibrator:
+        # Assume that the origin of the tool tip transform is the avg
+        # point of fingers when they're at an angle of 0
+        ltfm = self.transform_graph.edge['master']['l']['tfm_func']('cor', m1,0)
+        rtfm = self.transform_graph.edge['master']['r']['tfm_func']('cor', m2,0)
+        
+        lorg = ltfm[0:3,3]
+        rorg = ltfm[0:3,3]
+        tt_org = (lorg+rorg)/2.0
+        
+        # x axis (pointing axis) is the projection of vector from cor to tt_org on the xy plane.
+        # Since we're in the 'cor' frame, it's just the direction vector tt_org itself.
+        tt_x = tt_org/nlg.norm(tt_org)
+        # z axis is the same as cor
+        tt_z = np.array([0,0,1])
+        tt_y = np.cross(tt_z, tt_x)
+        
+        tt_tfm =  np.r_[np.c_[tt_x, tt_y, tt_z, tt_org], np.array([[0,0,0,1]])]
+        
+        master = self.transform_graph.node['master']['graph']
+        master.add_node('tool_tip')
+        master.add_edge('cor', 'tool_tip')
+        master.add_edge('tool_tip', 'cor')
+        
+        master.edge['cor']['tool_tip']['tfm'] = tt_tfm
+        master.edge['tool_tip']['cor']['tfm'] = nlg.inv(tt_tfm)
+        
+        for node in master.nodes_iter():
+            if node == 'cor' or node == 'tool_tip': continue
+            master.add_edge(node, 'tool_tip')
+            master.add_edge('tool_tip', node)
+            
+            tfm = master.edge[node]['cor']['tfm'].dot(tt_tfm)
+        
+            master.edge[node]['tool_tip']['tfm'] = tfm
+            master.edge['tool_tip'][node]['tfm'] = nlg.inv(tfm)
+            
+        self.tt_calculated = True
+
+        
+    def get_tool_tip_transform(self, marker_tfms, theta):
+        """
+        Get tool tip transfrom from dict of visible markers to transforms
+        Also provide the angle of gripper (half of what is seen by pot)
+        Don't need it if only master transform is visible.
+        m has to be on one of the 'master,'l' or 'r' groups
+        """
+        if self.tt_calculated is False:
+            redprint ("Tool tip transform not calibrated.")
+            return
+
+        masterg = self.transform_graph.node['master']['graph']
+
+        avg_tfms = []
+        
+        for m in marker_tfms:
+            if m in masterg:
+                tt_tfm = masterg.edge[m]['tool_tip']['tfm']
+            elif m in self.transform_graph.node['l']['graph']:
+                tt_tfm = self.transform_graph.edge['l']['master']['tfm_func'](m,'tool_tip', theta)
+            elif m in self.transform_graph.node['r']['graph']:
+                tt_tfm = self.transform_graph.edge['r']['master']['tfm_func'](m,'tool_tip', theta)
+            else:
+                redprint('Marker not on gripper.')
+                return
+            avg_tfms.append(marker_tfms[m].dot(tt_tfm))
+            
+        return utils.avg_transform(avg_tfms)
+    
+    def get_rel_transform(self, m1, m2):
+        """
+        Return relative transform between any two markers on gripper.
+        """
+        masterg = self.transform_graph.node['master']['graph']
+
+        if m1 in masterg:
+            tfm1 = masterg.edge[m1]['cor']['tfm']
+        elif m1 in self.transform_graph.node['l']['graph']:
+            tfm1 = self.transform_graph.edge['l']['master']['tfm_func'](m1,'cor', theta)
+        elif m1 in self.transform_graph.node['r']['graph']:
+            tfm1 = self.transform_graph.edge['r']['master']['tfm_func'](m1,'cor', theta)
+        else:
+            redprint('Marker %s not on gripper.'%m1)
+            return
+
+        if m2 in masterg:
+            tfm2 = masterg.edge['cor'][m2]['tfm']
+        elif m2 in self.transform_graph.node['l']['graph']:
+            tfm2 = self.transform_graph.edge['master']['l']['tfm_func']('cor', m2, theta)
+        elif m2 in self.transform_graph.node['r']['graph']:
+            tfm2 = self.transform_graph.edge['master']['r']['tfm_func']('cor', m2, theta)
+        else:
+            redprint('Marker %s not on gripper.'%m2)
+            return
+        
+        return tfm1.dot(tfm2)
+
+
+class GripperCalibrator:
     
     calib_info = None
+    
+    lr = None
     
     masterGraph = None
     transform_graph = None
@@ -483,10 +603,13 @@ class gripper_calibrator:
     
     tt_calculated = False
     
-    def __init__(self, cameras, calib_info=None, parent_frame = 'camera1_rgb_optical_frame'):
+    gripper = None
+    
+    def __init__(self, cameras, lr = 'l', calib_info=None, parent_frame = 'camera1_rgb_optical_frame'):
         self.cameras = cameras
         self.parent_frame = parent_frame
         self.calib_info = calib_info
+        self.lr = lr
     
     def update_calib_info (self, calib_info):
         self.reset_calibration()
@@ -566,122 +689,7 @@ class gripper_calibrator:
 
         assert is_ready (self.masterGraph, min_obs)
         self.calibrated = self.finish_calibration()
-    
-    # Test me...
-    def calculate_tool_tip_transform (self, m1, m2):
-        """
-        Assuming that the gripper has "master", "l" and "r"
-        m1 and m2 are markers on the tool tip. 
-        """
-        if not self.calibrated:
-            redprint("Gripper not calibrated.")
-            return
 
-        if m1 in self.transform_graph.node['r']['graph']:
-            assert m2 in self.transform_graph.node['l']['graph']
-            m1, m2 = m2, m1
-        else:
-            assert m1 in self.transform_graph.node['l']['graph']
-            assert m2 in self.transform_graph.node['r']['graph']
-
-        # Assume that the origin of the tool tip transform is the avg
-        # point of fingers when they're at an angle of 0
-        ltfm = self.transform_graph.edge['master']['l']['tfm_func']('cor', m1,0)
-        rtfm = self.transform_graph.edge['master']['r']['tfm_func']('cor', m2,0)
-        
-        lorg = ltfm[0:3,3]
-        rorg = ltfm[0:3,3]
-        tt_org = (lorg+rorg)/2.0
-        
-        # x axis (pointing axis) is the projection of vector from cor to tt_org on the xy plane.
-        # Since we're in the 'cor' frame, it's just the direction vector tt_org itself.
-        tt_x = tt_org/nlg.norm(tt_org)
-        # z axis is the same as cor
-        tt_z = np.array([0,0,1])
-        tt_y = np.cross(tt_z, tt_x)
-        
-        tt_tfm =  np.r_[np.c_[tt_x, tt_y, tt_z, tt_org], np.array([[0,0,0,1]])]
-        
-        master = self.transform_graph.node['master']['graph']
-        master.add_node('tool_tip')
-        master.add_edge('cor', 'tool_tip')
-        master.add_edge('tool_tip', 'cor')
-        
-        master.edge['cor']['tool_tip']['tfm'] = tt_tfm
-        master.edge['tool_tip']['cor']['tfm'] = nlg.inv(tt_tfm)
-        
-        for node in master.nodes_iter():
-            if node == 'cor' or node == 'tool_tip': continue
-            master.add_edge(node, 'tool_tip')
-            master.add_edge('tool_tip', node)
-            
-            tfm = master.edge[node]['cor']['tfm'].dot(tt_tfm)
-        
-            master.edge[node]['tool_tip']['tfm'] = tfm
-            master.edge['tool_tip'][node]['tfm'] = nlg.inv(tfm)
-            
-        self.tt_calculated = True
-        
-    
-    def get_tool_tip_transform(self, marker_tfms, theta):
-        """
-        Get tool tip transfrom from dict of visible markers to transforms
-        Also provide the angle of gripper (half of what is seen by pot)
-        Don't need it if only master transform is visible.
-        m has to be on one of the 'master,'l' or 'r' groups
-        """
-        if self.tt_calculated is None:
-            redprint("Tool tip transform not calculated.")
-        
-        masterg = self.transform_graph.node['master']['graph']
-
-        avg_tfms = []
-        
-        for m in marker_tfms:
-            if m in masterg:
-                tt_tfm = masterg.edge[m]['tool_tip']['tfm']
-            elif m in self.transform_graph.node['l']['graph']:
-                tt_tfm = self.transform_graph.edge['l']['master']['tfm_func'](m,'tool_tip', theta)
-            elif m in self.transform_graph.node['r']['graph']:
-                tt_tfm = self.transform_graph.edge['r']['master']['tfm_func'](m,'tool_tip', theta)
-            else:
-                redprint('Marker not on gripper.')
-                return
-            avg_tfms.append(marker_tfms[m].dot(tt_tfm))
-            
-        return utils.avg_transform(avg_tfms)
-    
-    def get_rel_transform(self, m1, m2):
-        """
-        Return relative transform between any two markers on gripper.
-        """
-        if not self.calibrated:
-            redprint("Gripper not calibrated.")
-            return
-
-        masterg = self.transform_graph.node['master']['graph']
-
-        if m1 in masterg:
-            tfm1 = masterg.edge[m1]['cor']['tfm']
-        elif m1 in self.transform_graph.node['l']['graph']:
-            tfm1 = self.transform_graph.edge['l']['master']['tfm_func'](m1,'cor', theta)
-        elif m1 in self.transform_graph.node['r']['graph']:
-            tfm1 = self.transform_graph.edge['r']['master']['tfm_func'](m1,'cor', theta)
-        else:
-            redprint('Marker %s not on gripper.'%m1)
-            return
-
-        if m2 in masterg:
-            tfm2 = masterg.edge['cor'][m2]['tfm']
-        elif m2 in self.transform_graph.node['l']['graph']:
-            tfm2 = self.transform_graph.edge['master']['l']['tfm_func']('cor', m2, theta)
-        elif m2 in self.transform_graph.node['r']['graph']:
-            tfm2 = self.transform_graph.edge['master']['r']['tfm_func']('cor', m2, theta)
-        else:
-            redprint('Marker %s not on gripper.'%m2)
-            return
-        
-        return tfm1.dot(tfm2)
 
     def reset_calibration (self):
         self.calibrated = False
@@ -700,3 +708,12 @@ class gripper_calibrator:
             return
 
         return self.transform_graph
+
+    def get_gripper (self):
+        if not self.calibrated:
+            redprint("Gripper not calibrated.")
+            return
+        if self.gripper is None:
+            self.gripper = Gripper(self.lr, self.transform_graph)
+        
+        return self.gripper

@@ -88,7 +88,7 @@ def convert_hmats_to_points (hmats):
         
     return points
 
-class camera_calibrator:
+class CameraCalibrator:
     """
     This class uses Cyni to calibrate between cameras.
     """

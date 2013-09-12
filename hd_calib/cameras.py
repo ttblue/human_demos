@@ -10,7 +10,7 @@ from ar_track_alvar.msg import AlvarMarkers
 from hd_utils.colorize import *
 from hd_utils import conversions, utils
 
-class ar_markers_ros:
+class ARMarkersRos:
     """
     Class to store the latest message from ar topic for a given camera.
     """
@@ -67,7 +67,7 @@ class ar_markers_ros:
 
         return marker_transforms
 
-class ros_cameras:
+class RosCameras:
     """
     This class uses ROS to get camera data.
     """
@@ -94,7 +94,7 @@ class ros_cameras:
         
         for i in xrange(self.num_cameras):
             self.camera_frames[i] = camera_frame%(i+1)
-            self.camera_markers[i] = ar_markers_ros(camera_frame%(i+1))
+            self.camera_markers[i] = ARMarkersRos(camera_frame%(i+1))
                 
         self.parent_frame = 'camera1_rgb_optical_frame'
     

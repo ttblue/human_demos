@@ -15,7 +15,7 @@ import get_marker_transforms as gmt
 
 np.set_printoptions(precision=5, suppress=True)
 
-class hydra_calibrator:
+class HydraCalibrator:
     
     # Not dealing with some other parent frame for now. Simple addition
     parent_frame = {}

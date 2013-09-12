@@ -2,6 +2,7 @@
 import numpy as np
 from threading import Thread
 import time
+import cPickle
 
 import roslib, rospy
 roslib.load_manifest('tf')
@@ -12,10 +13,10 @@ from hd_utils.colorize import *
 from hd_utils.yes_or_no import yes_or_no
 from hd_utils import conversions, clouds, ros_utils as ru
 
-from cameras import ros_cameras
-from camera_calibration import camera_calibrator
-from hydra_calibration import hydra_calibrator
-from gripper_calibration import gripper_calibrator
+from cameras import RosCameras
+from camera_calibration import CameraCalibrator
+from hydra_calibration import HydraCalibrator
+from gripper_calibration import GripperCalibrator
 import get_marker_transforms as gmt
 
 np.set_printoptions(precision=5, suppress=True)
@@ -39,9 +40,9 @@ Steps to be taken:
 """
 asus_xtion_pro_f = 544.260779961
 
-class transform_publisher(Thread):
+class CalibratedTransformPublisher(Thread):
 
-    def __init__(self, cameras=None):
+    def __init__(self):
         Thread.__init__(self)
         
         if rospy.get_name() == '/unnamed':
@@ -51,6 +52,7 @@ class transform_publisher(Thread):
         self.ready = False
         self.rate = 30.0
         self.tf_broadcaster = tf.TransformBroadcaster()
+        self.grippers = {}
 
     def run (self):
         """
@@ -75,6 +77,46 @@ class transform_publisher(Thread):
             trans, rot = conversions.hmat_to_trans_rot(transform['tfm'])
             self.transforms[transform['parent'],transform['child']] = (trans,rot)
         self.ready = True
+        
+    def add_gripper (self, gripper):
+        self.gripper_graphs[gripper.lr] = gripper
+        
+    def reset (self):
+        self.ready = False
+        self.transforms = {}
+        self.grippers = {}
+        
+    def load_calibration(self, file):
+        """
+        Use this if experimental setup has not changed.
+        Load files which have been saved by this class. Specific format involved.
+        """
+        self.reset()
+        
+        with open(file,'r') as fh: calib_data = cPickle.load(file)
+        for gripper in calib_data['grippers']:
+            self.add_gripper(gripper)    
+        self.add_transforms(calib_data['transforms'])
+        
+    def save_calibration(self, file):
+        """
+        Save the transforms and the gripper data from this current calibration.
+        This assumes that the entire calibration data is stored in this class.
+        """
+        
+        calib_data = {}
+        calib_data['grippers'] = self.grippers.values()
+        calib_transforms = []
+        for parent, child in self.transforms:
+            tfm = {}
+            tfm['parent'] = parent
+            tfm['child'] = child
+            trans, rot = self.transforms[parent, child]
+            tfm['tfm'] = conversions.trans_rot_to_hmat(trans, rot)
+            calib_transforms.append(tfm)
+        
+        calib_data['transforms'] = calib_transforms
+        with open(file, 'w') as fh: cPickle.dump(calib_data, fh)
 
 #Global variables
 cameras = None
@@ -88,7 +130,7 @@ def calibrate_cameras ():
     global cameras, tfm_pub
     
     greenprint("Step 1. Calibrating mutliple cameras.")
-    cam_calib = camera_calibrator(cameras)
+    cam_calib = CameraCalibrator(cameras)
 
     done = False
     while not done:
@@ -117,7 +159,7 @@ def calibrate_hydras ():
     
     greenprint("Step 2. Calibrating hydra and kinect.")
     HYDRA_AR_MARKER = input('Enter the ar_marker you are using for calibration.')
-    hydra_calib = hydra_calibrator(cameras, ar_marker = HYDRA_AR_MARKER, calib_camera=CALIB_CAMERA)
+    hydra_calib = HydraCalibrator(cameras, ar_marker = HYDRA_AR_MARKER, calib_camera=CALIB_CAMERA)
 
     done = False
     while not done:
@@ -145,7 +187,7 @@ def calibrate_grippers ():
     greenprint("Step 3. Calibrating relative transforms of markers on gripper.")
 
     greenprint("Step 3.1 Calibrate l gripper.")
-    l_gripper_calib = gripper_calibrator(cameras)
+    l_gripper_calib = GripperCalibrator(cameras, 'l')
     
     # create calib_info based on gripper here
     calib_info = {'master':{'ar_markers':[0,1],
@@ -170,11 +212,13 @@ def calibrate_grippers ():
         else:
             yellowprint("Calibrating l gripper again.")
             l_gripper_calib.reset_calibration()
-            
+    
+    tfm_pub.add_gripper(l_gripper_calib.get_gripper())
+
     greenprint("Done with l gripper calibration.")
 
     greenprint("Step 3.2 Calibrate r gripper.")
-    r_gripper_calib = gripper_calibrator(cameras)
+    r_gripper_calib = GripperCalibrator(cameras, 'r')
     
     # create calib_info based on gripper here
     calib_info = {'master':{'ar_markers':[0,1],
@@ -199,7 +243,9 @@ def calibrate_grippers ():
         else:
             yellowprint("Calibrating r gripper again.")
             r_gripper_calib.reset_calibration()
-
+    
+    tfm_pub.add_gripper(r_gripper_calib.get_gripper())
+                        
     greenprint("Done with r gripper calibration.")
 
 
@@ -207,13 +253,13 @@ NUM_CAMERAS = 1
 def initialize_calibration():
     global cameras, tfm_pub
     rospy.init_node('calibration')
-    tfm_pub = transform_publisher()
+    tfm_pub = CalibratedTransformPublisher()
     tfm_pub.start()
-    cameras = ros_cameras(num_cameras=NUM_CAMERAS)
+    cameras = RosCameras(num_cameras=NUM_CAMERAS)
 
 
 
-def run_calibration_sequence ():
+def run_calibration_sequence (spin=False):
         
     yellowprint("Beginning calibration sequence.")
     calibrate_cameras()
@@ -222,6 +268,6 @@ def run_calibration_sequence ():
 
     greenprint("Done with all the calibration.")
     
-    while True:
+    while True and spin:
         # stall
         time.sleep(0.1)
