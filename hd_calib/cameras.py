@@ -15,7 +15,9 @@ class ar_markers_ros:
     Class to store the latest message from ar topic for a given camera.
     """
     latest_markers = None
-    latest_time = 0
+    latest_time = 0.0
+    freq = 0.0
+    alpha = 0.8
     
     def __init__(self, camera_frame):
         
@@ -34,9 +36,20 @@ class ar_markers_ros:
         if len(data.markers) == 0:
             return
         self.latest_markers = data
-        self.latest_time = data.header.stamp.to_sec()
+        if self.latest_time == 0.0:
+            self.latest_time = data.header.stamp.to_sec()
+        else:
+            time_now = data.header.stamp.to_sec()
+            if self.freq == 0.0:
+                self.freq = 1.0/(time_now - self.latest_time)
+            else:
+                self.freq = (1-self.alpha)*self.freq + self.alpha/(time_now - self.latest_time)
+            self.latest_time = time_now
+    
+    def get_frequency (self):
+        return self.freq 
         
-    def get_marker_transforms(self, markers=None, time_thresh=1):
+    def get_marker_transforms(self, markers=None, time_thresh=0.5):
         """
         Threshold represents the tolerance for stale transforms.
         """
