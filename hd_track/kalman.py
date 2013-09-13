@@ -290,7 +290,7 @@ class kalman:
             C2,Q2   = self.get_hydra_mats()
 
             z_obs = np.c_['0,2', p1, th1, p2, th2]
-            C = scl.block_diag(C1, C2)
+            C = np.r_[C1, C2]
             Q = scl.block_diag(Q1, Q2)
 
         if (z_obs != None and C!=None and Q!=None):
