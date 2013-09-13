@@ -53,3 +53,6 @@ nosetests.xml
 # not sure about this:
 *.not_sure/*
 *.settings/*
+
+# emacs tmp files:
+*~*
