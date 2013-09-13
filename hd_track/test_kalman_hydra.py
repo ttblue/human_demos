@@ -14,7 +14,7 @@ import scipy.linalg as scl
 from l1 import l1
 import cvxopt as cvx 
 
-data_dir = '/home/henrylu/henry_sandbox/human_demos/hd_track/data/'
+data_dir = '/home/ankush/sandbox444/human_demos/hd_track/data/'
 
 
 def run_kalman(T_obs, x_init, covar_init, f=30.):
@@ -128,7 +128,7 @@ def fit_calib_auto(X_bh, X_bg_gh, do_l1=False):
         plt.clf()
         W = np.empty((6, 2*k+1))    
         for i in xrange(6):
-            j = i+4 if i > 2 else i
+            j = i+3 if i > 2 else i
             Ai, bi, W[i,:] = fit_auto(X_bh[j,:], X_bg_gh[j,:], k, do_l1)
             est = Ai.dot(W[i,:])
             print "  norm err : ", np.linalg.norm(bi - est)
@@ -140,8 +140,8 @@ def fit_calib_auto(X_bh, X_bg_gh, do_l1=False):
             plt.ylabel(axlabels[i])
             plt.legend()
         plt.show()
-        
-    
+
+
 def show_regress(do_l1=False):
     Ts_bh, Ts_bg, T_gh, Ts_bg_gh, X_bh, X_bg_gh = load_data()
     fit_calib_auto(X_bh, X_bg_gh, do_l1)
@@ -165,6 +165,31 @@ def load_data():
     X_bg_gh[6:9,:] = closer_angle(X_bg_gh[6:9,:], X_bh[6:9,:])
 
     return (Ts_bh, Ts_bg, T_gh, Ts_bg_gh, X_bh, X_bg_gh) 
+
+
+def plot_complete():
+    """
+    Plots the complete data : hydra, pr2, marker.
+    """
+    dt = 1./30.
+
+    ## load pr2-hydra calib data:
+    dat = cPickle.load(open(osp.join(data_dir, 'good_calib_hydra_pr2/pr2-hydra-combined-dat.cpickle')))
+    Ts_bh = dat['Ts_bh']
+    Ts_bg = dat['Ts_bg']
+    T_gh = cPickle.load(open(osp.join(data_dir, 'good_calib_hydra_pr2/T_gh')))
+
+    assert len(Ts_bg) == len(Ts_bh), "Number of hydra and pr2 transforms not equal."
+    Ts_bg_gh = [t.dot(T_gh) for t in Ts_bg]   
+    
+    X_bh    = state_from_tfms(Ts_bh, dt).T
+    X_bg_gh = state_from_tfms(Ts_bg_gh, dt).T
+
+
+    X_bg_gh[6:9,:] = closer_angle(X_bg_gh[6:9,:], X_bh[6:9,:])
+
+    return (Ts_bh, Ts_bg, T_gh, Ts_bg_gh, X_bh, X_bg_gh) 
+    
 
 
 def run_kf_and_plot():

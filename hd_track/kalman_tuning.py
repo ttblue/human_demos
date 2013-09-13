@@ -134,27 +134,26 @@ def fit_hydra_noise(Ts_bg, Ts_bh, T_gh, f):
     
 def fit_ar_noise(Ts_ba, Ts_bg, T_ga, f):
     """
-    Similar to the function above. 
+    Similar to the function above for fitting hydra-noise covariance. 
     """
     dt = 1./f
-    
-    raise NotImplementedError()
 
-    """
-    assert len(Ts_bg) == len(Ts_bh), "Number of hydra and pr2 transforms not equal."
-    Ts_bg_gh = [t.dot(T_gh) for t in Ts_bg]
+    raise NotImplementedError()
+    
+    assert len(Ts_bg) == len(Ts_ba), "Number of hydra and pr2 transforms not equal."
+
+    Ts_bg_ga = [t.dot(T_ga) for t in Ts_bg]
 
     ## extract the full state vector:    
-    X_bh    = state_from_tfms(Ts_bh, dt).T
-    X_bg_gh = state_from_tfms(Ts_bg_gh, dt).T
-    X_bg_gh[6:9,:] = closer_angle(X_bg_gh[6:9,:], X_bh[6:9,:])
+    X_ba    = state_from_tfms(Ts_ba, dt).T
+    X_bg_ga = state_from_tfms(Ts_bg_ga, dt).T
+    X_bg_ga[6:9,:] = closer_angle(X_bg_ga[6:9,:], X_ba[6:9,:])
+
+    C = kalman().get_ar_mats()[0]
     
-    C = kalman().get_hydra_mats()[0]
-    
-    err = C.dot(X_bh) - C.dot(X_bg_gh)
+    err = C.dot(X_ba) - C.dot(X_bg_ga)
     covar = (err.dot(err.T))/err.shape[1]
     return (err, covar)
-    """
     
 
 def plot_hydra_data(Ts_bg, Ts_bh, T_gh, f):
@@ -192,7 +191,6 @@ def plot_hydra_data(Ts_bg, Ts_bh, T_gh, f):
 
 
 def plot_and_fit_hydra(plot=True, f=30.):
-    
     Ts_bh = []
     Ts_bg = []
     T_gh = cPickle.load(open('/home/ankush/sandbox444/human_demos/hd_track/data/good_calib_hydra_pr2/T_gh'))
@@ -207,7 +205,7 @@ def plot_and_fit_hydra(plot=True, f=30.):
         plot_hydra_data(Ts_bg, Ts_bh, T_gh, f)
 
     return fit_hydra_noise(Ts_bg, Ts_bh, T_gh, f)
-    
+
 
 def save_kalman_covars(out_file='./data/covars-xyz-rpy.cpickle'):
     """

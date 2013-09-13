@@ -66,7 +66,7 @@ class kalman:
         self.hydra_mat = np.zeros((6,12))
         self.hydra_mat[0:3, 0:3] = np.eye(3)
         self.hydra_mat[3:6, 6:9] = np.eye(3)
-        
+
         self.ar_mat = self.hydra_mat
 
 
@@ -293,6 +293,7 @@ class kalman:
             C = scl.block_diag(C1, C2)
             Q = scl.block_diag(Q1, Q2)
 
-        if (z_obs != None):
+        if (z_obs != None and C!=None and Q!=None):
             self.x_filt, self.S_filt = self.measurement_update(z_obs, C, Q, self.x_filt, self.S_filt)
-        
+
+
