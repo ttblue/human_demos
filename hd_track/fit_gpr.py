@@ -75,9 +75,9 @@ xh_2  = np.take(X_bh.T, [i for i in tst], axis=0)
 #A,B,C,D,E = Ts_bg_gh[:n_split], Ts_bh[:n_split],  X_bg_gh[6:9,:n_split].T, Ts_bh[n_split:], X_bg_gh[6:9,n_split:].T
 A,B,C,D,E = pr2_1, hy_1, xp_1, hy_2, xp_2
 
-hi_params = ec.train_hyperparams(A,B,C)
-cPickle.dump(hi_params, open('hyper-params.cpkl', 'wb')) ## save the hyper-parameters to a file.
-ests = ec.gp_correct_poses(A,B,C,D,E, hi_params)
+#hi_params = ec.train_hyperparams(A,B,C)
+#cPickle.dump(hi_params, open('hyper-params.cpkl', 'wb')) ## save the hyper-parameters to a file.
+ests = ec.gp_correct_poses(A,B,C,D,E, None)
 X_est = state_from_tfms(ests, dt=1./30.).T
 X_est = np.c_[X_est[:,0], X_est]
 
