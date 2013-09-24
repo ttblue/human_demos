@@ -9,7 +9,7 @@ from hd_utils import transformations as tfms
 import argparse
 import matplotlib.pylab as plt
 import os.path as osp
-from kalman_tuning import state_from_tfms, closer_angle
+from kalman_tuning import state_from_tfms, closer_angle, state_from_tfms_no_velocity
 import scipy.linalg as scl
 from l1 import l1
 import cvxopt as cvx
@@ -45,7 +45,7 @@ Runs the kalman filter using just the observations from hydra.
     return estimates
 
 
-def plot_kalman(X_kf, X_bh_hg, X_bg):
+def plot_kalman(X_kf, X_bh_hg, X_bg, X_ba_ag_t, valid_stamps):
     """
 Plots the Kalman filter belief (X_kf), the observed states (X_bh),
 the true states (from PR2, X_bg_gh).
@@ -60,6 +60,7 @@ the true states (from PR2, X_bg_gh).
         plt.plot(X_kf[i,:], label='kalman')
         plt.plot(X_bh_hg[i,:], label='hydra')
         plt.plot(X_bg[i,:], label='pr2')
+        plt.plot(valid_stamps, X_ba_ag_t[i,:], '.', label='ar_marker')
         plt.ylabel(axlabels[i])
         plt.legend()
     
@@ -163,19 +164,28 @@ def load_data():
     assert len(Ts_bg) == len(Ts_bh), "Number of hydra and pr2 transforms not equal."
     Ts_bh_hg = [t.dot(np.linalg.inv(T_gh)) for t in Ts_bh]
     Ts_ba_ag = []
-    for t in Ts_ba:
+    ar_valid_stamps = []
+    Ts_ba_ag_t = []
+    for i in xrange(len(Ts_ba)):
+        t = Ts_ba[i]
         if t == None:
             Ts_ba_ag.append(None)
         else:
             Ts_ba_ag.append(t.dot(np.linalg.inv(T_ga)))
+            Ts_ba_ag_t.append(t.dot(np.linalg.inv(T_ga)))
+            ar_valid_stamps.append(i)
     
     X_bg = state_from_tfms(Ts_bg, dt).T
     X_bh_hg = state_from_tfms(Ts_bh_hg, dt).T
-    
+    X_ba_ag_t = state_from_tfms_no_velocity(Ts_ba_ag_t).T
+    ar_valid_stamps = ar_valid_stamps[1:]
 
+    print X_bg.shape
+    print X_ba_ag_t.shape
+    print len(ar_valid_stamps)
     X_bh_hg[6:9,:] = closer_angle(X_bh_hg[6:9,:], X_bg[6:9,:])
 
-    return (Ts_bh, Ts_bg, T_gh, Ts_bh_hg, X_bg, X_bh_hg, Ts_ba_ag)
+    return (Ts_bh, Ts_bg, T_gh, Ts_bh_hg, X_bg, X_bh_hg, Ts_ba_ag, X_ba_ag_t, ar_valid_stamps)
     
 
 
@@ -184,7 +194,7 @@ def run_kf_and_plot():
 Runs the kalman filter and plots the results.
 """
     dt = 1/30.
-    Ts_bh, Ts_bg, T_gh, Ts_bh_hg, X_bg, X_bh_hg, Ts_ba_ag = load_data()
+    Ts_bh, Ts_bg, T_gh, Ts_bh_hg, X_bg, X_bh_hg, Ts_ba_ag, X_ba_ag_t, ar_valid_stamps  = load_data()
    
     ## initialize the kalman belief:
     x_init = X_bg[:,0]
@@ -199,5 +209,5 @@ Runs the kalman filter and plots the results.
     X_kf = np.reshape(X_kf, (X_kf.shape[0], X_kf.shape[1])).T
     
     ## plot the results:
-    plot_kalman(X_kf[:,1:], X_bh_hg, X_bg)
+    plot_kalman(X_kf[:,1:], X_bh_hg, X_bg, X_ba_ag_t, ar_valid_stamps)
     plt.show()
