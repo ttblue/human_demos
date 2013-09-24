@@ -17,12 +17,20 @@ import get_marker_transforms as gmt
 
 np.set_printoptions(precision=5, suppress=True)
 
+VERBOSE = 1
+
 def update_graph_from_observations(G, tfms):
     """
     Updates transform graph @G based on the observations @tfms, which is a dict from 
     marker ids (or names) to transforms all in the same coordinate frame. 
     """
+    
     ids = tfms.keys()
+    
+    if len(ids) == 1:
+        G.add_node(ids[0])
+        return
+    
     ids.sort()
     
     for i,j in itertools.combinations(ids, 2):
@@ -86,13 +94,30 @@ def is_ready (masterGraph, min_obs=5):
     """
     for group in masterGraph.nodes_iter():
         G = masterGraph.node[group]["graph"]
+        if not G: 
+            if VERBOSE: print group, "graph is null"
+            return False
         if nx.is_connected(G) and G.number_of_nodes() == len(masterGraph.node[group]["markers"]):
             for i,j in G.edges_iter():
                 if G.edge[i][j]['n'] < min_obs:
+                    if VERBOSE:
+                        print "edge", i, j, "of", group, "has only", G.edge[i][j]['n'], "observations"
                     return False
+        else:
+            if VERBOSE:
+                print group, "is not connected or does not have enough nodes"
+            return false        
+        
                 
     for i,j in masterGraph.edges_iter():
         if masterGraph.edge[i][j]['n'] < min_obs:
+            if VERBOSE:
+                print "edge", i, j, "of masterGraph has only ", masterGraph.edge[i][j]['n'], "observations"
+            return False
+        preadings = len(masterGraph.edge[i][j]["transform_list"])
+        if preadings < min_obs:
+            if VERBOSE:
+                print "edge", i, j, "of masterGraph has only ", preadings, "pot readings"
             return False
     return True
 
@@ -101,6 +126,9 @@ def optimize_transforms (G):
     Optimize for transforms in G. Assumes G is_ready.
     Returns a clique with relative transforms between all objects.
     """
+
+    if G.number_of_edges == 0:
+        return G.to_directed()
 
     # Index maps from nodes and edges in the optimizer variable X.
     # Also calculate the reverse map if needed.
@@ -346,7 +374,7 @@ def optimize_master_transforms (mG, init=None):
     print "Initial x: ", x_init
     print "Initial objective: ", f_objective(x_init)
     
-    (X, fx, _, _, _) = sco.fmin_slsqp(func=f_objective, x0=x_init, f_eqcons=f_constraints, iter=200, full_output=1, iprint=2)
+    (X, fx, _, _, _) = sco.fmin_slsqp(func=f_objective, x0=x_init, f_eqcons=f_constraints, iter=20, full_output=1, iprint=2)
     
     mG_opt = nx.DiGraph()
     ## modify master graph
@@ -380,6 +408,28 @@ def optimize_master_transforms (mG, init=None):
     mG_opt.node[master]["primary"] = "cor"
     mG_opt.node[master]["master"] = 1
     ## add edges to the rest
+    
+    class tfmClass():
+        def __init__(self, _group):
+            self.group = _group
+            self.childN = mG_opt.node[group]
+        
+        def get_tfm(self, master_node, child_node, angle):
+            # angle in degrees
+            mtfm = masterG.edge[master_node]["cor"]['tfm']
+            angle = utils.rad_angle(angle)
+            rot = np.eye(4)
+            rot[0:3,0:3] = utils.rotation_matrix(np.array([0,0,1]), angle*self.childN["angle_scale"])
+            ctfm = self.childN["graph"].edge[self.childN["primary"]][child_node]['tfm']
+
+            return mtfm.dot(rot).dot(mG_opt.edge[master][self.group]['tfm']).dot(ctfm)
+
+        def get_tfm_inv(self, child_node, master_node, angle):
+            # angle in degrees
+            return nlg.inv(self.get_tfm(master_node,child_node,angle))
+
+            
+    
     for group in mG.nodes_iter():
         if group == master: continue
         mG_opt.add_edge(master, group)
@@ -391,26 +441,10 @@ def optimize_master_transforms (mG, init=None):
         tfm = np.r_[get_mat_from_node(X, group), np.array([[0,0,0,1]])]
         mG_opt.edge[group][master]['tfm'] = tfm
         mG_opt.edge[master][group]['tfm'] = nlg.inv(tfm)
-        
-        def get_tfm(master_node, child_node, angle):
-            # angle in degrees
-            mprimary_node = mG_opt.node[master]["primary"]
-            #print masterG.edge[master_node][mprimary_node]
-            mtfm = masterG.edge[master_node][mprimary_node]['tfm']
-            angle = utils.rad_angle(angle)
-            rot = np.eye(4)
-            rot[0:3,0:3] = utils.rotation_matrix(np.array([0,0,1]), angle*mG_opt.node[group]["angle_scale"])
-            cprimary_node = mG_opt.node[group]["primary"]
-            ctfm = mG_opt.node[group]["graph"].edge[cprimary_node][child_node]['tfm']
 
-            return mtfm.dot(rot).dot(mG_opt.edge[master][group]['tfm']).dot(ctfm)
-        
-        def get_tfm_inv(child_node, master_node, angle):
-            # angle in degrees
-            return nlg.inv(get_tfm(master_node,child_node,angle))
-        
-        mG_opt.edge[master][group]['tfm_func'] = get_tfm
-        mG_opt.edge[group][master]['tfm_func'] = get_tfm_inv
+        tfmFuncs = tfmClass(group)
+        mG_opt.edge[master][group]['tfm_func'] = tfmFuncs.get_tfm
+        mG_opt.edge[group][master]['tfm_func'] = tfmFuncs.get_tfm_inv
         
     return mG_opt
                 
@@ -470,9 +504,18 @@ class Gripper:
     transform_graph = None
     tt_calculated = False
     lr = None
+    mmarkers = []
+    lmarkers = []
+    rmarkers = []
+    allmarkers = []
     
     def __init__ (self, lr, transform_graph):
         self.transform_graph = transform_graph
+        self.mmarkers = self.transform_graph.node['master']['graph'].nodes()
+        self.lmarkers = self.transform_graph.node['l']['graph'].nodes()
+        self.rmarkers = self.transform_graph.node['r']['graph'].nodes()
+        self.allmarkers = self.mmarkers + self.rmarkers + self.lmarkers
+        self.lr = lr
         
     
     def calculate_tool_tip_transform (self, m1, m2):
@@ -480,12 +523,12 @@ class Gripper:
         Assuming that the gripper has "master", "l" and "r"
         m1 and m2 are markers on the tool tip. 
         """
-        if m1 in self.transform_graph.node['r']['graph']:
-            assert m2 in self.transform_graph.node['l']['graph']
+        if m1 in self.rmarkers:
+            assert m2 in self.lmarkers
             m1, m2 = m2, m1
         else:
-            assert m1 in self.transform_graph.node['l']['graph']
-            assert m2 in self.transform_graph.node['r']['graph']
+            assert m1 in self.lmarkers
+            assert m2 in self.rmarkers
 
         # Assume that the origin of the tool tip transform is the avg
         # point of fingers when they're at an angle of 0
@@ -542,11 +585,11 @@ class Gripper:
         avg_tfms = []
         
         for m in marker_tfms:
-            if m in masterg:
+            if m in self.mmarkers:
                 tt_tfm = masterg.edge[m]['tool_tip']['tfm']
-            elif m in self.transform_graph.node['l']['graph']:
+            elif m in self.lmarkers:
                 tt_tfm = self.transform_graph.edge['l']['master']['tfm_func'](m,'tool_tip', theta)
-            elif m in self.transform_graph.node['r']['graph']:
+            elif m in self.rmarkers:
                 tt_tfm = self.transform_graph.edge['r']['master']['tfm_func'](m,'tool_tip', theta)
             else:
                 redprint('Marker not on gripper.')
@@ -555,33 +598,64 @@ class Gripper:
             
         return utils.avg_transform(avg_tfms)
     
-    def get_rel_transform(self, m1, m2):
+    def get_rel_transform(self, m1, m2, theta):
         """
         Return relative transform between any two markers on gripper.
         """
         masterg = self.transform_graph.node['master']['graph']
 
-        if m1 in masterg:
+        if m1 in self.mmarkers:
             tfm1 = masterg.edge[m1]['cor']['tfm']
-        elif m1 in self.transform_graph.node['l']['graph']:
+        elif m1 in self.lmarkers:
             tfm1 = self.transform_graph.edge['l']['master']['tfm_func'](m1,'cor', theta)
-        elif m1 in self.transform_graph.node['r']['graph']:
+        elif m1 in self.rmarkers:
             tfm1 = self.transform_graph.edge['r']['master']['tfm_func'](m1,'cor', theta)
         else:
             redprint('Marker %s not on gripper.'%m1)
             return
 
-        if m2 in masterg:
+        if m2 in self.mmarkers:
             tfm2 = masterg.edge['cor'][m2]['tfm']
-        elif m2 in self.transform_graph.node['l']['graph']:
+        elif m2 in self.lmarkers:
             tfm2 = self.transform_graph.edge['master']['l']['tfm_func']('cor', m2, theta)
-        elif m2 in self.transform_graph.node['r']['graph']:
+        elif m2 in self.rmarkers:
             tfm2 = self.transform_graph.edge['master']['r']['tfm_func']('cor', m2, theta)
         else:
             redprint('Marker %s not on gripper.'%m2)
             return
         
         return tfm1.dot(tfm2)
+    
+    def get_all_transforms(self, marker_tfms, theta, parent_frame):
+        """
+        From marker transforms given in parent_frame, get all transforms
+        of all markers on gripper.
+        """
+        
+        ret_tfms = []
+        
+        cor_avg_tfms = []
+        for m,tfm in marker_tfms.items():
+            if m in self.allmarkers:
+                cor_avg_tfms.append(tfm.dot(self.get_rel_transform(m,'cor', theta)))
+        
+        if len(cor_avg_tfms) == 0: return ret_tfms
+        
+        cor_tfm = utils.avg_transform(cor_avg_tfms)
+        ret_tfms.append({'parent':parent_frame, 
+                         'child':'%sgripper_%s'%(self.lr, 'cor'),
+                         'tfm':cor_tfm})
+
+        for m in self.allmarkers:
+            if m != 'cor':
+                tfm = self.get_rel_transform('cor', m, theta)
+                ret_tfms.append({'parent':parent_frame, 
+                                 'child':'%sgripper_%s'%(self.lr, m),
+                                 'tfm':cor_tfm.dot(tfm)})
+                
+        return ret_tfms
+        
+        
 
 
 class GripperCalibrator:
@@ -645,27 +719,44 @@ class GripperCalibrator:
         self.iterations += 1
         raw_input(colorize("Iteration %d: Press return when ready to capture transforms."%self.iterations, "red", True))
         
+        sleeper = rospy.Rate(30)
         avg_tfms = {}
-        for j in xrange(n_avg):
+        j = 0
+        thresh = n_avg*2
+        while j < n_avg:
             print colorize('\tGetting averaging transform : %d of %d ...'%(j,n_avg-1), "blue", True)            
 
             tfms = {}
             # Fuck the frames bullshit
-            tfms.update(self.cameras.get_ar_markers(markers=self.ar_markers))
-            tfms.update(gmt.get_hydra_transforms(parent_frame=parent_frame, hydras = self.hydras))
+            ar_tfm = self.cameras.get_ar_markers(markers=self.ar_markers)
+            hyd_tfm = gmt.get_hydra_transforms(parent_frame=self.parent_frame, hydras = self.hydras)
+            pot_angle = gmt.get_pot_angle()/2.0
+            
+            if not ar_tfm or not hyd_tfm:
+                yellowprint('Could not find all required transforms.')
+                thresh -= 1
+                if thresh == 0: return False
+                continue
+            
+            j += 1
+            tfms.update(ar_tfm)
+            tfms.update(hyd_tfm)
 
             # The angle relevant for each finger is only half the angle.
-            pot_angle = gmt.get_pot_angle()/2.0
+
                         
             for marker in tfms:
                 if marker not in avg_tfms:
                     avg_tfms[marker] = []
                 avg_tfms[marker].append(tfms[marker])
+                
+            sleeper.sleep()
         
         for marker in avg_tfms:
             avg_tfms[marker] = utils.avg_transform(avg_tfms[marker])
 
         update_groups_from_observations(self.masterGraph, avg_tfms, pot_angle)
+        return True
 
 
     def finish_calibration (self):
@@ -682,7 +773,10 @@ class GripperCalibrator:
         self.initialize_calibration()
 
         while True:
-            process_observation(n_avg)
+            worked = self.process_observation(n_avg)
+            if not worked:
+                yellowprint("Something went wrong. Try again.")
+                self.iterations -= 1
             if is_ready(self.masterGraph, min_obs):
                 if not yes_or_no("Enough data has been gathered. Would you like to gather more data anyway?"):
                     break

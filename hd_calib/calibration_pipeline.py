@@ -42,7 +42,7 @@ asus_xtion_pro_f = 544.260779961
 
 class CalibratedTransformPublisher(Thread):
 
-    def __init__(self):
+    def __init__(self, cameras=None):
         Thread.__init__(self)
         
         if rospy.get_name() == '/unnamed':
@@ -52,6 +52,8 @@ class CalibratedTransformPublisher(Thread):
         self.ready = False
         self.rate = 30.0
         self.tf_broadcaster = tf.TransformBroadcaster()
+        self.cameras = cameras
+        self.publish_grippers = False
         self.grippers = {}
 
     def run (self):
@@ -65,6 +67,8 @@ class CalibratedTransformPublisher(Thread):
                     self.tf_broadcaster.sendTransform(trans, rot,
                                                       rospy.Time.now(),
                                                       child, parent)
+                if self.publish_grippers:
+                    self.publish_gripper_tfms()
             time.sleep(1/self.rate)
 
     def add_transforms(self, transforms):
@@ -79,10 +83,36 @@ class CalibratedTransformPublisher(Thread):
         self.ready = True
         
     def add_gripper (self, gripper):
-        self.gripper_graphs[gripper.lr] = gripper
-        
+        self.grippers[gripper.lr] = gripper
+
+    def publish_gripper_tfms (self):
+        marker_tfms = self.cameras.get_ar_markers()
+        theta = gmt.get_pot_angle()/2.0
+        parent_frame = self.cameras.parent_frame
+
+        transforms = []
+        for gripper in self.grippers.values():
+            transforms += gripper.get_all_transforms(marker_tfms, theta, parent_frame)
+            
+        for transform in transforms:
+            trans, rot = conversions.hmat_to_trans_rot(transform['tfm'])
+            self.tf_broadcaster.sendTransform(trans, rot,
+                                              rospy.Time.now(),
+                                              transform['child'],
+                                              transform['parent'])
+
+    def set_publish_grippers(self, val=None):
+        """
+        Toggles by default
+        """
+        if val is None:
+            self.publish_grippers = not self.publish_grippers
+        else: self.publish_grippers = not not val
+
+
     def reset (self):
         self.ready = False
+        self.publish_grippers = False
         self.transforms = {}
         self.grippers = {}
         
@@ -150,8 +180,8 @@ def calibrate_cameras ():
 
     greenprint("Cameras calibrated.")
 
-HYDRA_N_OBS = 5
-HYDRA_N_AVG = 30
+HYDRA_N_OBS = 10
+HYDRA_N_AVG = 50
 CALIB_CAMERA = 0
 
 def calibrate_hydras ():
@@ -178,11 +208,12 @@ def calibrate_hydras ():
     greenprint("Hydra base calibrated.")
 
 
-GRIPPER_MIN_OBS = 5
-GRIPPER_N_AVG = 5
+GRIPPER_MIN_OBS = 2
+GRIPPER_N_AVG = 10
+l_gripper_calib = None
 
 def calibrate_grippers ():
-    global cameras, tfm_pub
+    global cameras, tfm_pub, l_gripper_calib
 
     greenprint("Step 3. Calibrating relative transforms of markers on gripper.")
 
@@ -190,13 +221,13 @@ def calibrate_grippers ():
     l_gripper_calib = GripperCalibrator(cameras, 'l')
     
     # create calib_info based on gripper here
-    calib_info = {'master':{'ar_markers':[0,1],
+    calib_info = {'master':{'ar_markers':[1],#,3,10,13],
                             'hydras':['left'],
                             'angle_scale':0,
                             'master_group':1},
-                  'l': {'ar_markers':[2,3,4],
+                  'l': {'ar_markers':[15],#,11],
                             'angle_scale':1},
-                  'r': {'ar_markers':[5,6,7],
+                  'r': {'ar_markers':[4],#,6],
                             'angle_scale':-1}}
     
     l_gripper_calib.update_calib_info(calib_info)
@@ -214,48 +245,51 @@ def calibrate_grippers ():
             l_gripper_calib.reset_calibration()
     
     tfm_pub.add_gripper(l_gripper_calib.get_gripper())
-
+    
+    tfm_pub.set_publish_grippers()
+    
     greenprint("Done with l gripper calibration.")
 
-    greenprint("Step 3.2 Calibrate r gripper.")
-    r_gripper_calib = GripperCalibrator(cameras, 'r')
-    
-    # create calib_info based on gripper here
-    calib_info = {'master':{'ar_markers':[0,1],
-                            'hydras':['left'],
-                            'angle_scale':0,
-                            'master_group':1},
-                  'l': {'ar_markers':[2,3,4],
-                            'angle_scale':1},
-                  'r': {'ar_markers':[5,6,7],
-                            'angle_scale':-1}}
-    
-    r_gripper_calib.update_calib_info(calib_info)
-    
-    done = False
-    while not done:
-        r_gripper_calib.calibrate(GRIPPER_MIN_OBS, GRIPPER_N_AVG)
-        if not r_gripper_calib.calibrated:
-            redprint("Gripper calibration failed.")
-            r_gripper_calib.reset_calibration()
-        if yes_or_no("Are you happy with the calibration?"):
-            done = True
-        else:
-            yellowprint("Calibrating r gripper again.")
-            r_gripper_calib.reset_calibration()
-    
-    tfm_pub.add_gripper(r_gripper_calib.get_gripper())
-                        
-    greenprint("Done with r gripper calibration.")
+#     greenprint("Step 3.2 Calibrate r gripper.")
+#     r_gripper_calib = GripperCalibrator(cameras, 'r')
+#     
+#     # create calib_info based on gripper here
+#     calib_info = {'master':{'ar_markers':[0,1],
+#                             'hydras':['left'],
+#                             'angle_scale':0,
+#                             'master_group':1},
+#                   'l': {'ar_markers':[2,3,4],
+#                             'angle_scale':1},
+#                   'r': {'ar_markers':[5,6,7],
+#                             'angle_scale':-1}}
+#     
+#     r_gripper_calib.update_calib_info(calib_info)
+#     
+#     done = False
+#     while not done:
+#         r_gripper_calib.calibrate(GRIPPER_MIN_OBS, GRIPPER_N_AVG)
+#         if not r_gripper_calib.calibrated:
+#             redprint("Gripper calibration failed.")
+#             r_gripper_calib.reset_calibration()
+#         if yes_or_no("Are you happy with the calibration?"):
+#             done = True
+#         else:
+#             yellowprint("Calibrating r gripper again.")
+#             r_gripper_calib.reset_calibration()
+#     
+#     tfm_pub.add_gripper(r_gripper_calib.get_gripper())
+#                         
+#     greenprint("Done with r gripper calibration.")
 
 
 NUM_CAMERAS = 1
 def initialize_calibration():
     global cameras, tfm_pub
     rospy.init_node('calibration')
-    tfm_pub = CalibratedTransformPublisher()
-    tfm_pub.start()
     cameras = RosCameras(num_cameras=NUM_CAMERAS)
+    tfm_pub = CalibratedTransformPublisher(cameras)
+    tfm_pub.start()
+
 
 
 
