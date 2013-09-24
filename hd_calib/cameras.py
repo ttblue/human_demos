@@ -58,18 +58,19 @@ class ARMarkersRos:
     def get_frequency (self):
         return self.freq 
         
-    def get_marker_transforms(self, markers=None, time_thresh=0.3):
+    def get_marker_transforms(self, markers=None, time_thresh=0.5, get_time=False):
         """
         Threshold represents the tolerance for stale transforms.
         """
-        if self.latest_markers is None: return {}
-        
         time_now = rospy.Time.now().to_sec()
+        if self.latest_markers is None or time_now - self.latest_time > time_thresh: 
+            if get_time:
+                return {}, self.latest_time
+            else:
+                return {}
         #print 1
         #print time_now
         #print 1
-
-        if time_now - self.latest_time > time_thresh: return {}
         
         if markers is None:
             marker_transforms = {marker.id:conversions.pose_to_hmat(marker.pose.pose)\
@@ -78,7 +79,10 @@ class ARMarkersRos:
             marker_transforms = {marker.id:conversions.pose_to_hmat(marker.pose.pose)\
                                  for marker in self.latest_markers.markers if marker.id in markers}
 
-        return marker_transforms
+        if not get_time:
+            return marker_transforms
+        else:
+            return marker_transforms, self.latest_time
 
 class RosCameras:
     """
