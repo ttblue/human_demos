@@ -85,7 +85,7 @@ class HydraCalibrator:
         calib_avg_tfm = []
         hydra_avg_tfm = []
         j = 0
-        thresh = n_avg*3
+        thresh = n_avg*2
         
         sleeper = rospy.Rate(30)
         while j < n_avg:

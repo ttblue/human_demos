@@ -133,16 +133,19 @@ def get_transform_frames (parent_frame, child_frame):
         trans, quat = listener.lookupTransform(parent_frame, child_frame, rospy.Time(0))
         return conversions.trans_rot_to_hmat(trans, quat)
 
-       
+
+b = 90.0       
+a = (330.0-b)/30.0
+
 def get_pot_angle ():
     """
     Get angle of gripper from potentiometer.
     """
-    global pot_intialized, arduino
+    global pot_initialized, arduino, a, b
     if not pot_initialized:
         arduino = read_arduino.Arduino()
         pot_initialized = True
-
+    
     pot_reading = arduino.get_reading()    
-    return (pot_reading-584.0)/10.167
+    return (pot_reading-b)/a
     

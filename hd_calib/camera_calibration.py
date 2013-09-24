@@ -7,7 +7,7 @@ from hd_utils import ros_utils as ru, clouds, conversions, utils
 from hd_utils.colorize import *
 from hd_utils.defaults import tfm_link_rof
 
-from cameras import ros_cameras
+from cameras import RosCameras
 import get_marker_transforms as gmt
 
 asus_xtion_pro_f = 544.260779961
