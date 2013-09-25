@@ -101,7 +101,7 @@ def is_ready (masterGraph, min_obs=5):
             for i,j in G.edges_iter():
                 if G.edge[i][j]['n'] < min_obs:
                     if VERBOSE:
-                        print "edge", i, j, "of", group, "has only", G.edge[i][j]['n'], "observations"
+                        print "edge", i, j, "of", group, "needs", min_obs - G.edge[i][j]['n'], "observations"
                     return False
         else:
             if VERBOSE:
@@ -112,12 +112,12 @@ def is_ready (masterGraph, min_obs=5):
     for i,j in masterGraph.edges_iter():
         if masterGraph.edge[i][j]['n'] < min_obs:
             if VERBOSE:
-                print "edge", i, j, "of masterGraph has only ", masterGraph.edge[i][j]['n'], "observations"
+                print "edge", i, j, "of masterGraph needs ", min_obs - masterGraph.edge[i][j]['n'], "observations"
             return False
         preadings = len(masterGraph.edge[i][j]["transform_list"])
         if preadings < min_obs:
             if VERBOSE:
-                print "edge", i, j, "of masterGraph has only ", preadings, "pot readings"
+                print "edge", i, j, "of masterGraph needs ", min_obs - preadings, "pot readings"
             return False
     return True
 
@@ -374,7 +374,7 @@ def optimize_master_transforms (mG, init=None):
     print "Initial x: ", x_init
     print "Initial objective: ", f_objective(x_init)
     
-    (X, fx, _, _, _) = sco.fmin_slsqp(func=f_objective, x0=x_init, f_eqcons=f_constraints, iter=20, full_output=1, iprint=2)
+    (X, fx, _, _, _) = sco.fmin_slsqp(func=f_objective, x0=x_init, f_eqcons=f_constraints, iter=200, full_output=1, iprint=2)
     
     mG_opt = nx.DiGraph()
     ## modify master graph
@@ -539,11 +539,14 @@ class Gripper:
         rorg = ltfm[0:3,3]
         tt_org = (lorg+rorg)/2.0
         
-        # x axis (pointing axis) is the projection of vector from cor to tt_org on the xy plane.
-        # Since we're in the 'cor' frame, it's just the direction vector tt_org itself.
-        tt_x = tt_org/nlg.norm(tt_org)
         # z axis is the same as cor
         tt_z = np.array([0,0,1])
+        # x axis (pointing axis) is the projection of vector from cor to tt_org on the xy plane.
+        # Since we're in the 'cor' frame, it's just the projection of direction vector tt_org on xy plane.
+        tt_org_vec = tt_org/nlg.norm(tt_org)
+        tt_x = tt_org_vec - tt_org_vec.dot(tt_z)*tt_z
+        tt_x = tt_x/nlg.norm(tt_x)
+                
         tt_y = np.cross(tt_z, tt_x)
         
         tt_tfm =  np.r_[np.c_[tt_x, tt_y, tt_z, tt_org], np.array([[0,0,0,1]])]
@@ -565,7 +568,9 @@ class Gripper:
         
             master.edge[node]['tool_tip']['tfm'] = tfm
             master.edge['tool_tip'][node]['tfm'] = nlg.inv(tfm)
-            
+        
+        self.mmarkers.append('tool_tip')
+        self.allmarkers.append('tool_tip')
         self.tt_calculated = True
 
         
@@ -652,10 +657,14 @@ class Gripper:
                 ret_tfms.append({'parent':parent_frame, 
                                  'child':'%sgripper_%s'%(self.lr, m),
                                  'tfm':cor_tfm.dot(tfm)})
-                
+
+        if self.tt_calculated:
+                tfm = self.get_rel_transform('cor', 'tool_tip', theta)
+                ret_tfms.append({'parent':parent_frame, 
+                                 'child':'%sgripper_%s'%(self.lr, 'tool_tip'),
+                                 'tfm':cor_tfm.dot(tfm)})
+
         return ret_tfms
-        
-        
 
 
 class GripperCalibrator:
@@ -723,20 +732,23 @@ class GripperCalibrator:
         avg_tfms = {}
         j = 0
         thresh = n_avg*2
+        pot_avg = 0.0
         while j < n_avg:
-            print colorize('\tGetting averaging transform : %d of %d ...'%(j,n_avg-1), "blue", True)            
+            blueprint('\tGetting averaging transform : %d of %d ...'%(j,n_avg-1))    
 
             tfms = {}
             # Fuck the frames bullshit
             ar_tfm = self.cameras.get_ar_markers(markers=self.ar_markers)
             hyd_tfm = gmt.get_hydra_transforms(parent_frame=self.parent_frame, hydras = self.hydras)
-            pot_angle = gmt.get_pot_angle()/2.0
+            pot_angle = gmt.get_pot_angle()
             
-            if not ar_tfm or not hyd_tfm:
+            if not ar_tfm or (not hyd_tfm and self.hydras):
                 yellowprint('Could not find all required transforms.')
                 thresh -= 1
                 if thresh == 0: return False
                 continue
+            
+            pot_avg += pot_angle
             
             j += 1
             tfms.update(ar_tfm)
@@ -751,7 +763,11 @@ class GripperCalibrator:
                 avg_tfms[marker].append(tfms[marker])
                 
             sleeper.sleep()
+            
+        pot_avg /= n_avg
         
+        greenprint("Average angle found: %f"%pot_avg)
+
         for marker in avg_tfms:
             avg_tfms[marker] = utils.avg_transform(avg_tfms[marker])
 
@@ -778,7 +794,7 @@ class GripperCalibrator:
                 yellowprint("Something went wrong. Try again.")
                 self.iterations -= 1
             if is_ready(self.masterGraph, min_obs):
-                if not yes_or_no("Enough data has been gathered. Would you like to gather more data anyway?"):
+                if yes_or_no("Enough data has been gathered. Proceed with transform optimization?"):
                     break
 
         assert is_ready (self.masterGraph, min_obs)
@@ -789,6 +805,7 @@ class GripperCalibrator:
         self.calibrated = False
         self.calib_info = None
 
+        self.gripper = None
         self.masterGraph = None
         self.transform_graph = None
         self.ar_markers = []
