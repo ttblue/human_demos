@@ -21,11 +21,6 @@ T_h_k = np.array([[-0.02102462, -0.03347223,  0.99921848, -0.186996  ],
  [ 0.,          0.,          0.,          1.        ]])
 
 
-cmap = np.zeros((256, 3),dtype='uint8')
-cmap[:,0] = range(256)
-cmap[:,2] = range(256)[::-1]
-cmap[0] = [0,0,0]
-
 parser = argparse.ArgumentParser()
 parser.add_argument('--name', help="Name of log file", required = True, type = str)
 parser.add_argument('--n_tfm', help="Number of transforms to log", required = True, type=int)
@@ -39,10 +34,16 @@ head_frame = 'head_plate_frame'
 gripper_frame = 'l_gripper_tool_frame'
 hydra_frame = 'hydra_base'
 hydra_sensor = 'hydra_left'
+
 tool_tfms = []
 ar_tfms = []
 head_tfms = []
 hydra_tfms = []
+
+tool_times = []
+ar_times = []
+hydra_times = []
+
 i = 0
 
 listener = tf.TransformListener()
@@ -50,28 +51,44 @@ time.sleep(3)
 ar_markers = cameras.ar_markers_ros('/camera1_')
 
 start = time.time()
+
 while(i < args.n_tfm):
-        
-    kinect_tfm = ar_markers.get_marker_transforms(markers=[13], time_thresh=0.5)
+    #ar
+    kinect_tfm, ar_time = ar_markers.get_marker_transforms(markers=[13], time_thresh=0.5, get_time=True)
     if kinect_tfm == {}:
         print "Lost sight of AR marker..."
         ar_tfms.append(None)
+        ar_times.append(ar_time)
     else:
         ar_tfms.append(kinect_tfm[13])
-    
-    tool_trans, tool_quat = listener.lookupTransform(base_frame, gripper_frame, rospy.Time(0))
+        ar_times.append(ar_time)
+
+    #pr2 gripper
+    tool_time = listener.getLatestCommonTime(gripper_frame, base_frame)
+    tool_trans, tool_quat = listener.lookupTransform(base_frame, gripper_frame, tool_time)
+
+    #pr2 head
     head_trans, head_quat = listener.lookupTransform(base_frame, head_frame, rospy.Time(0))
-    hydra_trans, hydra_quat = listener.lookupTransform(base_frame, hydra_sensor, rospy.Time(0))
+
+    #hydra
+    hydra_time = listener.getLatestCommonTime(hydra_sensor, base_frame)
+    hydra_trans, hydra_quat = listener.lookupTransform(base_frame, hydra_sensor, hydra_time)
+
     tool_tfm = conversions.trans_rot_to_hmat(tool_trans, tool_quat)
     head_tfm = conversions.trans_rot_to_hmat(head_trans, head_quat)
     hydra_tfm = conversions.trans_rot_to_hmat(hydra_trans, hydra_quat)
+
     tool_tfms.append(tool_tfm)
     head_tfms.append(head_tfm)
     hydra_tfms.append(hydra_tfm)
-    #trans, rot = conversions.hmat_to_trans_rot(tfm)
+
+    tool_times.append(tool_time)
+    hydra_times.append(hydra_time)
+    
     print i
     i = i+1
-    time.sleep(1.0/30.8)
+    time.sleep(1.0/30.5)
+
 end = time.time()
 
 ar_in_base_tfms = []
@@ -84,13 +101,16 @@ for i in xrange(len(ar_tfms)):
         ar_in_base_tfms.append(base_frame_ar)
 
 dic = {}
-dic['kinect'] = ar_in_base_tfms
-dic['pr2'] = tool_tfms
-dic['hydra'] = hydra_tfms
+dic['ar_tfms'] = ar_in_base_tfms
+dic['ar_times'] = ar_times
+dic['tool_tfms'] = tool_tfms
+dic['tool_times'] = tool_times
+dic['hydra_tfms'] = hydra_tfms
+dic['hydra_times'] = hydra_times
 cPickle.dump( dic, open( args.name, "wa" ) )
-print len(dic['kinect'])
-print len(dic['pr2'])
-print len(dic['hydra'])
+print len(dic['kinect_tfms'])
+print len(dic['pr2_tfms'])
+print len(dic['hydra_tfms'])
 print 'freq %f'%(len(tool_tfms)/(end-start))
 print ''
 #for i in xrange(len(ar_tfms)):
