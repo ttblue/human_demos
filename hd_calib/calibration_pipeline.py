@@ -87,7 +87,7 @@ class CalibratedTransformPublisher(Thread):
 
     def publish_gripper_tfms (self):
         marker_tfms = self.cameras.get_ar_markers()
-        theta = gmt.get_pot_angle()/2.0
+        theta = gmt.get_pot_angle()
         parent_frame = self.cameras.parent_frame
 
         transforms = []
@@ -108,6 +108,8 @@ class CalibratedTransformPublisher(Thread):
         if val is None:
             self.publish_grippers = not self.publish_grippers
         else: self.publish_grippers = not not val
+        
+        if self.publish_grippers: self.ready = True
 
 
     def reset (self):
@@ -208,8 +210,8 @@ def calibrate_hydras ():
     greenprint("Hydra base calibrated.")
 
 
-GRIPPER_MIN_OBS = 2
-GRIPPER_N_AVG = 10
+GRIPPER_MIN_OBS = 4
+GRIPPER_N_AVG = 20
 l_gripper_calib = None
 
 def calibrate_grippers ():
@@ -222,7 +224,7 @@ def calibrate_grippers ():
     
     # create calib_info based on gripper here
     calib_info = {'master':{'ar_markers':[1],#,3,10,13],
-                            'hydras':['left'],
+                            #'hydras':['left'],
                             'angle_scale':0,
                             'master_group':1},
                   'l': {'ar_markers':[15],#,11],
@@ -238,16 +240,18 @@ def calibrate_grippers ():
         if not l_gripper_calib.calibrated:
             redprint("Gripper calibration failed.")
             l_gripper_calib.reset_calibration()
+        
+        tfm_pub.add_gripper(l_gripper_calib.get_gripper())
+        tfm_pub.set_publish_grippers(True)
+
         if yes_or_no("Are you happy with the calibration?"):
             done = True
         else:
             yellowprint("Calibrating l gripper again.")
             l_gripper_calib.reset_calibration()
+            tfm_pub.set_publish_grippers(False)
     
-    tfm_pub.add_gripper(l_gripper_calib.get_gripper())
-    
-    tfm_pub.set_publish_grippers()
-    
+
     greenprint("Done with l gripper calibration.")
 
 #     greenprint("Step 3.2 Calibrate r gripper.")

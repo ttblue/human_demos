@@ -71,7 +71,7 @@ class ARMarkersRos:
         #print 1
         #print time_now
         #print 1
-        
+
         if markers is None:
             marker_transforms = {marker.id:conversions.pose_to_hmat(marker.pose.pose)\
                                  for marker in self.latest_markers.markers}
