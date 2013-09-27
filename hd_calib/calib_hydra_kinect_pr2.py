@@ -15,7 +15,7 @@ import scipy as scp, scipy.optimize as sco
 import cPickle
 from hd_utils.colorize import colorize
 from hd_utils import ros_utils as ru, clouds, conversions
-from cameras import ar_markers_ros
+from cameras import ARMarkersRos
 
 np.set_printoptions(precision=5, suppress=True)
 
@@ -62,7 +62,7 @@ def get_transforms(arm, hydra, n_tfm , n_avg):
     kinect_tfms = []
     head_tfms = []
     i = 0 
-    ar_markers = ar_markers_ros('/camera1_')
+    ar_markers = ARMarkersRos('/camera1_')
     dont = 0
     while (i < n_tfm):
         raw_input(colorize("Transform %d of %d : Press return when ready to capture transforms"%(i, n_tfm), "red", True))
@@ -82,7 +82,8 @@ def get_transforms(arm, hydra, n_tfm , n_avg):
         while(j < n_avg):
             print colorize('\tGetting averaging transform : %d of %d ...'%(j,n_avg-1), "blue", True)
             
-            kinect_tfm = ar_markers.get_marker_transforms(markers=[13], time_thresh=0.5)
+            kinect_tfm = ar_markers.get_marker_transforms(time_thresh=0.5)
+            print kinect_tfm
             if kinect_tfm == {}:
                 print "Lost sight of AR marker. Breaking..."
                 dont = 1
@@ -91,7 +92,7 @@ def get_transforms(arm, hydra, n_tfm , n_avg):
             ptrans, prot = tf_sub.lookupTransform(pr2_frame, head_frame, rospy.Time(0))
             gtrans, grot = tf_sub.lookupTransform(pr2_frame, arm_frame, rospy.Time(0))
             htrans, hrot = tf_sub.lookupTransform(hydra_frame, paddle_frame, rospy.Time(0))
-            ktrans, krot = conversions.hmat_to_trans_rot(kinect_tfm[13])
+            ktrans, krot = conversions.hmat_to_trans_rot(kinect_tfm[11])
 
             g_ts = np.r_[g_ts, np.array(gtrans, ndmin=2)]
             h_ts = np.r_[h_ts, np.array(htrans, ndmin=2)]

@@ -226,7 +226,7 @@ def calibrate_grippers ():
     calib_info = {'master':{'ar_markers':[1],#,3,10,13],
                             #'hydras':['left'],
                             'angle_scale':0,
-                            'master_group':1},
+                            'master_marker':1},
                   'l': {'ar_markers':[15],#,11],
                             'angle_scale':1},
                   'r': {'ar_markers':[4],#,6],

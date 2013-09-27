@@ -63,7 +63,7 @@ def update_groups_from_observations(masterGraph, tfms, pot_reading):
         update_graph_from_observations(masterGraph.node[group]["graph"], group_tfms[group])
     
     for g1, g2 in itertools.combinations(masterGraph.nodes(),2):
-        if masterGraph.node[g2].get("master_marker") is not None:
+        if masterGraph.node[g2].get("master") is not None:
             g1, g2 = g2, g1
 
         tfms1 = group_tfms[g1]
@@ -290,15 +290,14 @@ def optimize_transforms (G):
 def optimize_master_transforms (mG, init=None):
     """
     Optimize transforms over the masterGraph (which is a metagraph with nodes as rigid body graphs).
-    
     """
 
     idx = 1
     node_map = {}
     master = None
     for node in mG.nodes_iter():
-        if mG.node[node].get("master_marker") is not None:
-            master = node 
+        if mG.node[node].get("master") is not None:
+            master = node
             node_map[node] = 0
         else:
             node_map[node] = idx
@@ -375,9 +374,7 @@ def optimize_master_transforms (mG, init=None):
     print "Initial x: ", x_init
     print "Initial objective: ", f_objective(x_init)
     
-    print 'asssssssssssss1'
     (X, fx, _, _, _) = sco.fmin_slsqp(func=f_objective, x0=x_init, f_eqcons=f_constraints, iter=200, full_output=1, iprint=2)
-    print 'asssssssssssss2'
     
     mG_opt = nx.DiGraph()
     ## modify master graph
@@ -409,7 +406,7 @@ def optimize_master_transforms (mG, init=None):
     mG_opt.node[master]["graph"] = masterG
     mG_opt.node[master]["angle_scale"] = 0
     mG_opt.node[master]["primary"] = "cor"
-    mG_opt.node[master]["master_marker"] = mG.node[master]["master_marker"]
+    mG_opt.node[master]["master"] = 1
     ## add edges to the rest
     
     class tfmClass():
@@ -472,8 +469,8 @@ def compute_relative_transforms (masterGraph, init=None):
         graph_map[G] = optimize_transforms(G)
         new_mG.add_node(group)
         new_mG.node[group]["graph"] = graph_map[G]
-        if masterGraph.node[group].get("master_marker"):
-            new_mG.node[group]["master_marker"] = masterGraph.node[group].get("master_marker")
+        if masterGraph.node[group].get("master"):
+            new_mG.node[group]["master"] = 1
         new_mG.node[group]["angle_scale"] = masterGraph.node[group]["angle_scale"] 
     
     for g in masterGraph.nodes_iter():
@@ -503,9 +500,6 @@ def compute_relative_transforms (masterGraph, init=None):
     return mG_opt
 
 class Gripper:
-    
-    # Change if need be
-    parent_frame = 'camera1_rgb_optical_frame'
     
     transform_graph = None
     tt_calculated = False
@@ -544,27 +538,20 @@ class Gripper:
         lorg = ltfm[0:3,3]
         rorg = ltfm[0:3,3]
         tt_org = (lorg+rorg)/2.0
-
-        master = self.transform_graph.node['master']['graph']
         
-        # Old "correct" code.
         # z axis is the same as cor
-        #tt_z = np.array([0,0,1])
+        tt_z = np.array([0,0,1])
         # x axis (pointing axis) is the projection of vector from cor to tt_org on the xy plane.
         # Since we're in the 'cor' frame, it's just the projection of direction vector tt_org on xy plane.
-        #tt_org_vec = tt_org/nlg.norm(tt_org)
-        #tt_x = tt_org_vec - tt_org_vec.dot(tt_z)*tt_z
-        #tt_x = tt_x/nlg.norm(tt_x)
-        #tt_y = np.cross(tt_z, tt_x)
-        #tt_tfm =  np.r_[np.c_[tt_x, tt_y, tt_z, tt_org], np.array([[0,0,0,1]])]
+        tt_org_vec = tt_org/nlg.norm(tt_org)
+        tt_x = tt_org_vec - tt_org_vec.dot(tt_z)*tt_z
+        tt_x = tt_x/nlg.norm(tt_x)
+                
+        tt_y = np.cross(tt_z, tt_x)
         
-
-        # New hacky code:
-        master_marker = self.transform_graph.node['master']['master_marker']
-        master_tfm = master.edge['cor'][master_marker]['tfm']
-        tt_tfm =  np.r_[np.c_[master_tfm[0:3,0:3], tt_org], np.array([[0,0,0,1]])]
+        tt_tfm =  np.r_[np.c_[tt_x, tt_y, tt_z, tt_org], np.array([[0,0,0,1]])]
         
-        
+        master = self.transform_graph.node['master']['graph']
         master.add_node('tool_tip')
         master.add_edge('cor', 'tool_tip')
         master.add_edge('tool_tip', 'cor')
@@ -678,11 +665,6 @@ class Gripper:
                                  'tfm':cor_tfm.dot(tfm)})
 
         return ret_tfms
-    
-    def add_marker (self, marker, group, type='AR'):
-        """
-        Add marker to the gripper, after calibration.
-        """
 
 
 class GripperCalibrator:
@@ -733,8 +715,8 @@ class GripperCalibrator:
             if self.calib_info[group].get("hydras") is None:
                 self.calib_info[group]["hydras"] = []
             
-            if self.calib_info[group].get("master_marker") is not None:
-                self.masterGraph.node[group]["master_marker"] = self.calib_info[group].get("master_marker")
+            if self.calib_info[group].get("master_group") is not None:
+                self.masterGraph.node[group]["master"] = 1
                 self.masterGraph.node[group]['angle_scale'] = 0
     
             self.masterGraph.node[group]["markers"] = self.calib_info[group]["ar_markers"] + self.calib_info[group]["hydras"]
