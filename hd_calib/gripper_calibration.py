@@ -684,15 +684,19 @@ class Gripper:
         cor_avg_tfms = []
         cor_hyd_avg = []
         cor_ar_avg = []
+        ar_found = False
+        hyd_found = False
         for m,tfm in marker_tfms.items():
             if m in self.ar_markers:
                 c_tfm = tfm.dot(self.get_rel_transform(m,'cor', theta)) 
                 cor_ar_avg.append(c_tfm)
                 cor_avg_tfms.append(c_tfm)
+                ar_found = True
             elif m in self.hydra_markers:
                 c_tfm = tfm.dot(self.get_rel_transform(m,'cor', theta)) 
                 cor_hyd_avg.append(c_tfm)
                 cor_avg_tfms.append(c_tfm)
+                hyd_found = True
         
         if len(cor_avg_tfms) == 0: return ret_tfms
         
@@ -716,12 +720,14 @@ class Gripper:
             ret_tfms.append({'parent':parent_frame, 
                              'child':'%sgripper_tooltip'%self.lr,
                              'tfm':cor_tfm.dot(tfm)})
-            ret_tfms.append({'parent':parent_frame, 
-                             'child':'%sgripper_tooltip_hydra'%self.lr,
-                             'tfm':cor_h_tfm.dot(tfm)})
-            ret_tfms.append({'parent':parent_frame, 
-                             'child':'%sgripper_tooltip_ar'%self.lr,
-                             'tfm':cor_a_tfm.dot(tfm)})
+            if hyd_found:
+                ret_tfms.append({'parent':parent_frame, 
+                                 'child':'%sgripper_tooltip_hydra'%self.lr,
+                                 'tfm':cor_h_tfm.dot(tfm)})
+            if ar_found:
+                ret_tfms.append({'parent':parent_frame, 
+                                 'child':'%sgripper_tooltip_ar'%self.lr,
+                                 'tfm':cor_a_tfm.dot(tfm)})
 
         return ret_tfms
     
