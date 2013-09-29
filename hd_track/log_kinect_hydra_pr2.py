@@ -31,9 +31,9 @@ time.sleep(10)
 
 base_frame = 'base_footprint'
 head_frame = 'head_plate_frame'
-gripper_frame = 'l_gripper_tool_frame'
+gripper_frame = 'r_gripper_tool_frame'
 hydra_frame = 'hydra_base'
-hydra_sensor = 'hydra_left'
+hydra_sensor = 'hydra_right'
 
 tool_tfms = []
 ar_tfms = []

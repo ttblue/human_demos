@@ -203,11 +203,11 @@ def plot_ar_data(Ts_bg, Ts_ba, T_ga, f):
     plt.show()
 
 def plot_and_fit_ar(plot=True, f=30.):
-    dic = cPickle.load(open(hd_path + '/hd_track/data/pr2-hydra-kinect-trajectory-transforms.cpickle'))
+    dic = cPickle.load(open(hd_path + '/hd_track/data/timed-transforms.cpickle'))
     Ts_bg = dic['Ts_bg']
     Ts_ba = dic['Ts_bk']
     #rint len(Ts_bk)
-    T_ga = dic['T_gk']
+    T_ga = dic['T_ga']
 
     if plot:
         plot_ar_data(Ts_bg, Ts_ba, T_ga, f)
@@ -250,7 +250,7 @@ def plot_hydra_data(Ts_bg, Ts_bh, T_gh, f):
 
 def plot_and_fit_hydra(plot=True, f=30.):
 
-    dic = cPickle.load(open(hd_path + '/hd_track/data/pr2-hydra-kinect-trajectory-transforms.cpickle'))
+    dic = cPickle.load(open(hd_path + '/hd_track/data/timed-transforms.cpickle'))
     Ts_bg = dic['Ts_bg']
     Ts_bh = dic['Ts_bh']
     #rint len(Ts_bk)
@@ -268,8 +268,8 @@ def save_kalman_covars(out_file='./data/pr2-hydra-kinect-covars-xyz-rpy.cpickle'
     from data and saves them to a cpickle file.
     """
     le,lc,re,rc = fit_process_noise()
-    he, hc = plot_and_fit_hydra(False)
-    ae, ac = plot_and_fit_ar(False)
+    he, hc = plot_and_fit_hydra(True)
+    ae, ac = plot_and_fit_ar(True)
     
     dict = {'process': (lc+rc)/2, 'hydra':hc, 'kinect':ac}
     cPickle.dump(dict, open(out_file, 'wb'))

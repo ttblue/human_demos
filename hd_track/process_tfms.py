@@ -39,7 +39,14 @@ for i in xrange(len(ar_in_tools)):
     ar_time = ar_times[i]
     left_time = tool_times[ar_in_tool - 1]
     right_time = tool_times[ar_in_tool]
+    closer_left = abs(right_time - ar_time) >= abs(left_time - ar_time)
+    if closer_left:
+        if ar_tfms_search[ar_in_tool - 1] != None:
+            ar_tfms_search[ar_in_tool - 1] = ar_tfms[i]
+    else:
+        ar_tfms_search[ar_in_tool] = ar_tfms[i]
 
+print ar_tfms_search
 
 
 

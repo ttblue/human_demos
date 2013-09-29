@@ -154,12 +154,12 @@ def load_data():
     dt = 1./30.
 
     ## load pr2-hydra calib data:
-    dat = cPickle.load(open(hd_path + '/hd_track/data/pr2-hydra-kinect-trajectory-transforms.cpickle'))
+    dat = cPickle.load(open(hd_path + '/hd_track/data/timed-transforms.cpickle'))
     Ts_bh = dat['Ts_bh']
     Ts_bg = dat['Ts_bg']
     Ts_ba = dat['Ts_bk']
     T_gh = dat['T_gh']
-    T_ga = dat['T_gk']
+    T_ga = dat['T_ga']
 
     assert len(Ts_bg) == len(Ts_bh), "Number of hydra and pr2 transforms not equal."
     Ts_bh_hg = [t.dot(np.linalg.inv(T_gh)) for t in Ts_bh]
