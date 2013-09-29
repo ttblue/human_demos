@@ -17,6 +17,7 @@ class ARMarkersRos:
     latest_markers = None
     latest_time = 0.0
     freq = 0.0
+    count = 0
     alpha = 0.8
     
     def __init__(self, camera_frame):
@@ -30,11 +31,16 @@ class ARMarkersRos:
         if rospy.get_name() == '/unnamed':
             rospy.init_node('ar_markers_'+self.camera_name)
         
-        self.ar_sub = rospy.Subscriber(self.marker_topic, AlvarMarkers, callback = self.store_last_callback) 
+        self.ar_sub = rospy.Subscriber(self.marker_topic, AlvarMarkers, callback = self.store_last_callback, tcp_nodelay=True) 
             
     def store_last_callback (self, data):
         if len(data.markers) == 0:
+            if self.freq != 0.0:
+                time_now = data.header.stamp.to_sec()
+                if time_now - self.latest_time > 3.0/self.freq:
+                    self.freq = 0.0
             return
+        self.count = (self.count + 1)%100000
         self.latest_markers = data
         if self.latest_time == 0.0:
             self.latest_time = data.header.stamp.to_sec()
@@ -43,21 +49,29 @@ class ARMarkersRos:
             if self.freq == 0.0:
                 self.freq = 1.0/(time_now - self.latest_time)
             else:
-                self.freq = (1-self.alpha)*self.freq + self.alpha/(time_now - self.latest_time)
+                self.freq = (1.0-self.alpha)*self.freq + self.alpha/(time_now - self.latest_time)
             self.latest_time = time_now
+        
+        #print self.latest_time
+            
     
     def get_frequency (self):
         return self.freq 
         
-    def get_marker_transforms(self, markers=None, time_thresh=0.5):
+    def get_marker_transforms(self, markers=None, time_thresh=0.5, get_time=False):
         """
         Threshold represents the tolerance for stale transforms.
         """
-        if self.latest_markers is None: return {}
-        
         time_now = rospy.Time.now().to_sec()
-        if time_now - self.latest_time > time_thresh: return {}
-        
+        if self.latest_markers is None or time_now - self.latest_time > time_thresh: 
+            if get_time:
+                return {}, self.latest_time
+            else:
+                return {}
+        #print 1
+        #print time_now
+        #print 1
+
         if markers is None:
             marker_transforms = {marker.id:conversions.pose_to_hmat(marker.pose.pose)\
                                  for marker in self.latest_markers.markers}
@@ -65,7 +79,10 @@ class ARMarkersRos:
             marker_transforms = {marker.id:conversions.pose_to_hmat(marker.pose.pose)\
                                  for marker in self.latest_markers.markers if marker.id in markers}
 
-        return marker_transforms
+        if not get_time:
+            return marker_transforms
+        else:
+            return marker_transforms, self.latest_time
 
 class RosCameras:
     """

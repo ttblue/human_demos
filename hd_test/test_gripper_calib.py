@@ -262,7 +262,7 @@ def test_gc3 (n, add_noise=False):
                         "angle_scale":1},
                   "r": {"ar_markers":[4,5,6],
                         "angle_scale":-1}}
-    gripper_calib = gc.gripper_calibrator(None, calib_info=calib_info)
+    gripper_calib = gc.GripperCalibrator(None, calib_info=calib_info)
     gripper_calib.initialize_calibration(fake_data=True)
         
     T12 = make_obs()
@@ -334,7 +334,7 @@ def test_gc3 (n, add_noise=False):
     init[12:24] = nlg.inv(Tcor4)[0:3,:].reshape(12,order='F')
     init[24:36] = nlg.inv(Tcor1)[0:3,:].reshape(12,order='F')
     
-    gripper_calib.finish_calibration()
+    gripper_calib.calibrated = gripper_calib.finish_calibration()
     G_opt = gripper_calib.transform_graph 
     
     
@@ -420,7 +420,8 @@ def test_gc3 (n, add_noise=False):
     T7cor_calib = G_opt.node["master"]["graph"].edge[7]["cor"]["tfm"]
     print nlg.inv(T7cor).dot(T7cor_calib)
 
+    return gripper_calib
 
 if __name__=="__main__":
-    test_gc3(10, False)
+    gc = test_gc3(10, False)
     

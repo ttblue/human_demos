@@ -10,6 +10,9 @@ from hd_utils import transformations as tfms
 import argparse
 import matplotlib.pylab as plt
 
+hd_path = '/home/henrylu/henry_sandbox/human_demos'
+
+
 def put_in_range(x):
     """
     Puts all the values in x in the range [-180, 180).
@@ -73,6 +76,15 @@ def state_from_tfms(Ts, dt=1./30.):
 
     return Xs
 
+def state_from_tfms_no_velocity(Ts):
+    N = len(Ts)
+    Xs = np.empty((N-1, 12))
+
+    for i in xrange(N-1):
+        Xs[i,0:3] = Ts[i+1][0:3,3]
+        Xs[i,6:9] = np.array(tfms.euler_from_matrix(Ts[i+1]))
+
+    return Xs
 
 def fit_process_noise(fname=None, f=30.):
     """
@@ -86,7 +98,7 @@ def fit_process_noise(fname=None, f=30.):
     """
     dt = 1.0/f   
     if fname==None:
-        fname = '/home/ankush/sandbox444/human_demos/hd_track/data/joint_trajectories/joints-combined.cpickle'
+        fname = hd_path + '/hd_track/data/pr2-knot-tie-joint-states.cpickle'
 
     joints = cPickle.load(open(fname, 'rb'))['mat']
     rstates = state_from_tfms(tfms_from_joints(joints[:,0:7])).T
@@ -132,17 +144,25 @@ def fit_hydra_noise(Ts_bg, Ts_bh, T_gh, f):
     return (err, covar)
 
     
-def fit_ar_noise(Ts_ba, Ts_bg, T_ga, f):
+def fit_ar_noise(Ts_bg, Ts_ba_raw, T_ga, f):
     """
     Similar to the function above for fitting hydra-noise covariance. 
     """
     dt = 1./f
-
-    raise NotImplementedError()
-    
-    assert len(Ts_bg) == len(Ts_ba), "Number of hydra and pr2 transforms not equal."
-
-    Ts_bg_ga = [t.dot(T_ga) for t in Ts_bg]
+ 
+    assert len(Ts_bg) == len(Ts_ba_raw), "Number of ar and pr2 transforms not equal."
+    Ts_ba = []
+    Ts_bg_ga = []
+    for i in xrange(len(Ts_ba_raw)):
+        T_ba = Ts_ba_raw[i]
+        T_bg = Ts_bg[i]
+        if T_ba == None:
+            continue
+        else:
+            #print len(t)
+            Ts_bg_ga.append(T_bg.dot(T_ga))
+            Ts_ba.append(T_ba)
+    assert len(Ts_bg_ga) == len(Ts_ba), "Number of valid ar and pr2 transforms not equal."
 
     ## extract the full state vector:    
     X_ba    = state_from_tfms(Ts_ba, dt).T
@@ -155,6 +175,44 @@ def fit_ar_noise(Ts_ba, Ts_bg, T_ga, f):
     covar = (err.dot(err.T))/err.shape[1]
     return (err, covar)
     
+
+
+def plot_ar_data(Ts_bg, Ts_ba, T_ga, f):
+    """
+    Plot the data from the kinect and the pr2.
+    """
+    dt = 1./f
+
+    assert len(Ts_bg) == len(Ts_ba), "Number of ar and pr2 transforms not equal."
+    Ts_ba_ag = []
+    for t in Ts_ba:
+        if t == None:
+            Ts_ba_ag.append(np.zeros((4,4)))
+        else:
+            #print len(t)
+            Ts_ba_ag.append(t.dot(np.linalg.inv(T_ga)))
+
+    ## plot the translation:
+    axlabels = ['x','y','z']
+    for i in range(3):
+        plt.subplot(3,2,i+1)
+        plt.plot(np.array([t[i,3] for t in Ts_bg]), label='pr2')
+        plt.plot(np.array([t[i,3] for t in Ts_ba_ag]),'.', label='kinect')
+        plt.ylabel(axlabels[i])
+        plt.legend()
+    plt.show()
+
+def plot_and_fit_ar(plot=True, f=30.):
+    dic = cPickle.load(open(hd_path + '/hd_track/data/timed-transforms.cpickle'))
+    Ts_bg = dic['Ts_bg']
+    Ts_ba = dic['Ts_bk']
+    #rint len(Ts_bk)
+    T_ga = dic['T_ga']
+
+    if plot:
+        plot_ar_data(Ts_bg, Ts_ba, T_ga, f)
+
+    return fit_ar_noise(Ts_bg, Ts_ba, T_ga, f)
 
 def plot_hydra_data(Ts_bg, Ts_bh, T_gh, f):
     """
@@ -191,15 +249,12 @@ def plot_hydra_data(Ts_bg, Ts_bh, T_gh, f):
 
 
 def plot_and_fit_hydra(plot=True, f=30.):
-    Ts_bh = []
-    Ts_bg = []
-    T_gh = cPickle.load(open('/home/ankush/sandbox444/human_demos/hd_track/data/good_calib_hydra_pr2/T_gh'))
-        
-    for fid in [4,5,6]:
-        fname = '/home/ankush/sandbox444/human_demos/hd_track/data/good_calib_hydra_pr2/test0%d'%fid
-        dat = cPickle.load(open(fname, 'rb'))
-        Ts_bh += dat['T_bh']
-        Ts_bg += dat['T_bg']
+
+    dic = cPickle.load(open(hd_path + '/hd_track/data/timed-transforms.cpickle'))
+    Ts_bg = dic['Ts_bg']
+    Ts_bh = dic['Ts_bh']
+    #rint len(Ts_bk)
+    T_gh = dic['T_gh']
 
     if plot:
         plot_hydra_data(Ts_bg, Ts_bh, T_gh, f)
@@ -207,15 +262,16 @@ def plot_and_fit_hydra(plot=True, f=30.):
     return fit_hydra_noise(Ts_bg, Ts_bh, T_gh, f)
 
 
-def save_kalman_covars(out_file='./data/covars-xyz-rpy.cpickle'):
+def save_kalman_covars(out_file='./data/pr2-hydra-kinect-covars-xyz-rpy.cpickle'):
     """
     Computes the process noise covariance and the hydra-measurement noise covariances
     from data and saves them to a cpickle file.
     """
     le,lc,re,rc = fit_process_noise()
-    he, hc = plot_and_fit_hydra(False)
+    he, hc = plot_and_fit_hydra(True)
+    ae, ac = plot_and_fit_ar(True)
     
-    dict = {'process': (lc+rc)/2, 'hydra':hc}
+    dict = {'process': (lc+rc)/2, 'hydra':hc, 'kinect':ac}
     cPickle.dump(dict, open(out_file, 'wb'))
 
 
