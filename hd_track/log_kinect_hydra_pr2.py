@@ -48,19 +48,19 @@ i = 0
 
 listener = tf.TransformListener()
 time.sleep(3)
-ar_markers = cameras.ar_markers_ros('/camera1_')
+ar_markers = cameras.ARMarkersRos('/camera1_')
 
 start = time.time()
 
 while(i < args.n_tfm):
     #ar
-    kinect_tfm, ar_time = ar_markers.get_marker_transforms(markers=[13], time_thresh=0.5, get_time=True)
+    kinect_tfm, ar_time = ar_markers.get_marker_transforms(markers=[11], time_thresh=0.5, get_time=True)
     if kinect_tfm == {}:
         print "Lost sight of AR marker..."
         ar_tfms.append(None)
         ar_times.append(ar_time)
     else:
-        ar_tfms.append(kinect_tfm[13])
+        ar_tfms.append(kinect_tfm[11])
         ar_times.append(ar_time)
 
     #pr2 gripper
@@ -108,8 +108,8 @@ dic['tool_times'] = tool_times
 dic['hydra_tfms'] = hydra_tfms
 dic['hydra_times'] = hydra_times
 cPickle.dump( dic, open( args.name, "wa" ) )
-print len(dic['kinect_tfms'])
-print len(dic['pr2_tfms'])
+print len(dic['ar_tfms'])
+print len(dic['tool_tfms'])
 print len(dic['hydra_tfms'])
 print 'freq %f'%(len(tool_tfms)/(end-start))
 print ''

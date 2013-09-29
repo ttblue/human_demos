@@ -8,7 +8,8 @@ import roslib
 #roslib.load_manifest('calib_hydra_pr2')
 import rospy
 roslib.load_manifest('tf')
-import tf; 
+import tf
+import time
 import argparse
 import numpy as np, numpy.linalg as nlg
 import scipy as scp, scipy.optimize as sco
@@ -64,6 +65,7 @@ def get_transforms(arm, hydra, n_tfm , n_avg):
     i = 0 
     ar_markers = ARMarkersRos('/camera1_')
     dont = 0
+    time.sleep(3)
     while (i < n_tfm):
         raw_input(colorize("Transform %d of %d : Press return when ready to capture transforms"%(i, n_tfm), "red", True))
        
