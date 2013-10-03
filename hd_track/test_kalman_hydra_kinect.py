@@ -14,8 +14,8 @@ import scipy.linalg as scl
 from l1 import l1
 import cvxopt as cvx
 
-hd_path = '/home/henrylu/henry_sandbox/human_demos'
-
+#hd_path = '/home/henrylu/henry_sandbox/human_demos'
+hd_path = '/home/ankush/sandbox444/human_demos'
 
 def run_kalman(T_hydra, T_ar, x_init, covar_init, f=30.):
     """
@@ -25,7 +25,7 @@ Runs the kalman filter using just the observations from hydra.
     N = len(T_hydra)
     
     ## load the noise covariance matrices:
-    covar_mats = cPickle.load(open(hd_path + '/hd_track/data/pr2-hydra-kinect-covars-xyz-rpy.cpickle'))
+    covar_mats = cPickle.load(open(hd_path + '/hd_track/data/old/pr2-hydra-kinect-covars-xyz-rpy.cpickle'))
     motion_covar = covar_mats['process']
     hydra_covar = 1e5*covar_mats['hydra']
     ar_covar = 1e5*covar_mats['kinect']
@@ -154,7 +154,7 @@ def load_data():
     dt = 1./30.
 
     ## load pr2-hydra calib data:
-    dat = cPickle.load(open(hd_path + '/hd_track/data/timed-transforms.cpickle'))
+    dat = cPickle.load(open(hd_path + '/hd_track/data/timed-ransforms.cpickle'))
     Ts_bh = dat['Ts_bh']
     Ts_bg = dat['Ts_bg']
     Ts_ba = dat['Ts_bk']

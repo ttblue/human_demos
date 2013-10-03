@@ -6,7 +6,7 @@ import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument('--read', help="Name of log file to read", required=True, type=str)
 parser.add_argument('--write', help="Name of log file to write", required=True, type=str)
-args = parser.parse_argus()
+args = parser.parse_args()
 
 dic = cPickle.load(open(args.name, "wa"))
 
@@ -47,8 +47,3 @@ for i in xrange(len(ar_in_tools)):
         ar_tfms_search[ar_in_tool] = ar_tfms[i]
 
 print ar_tfms_search
-
-
-
-
-

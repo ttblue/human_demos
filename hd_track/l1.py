@@ -1,5 +1,6 @@
 """
-Taken from cvxopt.org : 
+Taken from cvxopt.org : Code for l1 norm minimization
+    min_x |Ax-b|_1
 """
 
 from cvxopt import blas, lapack, solvers
