@@ -317,6 +317,9 @@ def smoother(A, R, mu, sigma):
     mu_p    = [A.dot(x) for x in mu]
     sigma_p = [A.dot(S).dot(A.T) + R for S in sigma]
 
+    conds = [np.linalg.cond(s) for s in sigma_p]
+    print "condition min/max : ", np.min(conds), " , ", np.max(conds)
+
     mu_smooth    = [np.empty(mu[0].shape) for _ in xrange(len(mu))]
     sigma_smooth = [np.empty(sigma[0].shape) for _ in xrange(len(sigma))]
 
