@@ -135,6 +135,9 @@ class CalibratedTransformPublisher(Thread):
             self.add_gripper(gripper)
         self.add_transforms(calib_data['transforms'])
         
+        if self.grippers: self.publish_grippers = True
+        
+        
     def load_gripper_calibration(self, file):
         """
         Use this if gripper markers have not changed.
@@ -149,6 +152,8 @@ class CalibratedTransformPublisher(Thread):
             if 'tool_tip' in gripper.mmarkers:
                 gripper.tt_calculated = True 
             self.add_gripper(gripper)
+            
+        self.publish_grippers = True
 
     def save_calibration(self, file):
         """

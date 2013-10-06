@@ -756,14 +756,14 @@ class Gripper:
         
         cor_tfm = utils.avg_transform(cor_avg_tfms)
         cor_h_tfm = utils.avg_transform(cor_hyd_avg)
-        cor_a_atfm = utils.avg_transform(cor_ar_avg)
+        cor_a_tfm = utils.avg_transform(cor_ar_avg)
         
         ret_tfms.append({'parent':parent_frame, 
                          'child':'%sgripper_%s'%(self.lr, 'cor'),
                          'tfm':cor_tfm})
 
         for m in self.allmarkers:
-            if m != 'cor':
+            if m != 'cor' and m != 'tool_tip':
                 tfm = self.get_rel_transform('cor', m, theta)
                 ret_tfms.append({'parent':parent_frame, 
                                  'child':'%sgripper_%s'%(self.lr, m),
@@ -808,7 +808,7 @@ class Gripper:
         return self.get_tool_tip_transform(marker_tfms, theta)
         
     
-    def get_markers_transform (markers, marker_tfms, theta):
+    def get_markers_transform (self, markers, marker_tfms, theta):
         """
         Takes in marker_tfms found, angles and markers for
         which transforms are required.
@@ -830,9 +830,11 @@ class Gripper:
                 rtn_tfms[marker] = marker_tfms[marker]
                 continue
             
-            tfm = self.get_rel_transform('cor', marker)
+            tfm = self.get_rel_transform('cor', marker, gmt.get_pot_angle())
             if tfm is not None:
                 rtn_tfms[marker] = tfm
+        
+        return rtn_tfms
 
         
     
@@ -847,6 +849,8 @@ class Gripper:
         
         i = 0
         thresh = n_avg*2
+        sleeper = rospy.Rate(30)
+        
         while i < n_tfm:
             raw_input(colorize("Getting transform %i out of %i. Hit return when ready."%(i,n_tfm), 'yellow', True))
             
@@ -876,6 +880,7 @@ class Gripper:
 
                 avg_tfms.append(tfms)
                 j += 1
+                sleeper.sleep()
             
             if found is False:
                 yellowprint("Something went wrong; try again.")
@@ -883,20 +888,21 @@ class Gripper:
             
             tfms_found = {}
             for tfms in avg_tfms:
-                for marker in tfms:
-                    if marker not in tfms_found:
-                        tfms_found[marker] = []
-                    tfms_found[marker].append(tfms[marker])
+                for m in tfms:
+                    if m not in tfms_found:
+                        tfms_found[m] = []
+                    tfms_found[m].append(tfms[m])
 
             if marker not in tfms_found:
                 yellowprint("Could not find marker to be added; try again.")
                 continue
             
-            for marker in tfms_found:
-                tfms_found[marker] = utils.avg_transform(tfms_found[marker])
+            for m in tfms_found:
+                tfms_found[m] = utils.avg_transform(tfms_found[m])
             pot_angle = pot_angle/n_avg
             
             all_obs.append({'tfms':tfms_found, 'pot_angle':pot_angle})
+            i += 1
             
         return all_obs
             
@@ -927,17 +933,18 @@ class Gripper:
 
         # Get observations 
         all_obs = self.get_obs_new_marker(marker, n_tfm, n_avg)
+        print all_obs
         
         # Compute average relative transform between correct primary node and marker
         primary_node = self.transform_graph.node[group]['primary']
-        ang_rel_tfms = []
+        avg_rel_tfms = []
         
         for obs in all_obs:
             tfms = obs['tfms']
             angle = obs['tfms']
             
             marker_tfm = tfms[marker]
-            primary_tfm = self.get_markers_transform([primary_node], tfms, angle)
+            primary_tfm = self.get_markers_transform([primary_node], tfms, angle)[primary_node]
             
             avg_rel_tfms.append(nlg.inv(primary_tfm).dot(marker_tfm))
             
