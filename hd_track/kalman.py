@@ -53,10 +53,10 @@ class kalman:
         self.ar_prev    = None
 
         ## the filter's current belief and its time:
-        self.t_filt = None
-        self.x_filt = None
-        self.S_filt = None
-
+        self.t_filt = None # time
+        self.x_filt = None # mean
+        self.S_filt = None # covariance
+ 
         self.motion_covar = None
         self.hydra_covar = None
         self.ar_covar = None
@@ -297,3 +297,41 @@ class kalman:
             self.x_filt, self.S_filt = self.measurement_update(z_obs, C, Q, self.x_filt, self.S_filt)
 
 
+def smoother(A, R, mu, sigma):
+    """
+    Kalman smoother implementation. 
+    Implements the Rauch, Tung, and Striebel (RTS) smoother. 
+
+    A    : Dynamics matrix, i.e. x_{t+1} = A*x_{t}
+    R    : Dynamics noise covariance
+    mu   : A list of time-series of the state means which are output of a kalman filter
+    sigma: A list of state-covariances corresponding to the means above.
+
+    Returns, (mu_smooth, sigma_smooth) : same size as mu, sigma.
+    """
+    assert len(mu)==len(sigma), "Kalman smoother : Number of means should be equal to the number of covariances."
+    
+    T = len(mu)
+   
+    ## prediction : x+t = Ax_t + r ~ N(0,R)
+    mu_p    = [A.dot(x) for x in mu]
+    sigma_p = [A.dot(S).dot(A.T) + R for S in sigma]
+
+    conds = [np.linalg.cond(s) for s in sigma_p]
+    print "condition min/max : ", np.min(conds), " , ", np.max(conds)
+
+    mu_smooth    = [np.empty(mu[0].shape) for _ in xrange(len(mu))]
+    sigma_smooth = [np.empty(sigma[0].shape) for _ in xrange(len(sigma))]
+
+    # recursive smoother:
+    #====================
+    ## base case:  for last time-step
+    mu_smooth[-1]    = mu[-1]
+    sigma_smooth[-1] = sigma[-1]
+    
+    for t in xrange(T-2, -1, -1):
+        L               = sigma[t].dot(A.T).dot(np.linalg.inv(sigma_p[t]))
+        mu_smooth[t]    = mu[t] + L.dot(mu_smooth[t+1] - mu_p[t])
+        sigma_smooth[t] = sigma[t] + L.dot(sigma_smooth[t+1] - sigma_p[t]).dot(L.T)
+ 
+    return (mu_smooth, sigma_smooth)

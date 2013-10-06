@@ -71,4 +71,4 @@ if __name__ == '__main__':
     ard = Arduino()
     while True:
         print "reading : ", ard.get_reading()
-        time.sleep(1)
+        time.sleep(.01)
