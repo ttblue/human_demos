@@ -115,7 +115,7 @@ def get_hydra_transforms(parent_frame, hydras=None):
             trans, rot = tf_l.lookupTransform(parent_frame, hydra_frame, rospy.Time(0))
             hydra_transforms[hydra] = conversions.trans_rot_to_hmat(trans, rot)
         except (tf.LookupException, tf.ExtrapolationException, tf.ConnectivityException):
-            return None
+            continue
     
     return hydra_transforms
 

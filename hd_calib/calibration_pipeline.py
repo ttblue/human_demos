@@ -1,7 +1,7 @@
 #!/usr/bin/python
 import numpy as np
 from threading import Thread
-import time
+import time, os, os.path as osp
 import cPickle
 
 import roslib, rospy
@@ -17,6 +17,7 @@ from cameras import RosCameras
 from camera_calibration import CameraCalibrator
 from hydra_calibration import HydraCalibrator
 from gripper_calibration import GripperCalibrator
+import gripper_calibration
 import get_marker_transforms as gmt
 
 np.set_printoptions(precision=5, suppress=True)
@@ -92,7 +93,7 @@ class CalibratedTransformPublisher(Thread):
 
         transforms = []
         for gripper in self.grippers.values():
-            transforms += gripper.get_all_transforms(marker_tfms, theta, parent_frame)
+            transforms += gripper.get_all_transforms(parent_frame)
             
         for transform in transforms:
             trans, rot = conversions.hmat_to_trans_rot(transform['tfm'])
@@ -125,11 +126,30 @@ class CalibratedTransformPublisher(Thread):
         """
         self.reset()
         
-        with open(file,'r') as fh: calib_data = cPickle.load(file)
-        for gripper in calib_data['grippers']:
-            self.add_gripper(gripper)    
+        file_name = osp.join('/home/sibi/sandbox/human_demos/hd_data/calib',file)
+        with open(file_name,'r') as fh: calib_data = cPickle.load(fh)
+        for lr,graph in calib_data['grippers'].items():
+            gripper = gripper_calibration.Gripper(lr, graph, self.cameras)
+            if 'tool_tip' in gripper.mmarkers:
+                gripper.tt_calculated = True 
+            self.add_gripper(gripper)
         self.add_transforms(calib_data['transforms'])
         
+    def load_gripper_calibration(self, file):
+        """
+        Use this if gripper markers have not changed.
+        Load files which have been saved by this class. Specific format involved.
+        """
+        self.reset()
+        
+        file_name = osp.join('/home/sibi/sandbox/human_demos/hd_data/calib',file)
+        with open(file_name,'r') as fh: calib_data = cPickle.load(fh)
+        for lr,graph in calib_data['grippers'].items():
+            gripper = gripper_calibration.Gripper(lr, graph, self.cameras)
+            if 'tool_tip' in gripper.mmarkers:
+                gripper.tt_calculated = True 
+            self.add_gripper(gripper)
+
     def save_calibration(self, file):
         """
         Save the transforms and the gripper data from this current calibration.
@@ -137,7 +157,12 @@ class CalibratedTransformPublisher(Thread):
         """
         
         calib_data = {}
-        calib_data['grippers'] = self.grippers.values()
+
+        gripper_data = {}
+        for lr,gripper in self.grippers.items():
+            gripper_data[lr] = gripper.transform_graph
+        calib_data['grippers'] = gripper_data
+
         calib_transforms = []
         for parent, child in self.transforms:
             tfm = {}
@@ -146,9 +171,10 @@ class CalibratedTransformPublisher(Thread):
             trans, rot = self.transforms[parent, child]
             tfm['tfm'] = conversions.trans_rot_to_hmat(trans, rot)
             calib_transforms.append(tfm)
-        
         calib_data['transforms'] = calib_transforms
-        with open(file, 'w') as fh: cPickle.dump(calib_data, fh)
+
+        file_name = osp.join('/home/sibi/sandbox/human_demos/hd_data/calib',file)        
+        with open(file_name, 'w') as fh: cPickle.dump(calib_data, fh)
 
 #Global variables
 cameras = None
@@ -163,6 +189,7 @@ def calibrate_cameras ():
     
     greenprint("Step 1. Calibrating mutliple cameras.")
     cam_calib = CameraCalibrator(cameras)
+
 
     done = False
     while not done:
@@ -249,6 +276,7 @@ def calibrate_grippers ():
         else:
             yellowprint("Calibrating l gripper again.")
             l_gripper_calib.reset_calibration()
+            l_gripper_calib.update_calib_info(calib_info)
             tfm_pub.set_publish_grippers(False)
     
 
@@ -300,8 +328,9 @@ def initialize_calibration():
 def run_calibration_sequence (spin=False):
         
     yellowprint("Beginning calibration sequence.")
+    initialize_calibration()
     calibrate_cameras()
-    calibrate_hydras() 
+    #calibrate_hydras() 
     calibrate_grippers ()
 
     greenprint("Done with all the calibration.")
@@ -309,3 +338,6 @@ def run_calibration_sequence (spin=False):
     while True and spin:
         # stall
         time.sleep(0.1)
+
+#if __name__=='__main__':
+#    run_calibration_sequence()
