@@ -71,6 +71,21 @@ class CalibratedTransformPublisher(Thread):
                 if self.publish_grippers:
                     self.publish_gripper_tfms()
             time.sleep(1/self.rate)
+    
+    def fake_initialize (self):
+        
+        for c in xrange(1,self.cameras.num_cameras):
+            tfm = np.eye(4)
+            tfm[0:3,3] = np.array([0.1,0.1,0.1])*c
+            trans , rot = conversions.hmat_to_trans_rot(tfm)
+            self.transforms['camera1_rgb_optical_frame','camera%i_rgb_optical_frame'%c] = (trans, rot)
+        
+        tfm = np.eye(4)
+        tfm[0:3,3] = np.array([0.1,0.1,0.1])*-1
+        trans , rot = conversions.hmat_to_trans_rot(tfm)
+        self.transforms['camera1_rgb_optical_frame','hydra_base'] = (trans, rot)
+        
+        self.ready = True
 
     def add_transforms(self, transforms):
         """
@@ -185,8 +200,8 @@ class CalibratedTransformPublisher(Thread):
 cameras = None
 tfm_pub = None
 
-CAM_N_OBS = 1
-CAM_N_AVG = 5
+CAM_N_OBS = 10
+CAM_N_AVG = 20
 
 
 def calibrate_cameras ():
@@ -319,15 +334,14 @@ def calibrate_grippers ():
 #     greenprint("Done with r gripper calibration.")
 
 
-NUM_CAMERAS = 1
-def initialize_calibration():
+NUM_CAMERAS = 2
+def initialize_calibration(num_cams=NUM_CAMERAS):
     global cameras, tfm_pub
     rospy.init_node('calibration')
-    cameras = RosCameras(num_cameras=NUM_CAMERAS)
+    cameras = RosCameras(num_cameras=num_cams)
     tfm_pub = CalibratedTransformPublisher(cameras)
+    #tfm_pub.fake_initialize()
     tfm_pub.start()
-
-
 
 
 def run_calibration_sequence (spin=False):
