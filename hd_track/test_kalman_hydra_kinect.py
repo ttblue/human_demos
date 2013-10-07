@@ -14,8 +14,8 @@ import scipy.linalg as scl
 from l1 import l1
 import cvxopt as cvx
 
-hd_path = '/home/henrylu/henry_sandbox/human_demos'
-
+#hd_path = '/home/henrylu/henry_sandbox/human_demos'
+hd_path = '/home/ankush/sandbox444/human_demos'
 
 def run_kalman(T_hydra, T_ar, x_init, covar_init, f=30.):
     """

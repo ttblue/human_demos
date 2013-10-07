@@ -13,8 +13,9 @@ from kalman_tuning import state_from_tfms, closer_angle
 import scipy.linalg as scl
 from l1 import l1
 import cvxopt as cvx
+from kalman import smoother
 
-hd_path = '/home/henrylu/henry_sandbox/human_demos'
+hd_path = '/home/ankush/sandbox444/human_demos'
 
 
 def run_kalman(T_obs, x_init, covar_init, f=30.):
@@ -25,23 +26,25 @@ Runs the kalman filter using just the observations from hydra.
     N = len(T_obs)
     
     ## load the noise covariance matrices:
-    covar_mats = cPickle.load(open(hd_path + '/hd_track/data/pr2-hydra-kinect-covars-xyz-rpy.cpickle'))
-    motion_covar = covar_mats['process']
+    covar_mats = cPickle.load(open(hd_path + '/hd_track/data/old/pr2-hydra-kinect-covars-xyz-rpy.cpickle'))
+    motion_covar = 1e4*covar_mats['process']
     hydra_covar = 1e5*covar_mats['hydra']
 
     ## initialize the filter:
     KF = kalman()
-    KF.init_filter(0, x_init, covar_init, motion_covar, hydra_covar)
+    KF.init_filter(0, x_init, covar_init, motion_covar, hydra_covar, None)
     
     ts = dt * (np.arange(N)+1)
     estimates = [] ## the kalman filter estimates
+    covars    = []
 
     ## run the filter:
     for i in xrange(len(ts)-1):
         KF.observe_hydra(T_obs[i+1], ts[i])
         estimates.append(KF.x_filt)
+        covars.append(KF.S_filt)
     
-    return estimates
+    return (estimates, covars)
 
 
 def plot_kalman(X_kf, X_bh, X_bg_gh):
@@ -148,7 +151,7 @@ def show_regress(do_l1=False):
 def load_data():
     dt = 1./30.
     ## load pr2-hydra calib data:
-    dat = cPickle.load(open(hd_path + '/hd_track/data/pr2-hydra-kinect-trajectory-transforms.cpickle'))
+    dat = cPickle.load(open(hd_path + '/hd_track/data/old/pr2-hydra-kinect-trajectory-transforms.cpickle'))
     Ts_bh = dat['Ts_bh']
     Ts_bg = dat['Ts_bg']
     T_gh = dat['T_gh']
@@ -167,8 +170,8 @@ def load_data():
 
 def plot_complete():
     """
-Plots the complete data : hydra, pr2, marker.
-"""
+    Plots the complete data : hydra, pr2, marker.
+    """
     dt = 1./30.
 
     ## load pr2-hydra calib data:
@@ -183,7 +186,6 @@ Plots the complete data : hydra, pr2, marker.
     X_bh = state_from_tfms(Ts_bh, dt).T
     X_bg_gh = state_from_tfms(Ts_bg_gh, dt).T
 
-
     X_bg_gh[6:9,:] = closer_angle(X_bg_gh[6:9,:], X_bh[6:9,:])
 
     return (Ts_bh, Ts_bg, T_gh, Ts_bg_gh, X_bh, X_bg_gh)
@@ -192,8 +194,8 @@ Plots the complete data : hydra, pr2, marker.
 
 def run_kf_and_plot():
     """
-Runs the kalman filter and plots the results.
-"""
+    Runs the kalman filter and plots the results.
+    """
     dt = 1/30.
     Ts_bh, Ts_bg, T_gh, Ts_bg_gh, X_bh, X_bg_gh = load_data()
    
@@ -205,9 +207,63 @@ Runs the kalman filter and plots the results.
     ## run the kalman filter:
     X_kf = run_kalman(Ts_bh, x_init, S_init, 1./dt)
     
-    X_kf = np.array(X_kf)
+    X_kf,_ = np.array(X_kf)
     X_kf = np.reshape(X_kf, (X_kf.shape[0], X_kf.shape[1])).T
     
     ## plot the results:
     plot_kalman(X_kf[:,1:], X_bh, X_bg_gh)
     plt.show()
+
+
+def plot_smoother(X_s, X_kf, X_bh, X_bg_gh):
+    """
+    Plots the Kalman filter belief (X_kf),
+    the smoothed belief (X_s), 
+    the observed states (X_bh),
+    the true states (from PR2, X_bg_gh).
+    """
+    
+    assert len(X_s)==len(X_kf) == len(X_bh) == len(X_bg_gh), "The number of state vectors are not equal. %d, %d, %d, %d"%(len(X_s), len(X_kf), len(X_bh), len(X_bg_gh))
+    
+    axlabels = ['x', 'y', 'z', 'vx', 'vy', 'vz', 'roll', 'pitch', 'yaw', 'v_roll', 'v_pitch', 'v_yaw']
+    for i in range(12):
+        plt.subplot(4,3,i+1)
+        plt.plot(X_s[i,:], label='smoother')
+        plt.plot(X_kf[i,:], label='filter')
+        plt.plot(X_bh[i,:], label='hydra')
+        plt.plot(X_bg_gh[i,:], label='pr2')
+        plt.ylabel(axlabels[i])
+        plt.legend()
+
+def run_smoother():
+    dt = 1/30.
+    N = 3000
+    Ts_bh, Ts_bg, T_gh, Ts_bg_gh, X_bh, X_bg_gh = load_data()
+    Ts_bh = Ts_bh[10:N]
+    X_bh  = X_bh[:,10:N]
+    X_bg_gh = X_bg_gh[:,10:N]
+    
+   
+    ## initialize the kalman belief:
+    x_init = X_bg_gh[:,0]
+    I3 = np.eye(3)
+    S_init = scl.block_diag(1e-6*I3, 1e-3*I3, 1e-4*I3, 1e-1*I3)
+    
+    ## run the kalman filter:
+    X_kf, S_kf = run_kalman(Ts_bh, x_init, S_init, 1./dt)
+    
+    ## load the noise covariance matrices:
+    covar_mats = cPickle.load(open(hd_path + '/hd_track/data/old/pr2-hydra-kinect-covars-xyz-rpy.cpickle'))
+    R    = covar_mats['process']
+    A, _ = kalman().get_motion_mats(dt)
+    X_s, _ = smoother(A, 4e2*np.eye(12), X_kf, S_kf)
+    X_s  = np.array(X_s).T[0,:,:]
+    
+    X_kf = np.array(X_kf)
+    X_kf = np.reshape(X_kf, (X_kf.shape[0], X_kf.shape[1])).T
+    
+    ## plot the results:
+    print X_kf.shape, X_bh.shape, X_bg_gh.shape
+    plot_smoother(X_s, X_kf[:,1:], X_bh, X_bg_gh)
+    plt.show()
+    
