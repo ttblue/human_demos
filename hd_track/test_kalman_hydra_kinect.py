@@ -25,7 +25,7 @@ Runs the kalman filter using just the observations from hydra.
     N = len(T_hydra)
     
     ## load the noise covariance matrices:
-    covar_mats = cPickle.load(open(hd_path + '/hd_track/data/old/pr2-hydra-kinect-covars-xyz-rpy.cpickle'))
+    covar_mats = cPickle.load(open(hd_path + '/hd_track/data/timed-covars.cpickle'))
     motion_covar = covar_mats['process']
     hydra_covar = 1e5*covar_mats['hydra']
     ar_covar = 1e5*covar_mats['kinect']
@@ -154,10 +154,10 @@ def load_data():
     dt = 1./30.
 
     ## load pr2-hydra calib data:
-    dat = cPickle.load(open(hd_path + '/hd_track/data/timed-ransforms.cpickle'))
+    dat = cPickle.load(open(hd_path + '/hd_track/data/timed-transforms-1.cpickle'))
     Ts_bh = dat['Ts_bh']
     Ts_bg = dat['Ts_bg']
-    Ts_ba = dat['Ts_bk']
+    Ts_ba = dat['Ts_ba']
     T_gh = dat['T_gh']
     T_ga = dat['T_ga']
 

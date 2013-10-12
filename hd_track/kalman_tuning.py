@@ -119,7 +119,7 @@ def fit_process_noise(fname=None, f=30.):
     return (l_err, l_covar, r_err, r_covar)
 
 
-def fit_hydra_noise(Ts_bg, Ts_bh, T_gh, f):
+def fit_hydra_noise(Ts_bg, Ts_bh_raw, T_gh, f):
     """
     Get the hydra measurement covariance.
     Ts_bg : list of transforms from pr2's base to its gripper holding the hydra.
@@ -129,8 +129,19 @@ def fit_hydra_noise(Ts_bg, Ts_bh, T_gh, f):
     """
     dt = 1./f
     
-    assert len(Ts_bg) == len(Ts_bh), "Number of hydra and pr2 transforms not equal."
-    Ts_bg_gh = [t.dot(T_gh) for t in Ts_bg]
+    assert len(Ts_bg) == len(Ts_bh_raw), "Number of hydra and pr2 transforms not equal."
+    Ts_bh = []
+    Ts_bg_gh = []
+    for i in xrange(len(Ts_bh_raw)):
+        T_bh = Ts_bh_raw[i]
+        T_bg = Ts_bg[i]
+        if T_bh == None:
+            continue
+        else:
+            #print len(t)
+            Ts_bg_gh.append(T_bg.dot(T_gh))
+            Ts_bh.append(T_bh)
+    assert len(Ts_bg_gh) == len(Ts_bh), "Number of valid ar and pr2 transforms not equal."
 
     ## extract the full state vector:    
     X_bh    = state_from_tfms(Ts_bh, dt).T
@@ -203,9 +214,9 @@ def plot_ar_data(Ts_bg, Ts_ba, T_ga, f):
     plt.show()
 
 def plot_and_fit_ar(plot=True, f=30.):
-    dic = cPickle.load(open(hd_path + '/hd_track/data/timed-transforms.cpickle'))
+    dic = cPickle.load(open(hd_path + '/hd_track/data/nodup-transforms-3.cpickle'))
     Ts_bg = dic['Ts_bg']
-    Ts_ba = dic['Ts_bk']
+    Ts_ba = dic['Ts_ba']
     #rint len(Ts_bk)
     T_ga = dic['T_ga']
 
@@ -221,36 +232,42 @@ def plot_hydra_data(Ts_bg, Ts_bh, T_gh, f):
     dt = 1./f
 
     assert len(Ts_bg) == len(Ts_bh), "Number of hydra and pr2 transforms not equal."
-    Ts_bg_gh = [t.dot(T_gh) for t in Ts_bg]
-    
+    Ts_bh_hg = []
+    for t in Ts_bh:
+        if t == None:
+            Ts_bh_hg.append(np.zeros((4,4)))
+        else:
+            #print len(t)
+            Ts_bh_hg.append(t.dot(np.linalg.inv(T_gh)))    
+
     ## plot the translation:
     axlabels = ['x','y','z']
     for i in range(3):
         plt.subplot(3,2,i+1)
-        plt.plot(np.array([t[i,3] for t in Ts_bh]), label='hydra')
-        plt.plot(np.array([t[i,3] for t in Ts_bg_gh]), label='pr2')
+        plt.plot(np.array([t[i,3] for t in Ts_bh_hg]), '.', label='hydra')
+        plt.plot(np.array([t[i,3] for t in Ts_bg]), label='pr2')
         plt.ylabel(axlabels[i])
         plt.legend()
     
     ## plot the rotation:
-    X_bh    = state_from_tfms(Ts_bh, dt).T
-    X_bg_gh = state_from_tfms(Ts_bg_gh, dt).T
-    X_bg_gh[6:9,:] = closer_angle(X_bg_gh[6:9,:], X_bh[6:9,:])
+    #X_bh    = state_from_tfms(Ts_bh, dt).T
+    #X_bg_gh = state_from_tfms(Ts_bg_gh, dt).T
+    #X_bg_gh[6:9,:] = closer_angle(X_bg_gh[6:9,:], X_bh[6:9,:])
 
-    axlabels = ['roll','pitch','yaw']
-    for i in range(3):
-        plt.subplot(3,2,i+4)      
-        plt.plot(X_bh[i+6,:], label='hydra')
-        plt.plot(X_bg_gh[i+6,:], label='pr2')
-        plt.ylabel(axlabels[i])
-        plt.legend()
+    #axlabels = ['roll','pitch','yaw']
+    #for i in range(3):
+    #    plt.subplot(3,2,i+4)      
+    #    plt.plot(X_bh[i+6,:], '.', label='hydra')
+    #    plt.plot(X_bg_gh[i+6,:], label='pr2')
+    #    plt.ylabel(axlabels[i])
+    #    plt.legend()
 
     plt.show()
 
 
 def plot_and_fit_hydra(plot=True, f=30.):
 
-    dic = cPickle.load(open(hd_path + '/hd_track/data/timed-transforms.cpickle'))
+    dic = cPickle.load(open(hd_path + '/hd_track/data/nodup-transforms-3.cpickle'))
     Ts_bg = dic['Ts_bg']
     Ts_bh = dic['Ts_bh']
     #rint len(Ts_bk)
@@ -262,10 +279,10 @@ def plot_and_fit_hydra(plot=True, f=30.):
     return fit_hydra_noise(Ts_bg, Ts_bh, T_gh, f)
 
 
-def save_kalman_covars(out_file='./data/pr2-hydra-kinect-covars-xyz-rpy.cpickle'):
+def save_kalman_covars(out_file='./nodup-covars-3.cpickle'):
     """
     Computes the process noise covariance and the hydra-measurement noise covariances
-    from data and saves them to a cpickle file.
+    from data and saves them to a` cpickle file.
     """
     le,lc,re,rc = fit_process_noise()
     he, hc = plot_and_fit_hydra(True)
