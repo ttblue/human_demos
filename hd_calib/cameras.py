@@ -115,7 +115,7 @@ class RosCameras:
                 
         self.parent_frame = 'camera1_rgb_optical_frame'
     
-    def get_ar_markers (self, markers=None, camera=None, parent_frame=False):
+    def get_ar_markers (self, markers=None, camera=None, parent_frame=False, get_time=False):
         """
         @markers is a list of markers to be found. Default of None means all markers.
         @camera specifies which camera to use. Default of None means all cameras are used 
@@ -132,9 +132,15 @@ class RosCameras:
                 return {}
             
             marker_tfms = {}
+            time_stamp = 0.0
+            num_seen = 0
             for i in range(self.num_cameras):
                 ctfm = self.get_camera_transform(0, i)
-                tfms = self.camera_markers[i].get_marker_transforms(markers)
+                tfms,t = self.camera_markers[i].get_marker_transforms(markers, get_time=True)
+                if tfms: 
+                    time_stamp += t
+                    num_seen += 1
+                
                 
                 for marker in tfms:
                     if marker not in marker_tfms:
@@ -143,9 +149,11 @@ class RosCameras:
                 
             for marker in marker_tfms:
                 marker_tfms[marker] = utils.avg_transform(marker_tfms[marker])
+            if num_seen > 0:
+                time_stamp = time_stamp/num_seen
         else:
             assert camera in range(self.num_cameras)
-            marker_tfms = self.camera_markers[camera].get_marker_transforms(markers)
+            marker_tfms, time_stamp = self.camera_markers[camera].get_marker_transforms(markers, get_time=True)
             if parent_frame is True:
                 if not self.calibrated:
                     redprint('Cameras not calibrated. Cannot get transforms from all cameras.')
@@ -154,8 +162,10 @@ class RosCameras:
                 for marker,tfm in marker_tfms.items():
                     marker_tfms[marker] = ctfm.dot(tfm)
 
-            
-        return marker_tfms
+        if get_time:
+            return marker_tfms, time_stamp
+        else:
+            return marker_tfms
     
     # Make clique
     def store_calibrated_transforms (self, transforms):

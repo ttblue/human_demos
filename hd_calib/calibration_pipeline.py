@@ -71,6 +71,21 @@ class CalibratedTransformPublisher(Thread):
                 if self.publish_grippers:
                     self.publish_gripper_tfms()
             time.sleep(1/self.rate)
+    
+    def fake_initialize (self):
+        
+        for c in xrange(1,self.cameras.num_cameras):
+            tfm = np.eye(4)
+            tfm[0:3,3] = np.array([0.1,0.1,0.1])*c
+            trans , rot = conversions.hmat_to_trans_rot(tfm)
+            self.transforms['camera1_rgb_optical_frame','camera%i_rgb_optical_frame'%c] = (trans, rot)
+        
+        tfm = np.eye(4)
+        tfm[0:3,3] = np.array([0.1,0.1,0.1])*-1
+        trans , rot = conversions.hmat_to_trans_rot(tfm)
+        self.transforms['camera1_rgb_optical_frame','hydra_base'] = (trans, rot)
+        
+        self.ready = True
 
     def add_transforms(self, transforms):
         """
@@ -82,6 +97,30 @@ class CalibratedTransformPublisher(Thread):
             trans, rot = conversions.hmat_to_trans_rot(transform['tfm'])
             self.transforms[transform['parent'],transform['child']] = (trans,rot)
         self.ready = True
+    
+    def get_all_transforms(self):
+        rtn_tfms = []
+        for parent, child in self.transforms:
+            tfm = {'parent':parent, 'child':child}
+            trans, rot = self.transforms[parent, child]
+            tfm['tfm'] = conversions.trans_rot_to_hmat(trans, rot)
+            rtn_tfms.append(tfm)
+        
+        return rtn_tfms
+    
+    def get_camera_transforms(self):
+        rtn_tfms = {}
+        for parent, child in self.transforms:
+            if 'camera' in parent and 'camera' in child:
+                c1 = int(parent[6])-1
+                c2 = int(child[6])-1
+                tfm = {'parent':parent, 'child':child}
+                trans, rot = self.transforms[parent, child]
+                tfm['tfm'] = conversions.trans_rot_to_hmat(trans, rot)
+                rtn_tfms[c1,c2] = tfm
+        return rtn_tfms
+            
+            
         
     def add_gripper (self, gripper):
         self.grippers[gripper.lr] = gripper
@@ -136,6 +175,8 @@ class CalibratedTransformPublisher(Thread):
         self.add_transforms(calib_data['transforms'])
         
         if self.grippers: self.publish_grippers = True
+        self.cameras.calibrated = True
+        self.cameras.store_calibrated_transforms(self.get_camera_transforms())
         
         
     def load_gripper_calibration(self, file):
@@ -185,8 +226,8 @@ class CalibratedTransformPublisher(Thread):
 cameras = None
 tfm_pub = None
 
-CAM_N_OBS = 1
-CAM_N_AVG = 5
+CAM_N_OBS = 10
+CAM_N_AVG = 20
 
 
 def calibrate_cameras ():
@@ -214,7 +255,7 @@ def calibrate_cameras ():
 
     greenprint("Cameras calibrated.")
 
-HYDRA_N_OBS = 10
+HYDRA_N_OBS = 15
 HYDRA_N_AVG = 50
 CALIB_CAMERA = 0
 
@@ -319,15 +360,14 @@ def calibrate_grippers ():
 #     greenprint("Done with r gripper calibration.")
 
 
-NUM_CAMERAS = 1
-def initialize_calibration():
+NUM_CAMERAS = 2
+def initialize_calibration(num_cams=NUM_CAMERAS):
     global cameras, tfm_pub
     rospy.init_node('calibration')
-    cameras = RosCameras(num_cameras=NUM_CAMERAS)
+    cameras = RosCameras(num_cameras=num_cams)
     tfm_pub = CalibratedTransformPublisher(cameras)
+    #tfm_pub.fake_initialize()
     tfm_pub.start()
-
-
 
 
 def run_calibration_sequence (spin=False):

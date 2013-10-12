@@ -1066,10 +1066,14 @@ class GripperCalibrator:
             pot_angle = gmt.get_pot_angle()
             
             if not ar_tfm or (not hyd_tfm and self.hydras):
-                yellowprint('Could not find all required transforms.')
+                if not ar_tfm:
+                    yellowprint('Could not find all required ar markers.')
+                else:
+                    yellowprint('Could not find all required hydra transforms.')
                 thresh -= 1
                 if thresh == 0: return False
                 continue
+            
             
             pot_avg += pot_angle
             
