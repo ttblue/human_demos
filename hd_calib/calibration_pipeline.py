@@ -97,6 +97,30 @@ class CalibratedTransformPublisher(Thread):
             trans, rot = conversions.hmat_to_trans_rot(transform['tfm'])
             self.transforms[transform['parent'],transform['child']] = (trans,rot)
         self.ready = True
+    
+    def get_all_transforms(self):
+        rtn_tfms = []
+        for parent, child in self.transforms:
+            tfm = {'parent':parent, 'child':child}
+            trans, rot = self.transforms[parent, child]
+            tfm['tfm'] = conversions.trans_rot_to_hmat(trans, rot)
+            rtn_tfms.append(tfm)
+        
+        return rtn_tfms
+    
+    def get_camera_transforms(self):
+        rtn_tfms = {}
+        for parent, child in self.transforms:
+            if 'camera' in parent and 'camera' in child:
+                c1 = int(parent[6])-1
+                c2 = int(child[6])-1
+                tfm = {'parent':parent, 'child':child}
+                trans, rot = self.transforms[parent, child]
+                tfm['tfm'] = conversions.trans_rot_to_hmat(trans, rot)
+                rtn_tfms[c1,c2] = tfm
+        return rtn_tfms
+            
+            
         
     def add_gripper (self, gripper):
         self.grippers[gripper.lr] = gripper
@@ -151,6 +175,8 @@ class CalibratedTransformPublisher(Thread):
         self.add_transforms(calib_data['transforms'])
         
         if self.grippers: self.publish_grippers = True
+        self.cameras.calibrated = True
+        self.cameras.store_calibrated_transforms(self.get_camera_transforms())
         
         
     def load_gripper_calibration(self, file):
@@ -229,7 +255,7 @@ def calibrate_cameras ():
 
     greenprint("Cameras calibrated.")
 
-HYDRA_N_OBS = 10
+HYDRA_N_OBS = 15
 HYDRA_N_AVG = 50
 CALIB_CAMERA = 0
 

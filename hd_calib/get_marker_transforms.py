@@ -39,11 +39,12 @@ def get_ar_marker_poses (rgb, depth, pc=None):
         
     ar_lock = True
     if not ar_initialized:
-        if rospy.get_name() == '/unnamed':
-            rospy.init_node('ar_tfm')
+        #if rospy.get_name() == '/unnamed':
+        #    rospy.init_node('ar_tfm')
         getMarkers = rospy.ServiceProxy("getMarkers", MarkerPositions)
         req = MarkerPositionsRequest()
         ar_initialized = True
+        print "AR INITIALIZED"
     
     if pc is None:
         xyz = clouds.depth_to_xyz(depth, asus_xtion_pro_f)
@@ -99,11 +100,12 @@ def get_hydra_transforms(parent_frame, hydras=None):
     """
     global tf_l, hydra_initialized
     if not hydra_initialized:
-        if rospy.get_name() == '/unnamed':
-            rospy.init_node('hydra_tfm')
+        #if rospy.get_name() == '/unnamed':
+        #    rospy.init_node('hydra_tfm')
         if tf_l is None:
             tf_l = tf.TransformListener()
         hydra_initialized = True
+        print "HYDRA INITIALIZED"
         
     if hydras is None:
         hydras = ['left','right']
@@ -125,13 +127,15 @@ def get_transform_frames (parent_frame, child_frame):
     Gets transform between frames.
     """
     if tf_initialized is False:
-        if rospy.get_name() == '/unnamed':
-            rospy.init_node('tf_finder')
+        #if rospy.get_name() == '/unnamed':
+        #    rospy.init_node('tf_finder')
         if tf_l is None:
             tf_l = tf.TransformListener()
         tf_initialized = True
-        trans, quat = listener.lookupTransform(parent_frame, child_frame, rospy.Time(0))
-        return conversions.trans_rot_to_hmat(trans, quat)
+        print "TF INITIALIZED"
+        
+    trans, quat = tf_l.lookupTransform(parent_frame, child_frame, rospy.Time(0))
+    return conversions.trans_rot_to_hmat(trans, quat)
 
 
 b = 90.0       
@@ -145,7 +149,8 @@ def get_pot_angle ():
     if not pot_initialized:
         arduino = read_arduino.Arduino()
         pot_initialized = True
-    
+        print "POT INITIALIZED"
+        
     pot_reading = arduino.get_reading()    
     return (pot_reading-b)/a
     
