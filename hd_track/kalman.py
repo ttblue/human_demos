@@ -330,8 +330,9 @@ def smoother(A, R, mu, sigma):
     sigma_smooth[-1] = sigma[-1]
     
     for t in xrange(T-2, -1, -1):
-        L               = sigma[t].dot(A.T).dot(np.linalg.inv(sigma_p[t]))
-        mu_smooth[t]    = mu[t] + L.dot(mu_smooth[t+1] - mu_p[t])
-        sigma_smooth[t] = sigma[t] + L.dot(sigma_smooth[t+1] - sigma_p[t]).dot(L.T)
- 
-    return (mu_smooth, sigma_smooth)
+        #L               = sigma[t].dot(A.T).dot(np.linalg.inv(sigma_p[t]))
+        L               = sigma[t].dot(A.T).dot(np.linalg.inv(sigma[t+1]))
+        mu_smooth[t]    = mu_p[t] + L.dot(mu_smooth[t+1] - mu[t+1])
+        #sigma_smooth[t] = sigma[t] + L.dot(sigma_smooth[t+1] - sigma_p[t]).dot(L.T)
+        
+    return (mu_smooth)
