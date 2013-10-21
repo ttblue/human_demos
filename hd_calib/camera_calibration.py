@@ -19,6 +19,11 @@ TODO: if three kinects work together, maybe do graph optimization.
 
 
 def find_rigid_tfm (points1, points2, homogeneous=True):
+    """
+    Gives transform from frame of points 1 to frame of points 2.
+    Which means, applying the transform to points2 will make them in 
+    points1' frame.
+    """
     points1 = np.asarray(points1)
     points2 = np.asarray(points2)
     
@@ -32,21 +37,19 @@ def find_rigid_tfm (points1, points2, homogeneous=True):
     center1 = points1.sum(axis=0)/float(points1.shape[0])
     center2 = points2.sum(axis=0)/float(points2.shape[0])
     
-    X = points1 - center1
-    Y = points2 - center2
+    # Want to go from 1 to 2
+    Y = points1 - center1
+    X = points2 - center2
     
     S = X.T.dot(Y)
     # svd gives U, Sigma and V.T
     U, Sig, V = np.linalg.svd(S, full_matrices=True)
 
     ref_rot = np.eye(3,3)
-    ref_rot[2,2] = np.round(np.linalg.det(V.dot(U.T)))
-    
-#     import IPython
-#     IPython.embed()   
-    
+    ref_rot[2,2] = np.round(np.linalg.det(V.T.dot(U.T)))
+
     R = V.T.dot(ref_rot.dot(U.T))
-    t = center2 - R.dot(center2)
+    t = center1 - R.dot(center2)
     
     if homogeneous:
         Tfm = np.eye(4,4)
@@ -136,6 +139,9 @@ class CameraCalibrator:
         else:
             transform = find_rigid_tfm(convert_hmats_to_points(ar1.values()),
                                        convert_hmats_to_points(ar2.values()))
+            
+#         import IPython
+#         IPython.embed()
 
         return transform
 
@@ -168,6 +174,9 @@ class CameraCalibrator:
         for i in self.observed_ar_transforms:
             for marker in self.observed_ar_transforms[i]:
                 self.observed_ar_transforms[i][marker] = utils.avg_transform(self.observed_ar_transforms[i][marker])        
+
+#         import IPython
+#         IPython.embed()
 
         got_something = False
         for i in xrange(1,self.num_cameras):
