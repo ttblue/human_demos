@@ -176,6 +176,9 @@ class Gripper:
         From marker transforms given in parent_frame, get all transforms
         of all markers on gripper.
         """
+	if self.cameras is None:
+	    redprint("Cameras not initialized. Could not get transforms.")
+	    return
         ar_tfms = self.cameras.get_ar_markers()
 
         if diff_cam:
@@ -292,7 +295,7 @@ class Gripper:
         Takes in marker_tfms found, angles and markers for
         which transforms are required.
         Returns a dict of marker to transforms for the markers
-        requested.
+        requested, in the same frame as the marker tfms received.
         
         """
         
@@ -309,9 +312,9 @@ class Gripper:
                 rtn_tfms[marker] = marker_tfms[marker]
                 continue
             
-            tfm = self.get_rel_transform('cor', marker, gmt.get_pot_angle())
+            tfm = self.get_rel_transform('cor', marker, theta)
             if tfm is not None:
-                rtn_tfms[marker] = tfm
+                rtn_tfms[marker] = cor_tfm.dot(tfm)
         
         return rtn_tfms
 
@@ -387,7 +390,7 @@ class Gripper:
             
 
     
-    def add_marker (self, marker, group, m_type='AR', n_tfm=10, n_avg=10):
+    def add_marker (self, marker, group, m_type='AR', n_tfm=10, n_avg=30):
         """
         Add marker to the gripper, after calibration.
         
@@ -422,7 +425,7 @@ class Gripper:
         
         for obs in all_obs:
             tfms = obs['tfms']
-            angle = obs['tfms']
+            angle = obs['pot_angle']
             
             marker_tfm = tfms[marker]
             primary_tfm = self.get_markers_transform([primary_node], tfms, angle)[primary_node]
