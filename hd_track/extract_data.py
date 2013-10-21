@@ -9,7 +9,10 @@ from ar_track_service.srv import MarkerPositions, MarkerPositionsRequest, Marker
 from ar_track_alvar.msg import AlvarMarkers
 
 from hd_utils.defaults import tfm_link_rof
+from hd_utils.colorize import *
 from hd_utils import ros_utils as ru, clouds, conversions
+
+from hd_calib import gripper_calibration, gripper
 
 getMarkers = None
 req = MarkerPositionsRequest()
@@ -30,7 +33,7 @@ def get_ar_marker_poses (pc):
     for marker in res.markers.markers:
         marker_tfm[marker.id] = conversions.pose_to_hmat(marker.pose.pose).tolist()
     
-    print "Marker ids found: ", marker_tfm.keys()
+    #print "Marker ids found: ", marker_tfm.keys()
     
     return marker_tfm
 
@@ -76,38 +79,53 @@ def save_observations (bag, calib_file, save_file=None):
     ar2_tfms = []
     hyd_tfms = []
     
-    
+    yellowprint('Camera1')
     for (topic, msg, _) in bag.read_messages(topics=['/camera1/depth_registered/points']):
         marker_poses = get_ar_marker_poses (msg)
         
         if marker_poses:
+            for m in marker_poses:
+                marker_poses[m] = np.array(marker_poses[m])
             tt_tfm = gr.get_tool_tip_transform(marker_poses, None)
-            ar1_tfms.append((tt_tfm, msg.header.stamp.to_secs()))
+            
+            if tt_tfm is not None:
+                stamp = msg.header.stamp.to_sec()
+                blueprint("Got markers " + str(marker_poses.keys()) + " at time %f"%stamp)
+                ar1_tfms.append((tt_tfm, stamp))
         
+    yellowprint('Camera2')
     for (topic, msg, _) in bag.read_messages(topics=['/camera2/depth_registered/points']):
         marker_poses = get_ar_marker_poses (msg)
         
         if marker_poses:
             for m in marker_poses:
-                marker_poses[m] = tfm_c1_c2.dot(marker_poses[m])
+                marker_poses[m] = tfm_c1_c2.dot(np.array(marker_poses[m]))
             
             tt_tfm = gr.get_tool_tip_transform(marker_poses, None)
-            ar2_tfms.append((tt_tfm, msg.header.stamp.to_secs()))
+            if tt_tfm is not None:
+                stamp = msg.header.stamp.to_sec()
+                blueprint("Got markers " + str(marker_poses.keys()) + " at time %f"%stamp)
+                ar2_tfms.append((tt_tfm, stamp))
 
+    yellowprint('Hydra')
     for (topic, msg, _) in bag.read_messages(topics=['/tf']):
         
         hyd_tfm = {}
         for tfm in msg.transforms:
-            if tfm.frame_id == '/' + hydra_frame and tfm.child_frame_id == '/hydra_left':
+            if tfm.header.frame_id == '/' + hydra_frame and tfm.child_frame_id == '/hydra_left':
                 t,r = tfm.transform.translation, tfm.transform.rotation
                 trans = (t.x,t.y,t.z)
-                rot = (t.x, t.y, t.z, t.w)
+                rot = (r.x, r.y, r.z, r.w)
                 hyd_tfm['left'] = tfm_c1_h.dot(conversions.trans_rot_to_hmat(trans, rot))
+                stamp = tfm.header.stamp.to_sec()
                 break
         
         if hyd_tfm:
             tt_tfm = gr.get_tool_tip_transform(hyd_tfm, None)
-            hyd_tfms.append((tt_tfm, msg.header.stamp.to_secs()))
+            
+            if tt_tfm is not None:
+                blueprint("Got hydra_left at time %f"%stamp)  
+                hyd_tfms.append((tt_tfm, stamp))
 
     if save_file is None:
         save_file = ''
