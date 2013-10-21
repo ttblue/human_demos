@@ -76,8 +76,11 @@ def save_observations (bag, calib_file, save_file=None):
 
     
     ar1_tfms = []
+    ar1_count = 0
     ar2_tfms = []
+    ar2_count = 0
     hyd_tfms = []
+    hyd_count = 0
     
     yellowprint('Camera1')
     for (topic, msg, _) in bag.read_messages(topics=['/camera1/depth_registered/points']):
@@ -92,6 +95,7 @@ def save_observations (bag, calib_file, save_file=None):
                 stamp = msg.header.stamp.to_sec()
                 blueprint("Got markers " + str(marker_poses.keys()) + " at time %f"%stamp)
                 ar1_tfms.append((tt_tfm, stamp))
+                ar1_count += 1
         
     yellowprint('Camera2')
     for (topic, msg, _) in bag.read_messages(topics=['/camera2/depth_registered/points']):
@@ -106,6 +110,7 @@ def save_observations (bag, calib_file, save_file=None):
                 stamp = msg.header.stamp.to_sec()
                 blueprint("Got markers " + str(marker_poses.keys()) + " at time %f"%stamp)
                 ar2_tfms.append((tt_tfm, stamp))
+                ar2_count += 1
 
     yellowprint('Hydra')
     for (topic, msg, _) in bag.read_messages(topics=['/tf']):
@@ -126,7 +131,13 @@ def save_observations (bag, calib_file, save_file=None):
             if tt_tfm is not None:
                 blueprint("Got hydra_left at time %f"%stamp)  
                 hyd_tfms.append((tt_tfm, stamp))
+                hyd_count += 1
 
+
+    yellowprint("Found %i transforms from camera1"%ar1_count)
+    yellowprint("Found %i transforms from camera2"%ar2_count)
+    yellowprint("Found %i transforms from hydra"%hyd_count)
+    
     if save_file is None:
         save_file = ''
         for name in bag.filename.split('.')[0:-1]:
