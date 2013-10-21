@@ -13,8 +13,8 @@ from hd_utils import utils, conversions
 from hd_utils.yes_or_no import yes_or_no
 from hd_utils.colorize import *
 
-import get_marker_transforms as gmt
-from gripper import Gripper
+import hd_calib.get_marker_transforms as gmt
+from hd_calib.gripper import Gripper
 
 np.set_printoptions(precision=5, suppress=True)
 
