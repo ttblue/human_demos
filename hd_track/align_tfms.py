@@ -2,6 +2,9 @@
 import numpy as np
 import cPickle
 import argparse
+import matplotlib.pylab as plt
+
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--read', help="Name of log file to read", required=True, type=str)
@@ -11,27 +14,38 @@ args = parser.parse_args()
 print args.read
 dic = cPickle.load(open(args.read))
 
-
-
-
-tool_tfms = dic['tool_tfms']
+tool_tfms    = dic['tool_tfms']
 tool_times_o = dic['tool_times']
 tool_times = []
+
 for t in tool_times_o:
-    #print t.to_sec()
-    tool_times.append(t.to_sec() * 1000000)
-ar_tfms = dic['ar_tfms']
+    tool_times.append(t.to_sec())
+
+ar_tfms    = dic['ar_tfms']
 ar_times_o = dic['ar_times']
-ar_times = []
+ar_times   = []
+
 for t in ar_times_o:
-    ar_times.append(t * 1000000)
+    ar_times.append(t)
+
 hydra_tfms  = dic['hydra_tfms']
 hydra_times_o = dic['hydra_times']
 hydra_times = []
+
 for t in hydra_times_o:
-    hydra_times.append(t.to_sec() * 1000000)
+    hydra_times.append(t.to_sec())
 
+## visualize time-stamps
+print "pr2   # time-stamps : ", len(tool_times)
+print "ar    # time-stamps : ", len(ar_times) 
+print "hydra # time-stamps : ", len(hydra_times) 
+plt.hold(True)
+plt.plot(tool_times[5:], label="pr2")
+plt.plot(ar_times[45:], label="ar")
+plt.plot(hydra_times[45:], label="hydra")
 
+plt.legend()
+plt.show()
 
 ar_tfms_search = [None] * len(tool_tfms)
 hydra_tfms_search = [None] * len(hydra_tfms)
