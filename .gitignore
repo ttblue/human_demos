@@ -54,8 +54,12 @@ nosetests.xml
 *.not_sure/*
 *.settings/*
 
-# emacs tmp files:
+# emacs and vim tmp files:
 *~*
+*.swp*
 
 # bag files -- very huge
 *.bag
+
+# todo things:
+*todo/*
