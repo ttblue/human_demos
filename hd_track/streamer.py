@@ -16,6 +16,8 @@ class streamize():
 
     It assumes, that time-stamps are sorted.
     Time-stamps are assumed to be numpy arrays of float.
+    
+    This class is iterable.
     """
     
     def __init__(self, objs, ts, freq, favg):
@@ -34,7 +36,7 @@ class streamize():
     
     def __iter__(self):
         return self
-    
+
     def next(self):
         if not self.idx < len(self.ts):
             raise StopIteration
