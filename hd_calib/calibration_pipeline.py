@@ -8,6 +8,7 @@ import roslib, rospy
 roslib.load_manifest('tf')
 import tf
 from sensor_msgs.msg import PointCloud2
+from std_msgs.msg import Float32
 
 from hd_utils.colorize import *
 from hd_utils.yes_or_no import yes_or_no
@@ -60,6 +61,9 @@ class CalibratedTransformPublisher(Thread):
         self.ready = False
         self.rate = 30.0
         self.tf_broadcaster = tf.TransformBroadcaster()
+        
+        self.angle_pub = rospy.Publisher('pot_angle', Float32)
+        
         self.cameras = cameras
         self.publish_grippers = False
         self.grippers = {}
@@ -135,12 +139,13 @@ class CalibratedTransformPublisher(Thread):
 
     def publish_gripper_tfms (self):
         marker_tfms = self.cameras.get_ar_markers()
-        theta = gmt.get_pot_angle()
         parent_frame = self.cameras.parent_frame
 
+        theta = gmt.get_pot_angle()
+        self.angle_pub.publish(theta)
         transforms = []
         for gr in self.grippers.values():
-            transforms += gr.get_all_transforms(parent_frame)
+            transforms += gr.get_all_transforms(parent_frame, diff_cam=True)
             
         for transform in transforms:
             trans, rot = conversions.hmat_to_trans_rot(transform['tfm'])
@@ -235,7 +240,7 @@ cameras = None
 tfm_pub = None
 
 CAM_N_OBS = 10
-CAM_N_AVG = 20
+CAM_N_AVG = 50
 
 
 def calibrate_cameras ():
@@ -391,6 +396,6 @@ def run_calibration_sequence (spin=False):
     while True and spin:
         # stall
         time.sleep(0.1)
-
-#if __name__=='__main__':
-#    run_calibration_sequence()
+ 
+# if __name__=='__main__':
+#     run_calibration_sequence()

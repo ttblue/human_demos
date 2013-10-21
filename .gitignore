@@ -56,3 +56,6 @@ nosetests.xml
 
 # emacs tmp files:
 *~*
+
+# bag files -- very huge
+*.bag
