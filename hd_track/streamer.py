@@ -20,7 +20,7 @@ class streamize():
     This class is iterable.
     """
     
-    def __init__(self, objs, ts, freq, favg):
+    def __init__(self, objs, ts, freq, favg, tstart=0):
         assert len(objs)==len(ts), "time-stamps and objects should have the same length"
         self.objs = objs
         
@@ -31,7 +31,7 @@ class streamize():
         self.dt   = 1./freq
         
         self.idx  = 0
-        self.t    = 0
+        self.t    = tstart
     
     def __iter__(self):
         return self
@@ -52,6 +52,10 @@ class streamize():
             self.t  += self.dt
             
             return self.favg(cands) if cands else None
+        
+    def get_data(self):
+        return (self.objs, self.ts)
+
             
             
 if __name__ == '__main__':

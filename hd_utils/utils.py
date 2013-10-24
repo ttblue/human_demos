@@ -1,5 +1,6 @@
 import numpy as np
 import conversions
+import transformations as tfms
 
 def avg_quaternions(qs):
     """
@@ -45,3 +46,16 @@ def rotation_matrix(axis,theta):
     return np.array([[a*a+b*b-c*c-d*d, 2*(b*c-a*d), 2*(b*d+a*c)],
                      [2*(b*c+a*d), a*a+c*c-b*b-d*d, 2*(c*d-a*b)],
                      [2*(b*d-a*c), 2*(c*d+a*b), a*a+d*d-b*b-c*c]])
+
+def state_to_hmat(Xs):
+    """
+    Converts a list of 12 dof state vector (used in the kalman filteR) to a list of transforms.
+    """
+    Ts = []
+    for x in Xs:
+        trans = x[0:3]
+        rot   = x[6:9]
+        T = tfms.euler_matrix(rot[0], rot[1], rot[2])
+        T[0:3,3] = np.reshape(trans, 3)
+        Ts.append(T)
+    return Ts

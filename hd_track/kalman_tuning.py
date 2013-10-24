@@ -79,7 +79,6 @@ def state_from_tfms(Ts, dt=1./30.):
 def state_from_tfms_no_velocity(Ts):
     N  = len(Ts)
     Xs = np.zeros((N, 12))
-
     for i in xrange(N):
         Xs[i,0:3] = Ts[i][0:3,3]
         Xs[i,6:9] = np.array(tfms.euler_from_matrix(Ts[i]))
