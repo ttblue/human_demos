@@ -1,6 +1,6 @@
 ## visualization in rviz. Uses John's python/brett2/ros_utils.py
-from jds_utils import conversions as conv
-from brett2 import ros_utils as ru
+from hd_utils import conversions as conv
+from hd_utils import ros_utils as ru
 import numpy as np
 
 import roslib

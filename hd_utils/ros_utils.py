@@ -1,4 +1,3 @@
-
 import numpy as np
 
 import roslib
@@ -12,7 +11,8 @@ from visualization_msgs.msg import Marker, MarkerArray
 from StringIO import StringIO
 import traceback
 from func_utils import once
-import conversions, transformations, colorize
+import conversions, transformations
+from colorize import colorize
 
 import urdf
 import time
@@ -211,7 +211,7 @@ class RvizWrapper:
         return RvizWrapper()
 
     def __init__(self):
-        self.pub = rospy.Publisher('visualization_marker', Marker, latch=True)
+        self.pub       = rospy.Publisher('visualization_marker', Marker, latch=True)
         self.array_pub = rospy.Publisher("visualization_marker_array", MarkerArray)        
         self.ids = set([])
         register_deletion()
@@ -274,8 +274,8 @@ class RvizWrapper:
             id = np.random.randint(0,2147483647)
             if id not in self.ids: return id
        
-    def place_kin_tree_from_link(self, ps, linkname, valuedict=None, ns = "default_ns"):
-        markers = make_kin_tree_from_link(ps, linkname, valuedict=valuedict)
+    def place_kin_tree_from_link(self, ps, linkname, valuedict=None, color=(1,1,0,0.5), ns = "default_ns"):
+        markers = make_kin_tree_from_link(ps, linkname, valuedict=valuedict, color=color)
         marker_array = MarkerArray()
         marker_array.markers = markers
         handles = []
@@ -289,8 +289,8 @@ class RvizWrapper:
         return handles
                 
                 
-    def draw_trajectory(self, pose_array, angles, ns="default_ns"):
-        decimation = max(len(pose_array.poses)//6, 1)
+    def draw_trajectory(self, pose_array, angles, color=(1,1,0,0.5), ns="default_ns"):
+        decimation = 1#max(len(pose_array.poses)//6, 1)
         ps = gm.PoseStamped()
         ps.header.frame_id = pose_array.header.frame_id        
         ps.header.stamp = rospy.Time.now()
@@ -313,7 +313,7 @@ class RvizWrapper:
                          "r_gripper_l_finger_tip_joint":angle*multiplier,
                          "r_gripper_r_finger_tip_joint":angle*multiplier,
                          "r_gripper_joint":angle}
-            handles.extend(self.place_kin_tree_from_link(ps, root_link, valuedict, ns=ns))
+            handles.extend(self.place_kin_tree_from_link(ps, root_link, valuedict, color=color, ns=ns))
         return handles
                 
                 
@@ -340,7 +340,7 @@ class RvizWrapper:
 @once
 def get_pr2_urdf():
     U = urdf.URDF()
-    U.load('/opt/ros/fuerte/stacks/pr2_mechanism/pr2_mechanism_model/pr2.urdf')
+    U.load('/opt/ros/groovy/stacks/pr2_mechanism/pr2_mechanism_model/pr2.urdf')
     return U        
         
 def link_filter(names):
@@ -348,7 +348,7 @@ def link_filter(names):
 def joint_filter(names):
     return [name for name in names if name.endswith('joint')]        
     
-def make_kin_tree_from_link(ps,linkname, ns='default_ns',valuedict=None):
+def make_kin_tree_from_link(ps,linkname, ns='default_ns',valuedict=None, color=(1,1,0,0.5)):
     markers = []
     U = get_pr2_urdf()
     link = U.links[linkname]
@@ -365,7 +365,7 @@ def make_kin_tree_from_link(ps,linkname, ns='default_ns',valuedict=None):
         
         marker.pose = conversions.hmat_to_pose(origFromGeom)           
         marker.scale = gm.Vector3(1,1,1)
-        marker.color = stdm.ColorRGBA(1,1,0,.5)
+        marker.color = stdm.ColorRGBA(*color)
         marker.id = 0
         marker.lifetime = rospy.Duration()
         marker.mesh_resource = str(link.visual.geometry.filename)
@@ -376,11 +376,11 @@ def make_kin_tree_from_link(ps,linkname, ns='default_ns',valuedict=None):
         
     if U.child_map.has_key(linkname):
         for (cjoint,clink) in U.child_map[linkname]:
-            markers.extend(make_kin_tree_from_joint(ps,cjoint,ns=ns,valuedict=valuedict))
+            markers.extend(make_kin_tree_from_joint(ps,cjoint,ns=ns,valuedict=valuedict, color=color))
             
     return markers    
 
-def make_kin_tree_from_joint(ps,jointname, ns='default_ns',valuedict=None):
+def make_kin_tree_from_joint(ps,jointname, ns='default_ns',valuedict=None, color=(1,1,0,0.5)):
     rospy.logdebug("joint: %s"%jointname)
     U = get_pr2_urdf()
         
@@ -407,4 +407,4 @@ def make_kin_tree_from_joint(ps,jointname, ns='default_ns',valuedict=None):
     newps.header = ps.header
     newps.pose = conversions.hmat_to_pose(originFromRotated)
     
-    return make_kin_tree_from_link(newps,joint.child,ns=ns,valuedict=valuedict)
+    return make_kin_tree_from_link(newps,joint.child,ns=ns,valuedict=valuedict, color=color)
