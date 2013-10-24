@@ -96,8 +96,7 @@ if __name__ == '__main__':
     
     rospy.init_node('test_pc')
     pub = rospy.Publisher('/test_pointclouds', PointCloud2)
-    
-    
+
     freq = 1
     pc_streamer = streamize_pc(bag, '/camera1/depth_registered/points', 1)
     

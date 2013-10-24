@@ -25,7 +25,6 @@ class streamize():
         self.objs = objs
         
         self.ts   = np.array(ts)
-        self.ts  -= self.ts[0]
         self.tmax = self.ts[-1]
         
         self.favg = favg
@@ -56,9 +55,9 @@ class streamize():
             
             
 if __name__ == '__main__':
-    a = [1,2,3,4,5,6]
+    a  = [1,2,3,4,5,6]
     ts = [1,2,3,4,5,6]
-    
+
     print "Testing\n========="
     print "objects = ", a
     print "times   = ", ts
