@@ -70,11 +70,10 @@ def get_first_state(dt, c1_ts, c1_tfs, c2_ts, c2_tfs, hy_ts, hy_tfs):
     
     ar1 = [c1_tfs[i] for i in xrange(len(c1_ts)) if c1_ts[i] <= dt]
     ar2 = [c2_tfs[i] for i in xrange(len(c2_ts)) if c2_ts[i] <= dt]
-    hy =  [hy_tfs[i] for i in xrange(len(hy_ts)) if hy_ts[i] <= dt]
-
+    hy =  [hy_tfs[i] for i in xrange(len(hy_ts)) if hy_ts[i] <= dt] 
     
     if ar1 != [] or ar2 != []:
-        x0 =  state_from_tfms_no_velocity(avg_transform(ar1.extend(ar2)))
+        x0 =  state_from_tfms_no_velocity([avg_transform(ar1)])
         I3 = np.eye(3)
         S0 = scl.block_diag(1e-3*I3, 1e-2*I3, 1e-3*I3, 1e-3*I3)
     else:
@@ -174,21 +173,21 @@ def rad2scale(th):
 
             
 if __name__ == '__main__':
-    bag = rosbag.Bag('/media/data/recorded/demo1.bag')
+    demo_num = 4
+    
+    bag = rosbag.Bag('/media/data/recorded/demo'+str(demo_num)+'.bag')
     rospy.init_node('viz_demos')
     pub = rospy.Publisher('/point_cloud1', PointCloud2)
     pub2= rospy.Publisher('/point_cloud2', PointCloud2)
 
     freq     = 30.
 
-
-    
     ## run the kalman filter:
-    nsteps, tmin, X_means,_,_,_ = run_kalman_filter('demo1.data', freq)
+    nsteps, tmin, X_means,_,_,_ = run_kalman_filter('demo'+str(demo_num)+'.data', freq)
     T_filt = state_to_hmat(X_means)
     
     ## load the potentiometer-angle stream:
-    pot_data = cp.load(open(osp.join(hd_path, 'hd_data/demos/obs_data/demo1.data')))['pot_angles']
+    pot_data = cp.load(open(osp.join(hd_path, 'hd_data/demos/obs_data/demo'+str(demo_num)+'.data')))['pot_angles']
     ang_ts   = np.array([tt[1] for tt in pot_data])  ## time-stamps
     ang_vals = [tt[0] for tt in pot_data]  ## angles
     ang_strm = streamize(ang_vals, ang_ts, freq, np.mean, tmin)
@@ -231,4 +230,7 @@ if __name__ == '__main__':
         ang_val = soft_next(ang_strm)
         ang_val = [0*rad2scale(np.deg2rad(ang_val))] if ang_val != None else None
         handles = draw_trajectory(cam1_frame_id, [T_filt[i]], color=(1,1,0,1))#, ang_val)
+        
         sleeper.sleep()
+        
+        
