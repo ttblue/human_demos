@@ -15,7 +15,7 @@ import scipy.linalg as scl
 from l1 import l1
 import cvxopt as cvx
 
-hd_path = '/home/henrylu/henry_sandbox/human_demos'
+hd_path = '/home/sibi/sandbox/human_demos'
 #hd_path = '/home/ankush/sandbox444/human_demos'
 
 def run_kalman_filter(T_hydra, T_ar, x_init, covar_init, ar_cov_scale, hydra_cov_scale, f=30.):
@@ -40,7 +40,7 @@ def run_kalman_filter(T_hydra, T_ar, x_init, covar_init, ar_cov_scale, hydra_cov
     filter_covariances = [] ## the kalman filter covariances
     ## run the filter:
     for i in xrange(len(ts)-1):
-        KF.register_observation(ts[i], T_ar[i+1], T_hydra[i+1])
+        KF.register_observationx(ts[i], T_ar[i+1], T_hydra[i+1])
         filter_estimates.append(KF.x_filt)
         filter_covariances.append(KF.S_filt)
     
