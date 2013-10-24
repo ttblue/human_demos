@@ -81,6 +81,8 @@ def save_observations (bag, calib_file, save_file=None):
     ar2_count = 0
     hyd_tfms = []
     hyd_count = 0
+    pot_angles = []
+    pot_count = 0
     
     yellowprint('Camera1')
     for (topic, msg, _) in bag.read_messages(topics=['/camera1/depth_registered/points']):
@@ -134,9 +136,19 @@ def save_observations (bag, calib_file, save_file=None):
                 hyd_count += 1
 
 
+    for (_, msg, ts) in bag.read_messages(topics=['/pot_angle']):
+
+	angle = msg.data
+	stamp = ts.to_sec()
+	pot_angles.append((angle, stamp))
+	blueprint("Got a potentiometer angle of %f at time %f"%(angle, stamp))
+	pot_count += 1
+
+
     yellowprint("Found %i transforms from camera1"%ar1_count)
     yellowprint("Found %i transforms from camera2"%ar2_count)
     yellowprint("Found %i transforms from hydra"%hyd_count)
+    yellowprint("Found %i potentiometer readings"%pot_count)
     
     if save_file is None:
         save_file = ''
@@ -145,5 +157,6 @@ def save_observations (bag, calib_file, save_file=None):
         save_file += 'data'
     save_filename = osp.join('/home/sibi/sandbox/human_demos/hd_data/demos/obs_data', save_file)
     
-    data = {'camera1':ar1_tfms, 'camera2':ar2_tfms, 'hydra':hyd_tfms}
+    data = {'camera1':ar1_tfms, 'camera2':ar2_tfms, 
+	    'hydra':hyd_tfms, 'pot_angles':pot_angles}
     with open(save_filename, 'w') as sfh: cPickle.dump(data, sfh)
