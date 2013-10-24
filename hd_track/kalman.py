@@ -31,8 +31,10 @@ class kalman:
         self.vr_std_t = 90 # deg/s /s
       
         ## standard deviations of the measurements:
-        self.ar_x_std     = 0.05 # m / sample
-        self.ar_r_std     = 5    # deg / sample
+        self.ar1_x_std     = 0.05 # m / sample
+        self.ar1_r_std     = 5    # deg / sample
+	self.ar2_x_std     = 0.05 # m / sample
+        self.ar2_r_std     = 5    # deg / sample
         self.hydra_vx_std = 0.01 # m/s / sample
         self.hydra_r_std  = 0.1  # deg/ sample
 
@@ -41,7 +43,8 @@ class kalman:
         self.min_vr_std  = self.put_in_range(np.deg2rad(self.min_vr_std))
         self.r_std_t     = self.put_in_range(np.deg2rad(self.r_std_t))
         self.vr_std_t    = self.put_in_range(np.deg2rad(self.vr_std_t))
-        self.ar_r_std    = self.put_in_range(np.deg2rad(self.ar_r_std))
+        self.ar1_r_std    = self.put_in_range(np.deg2rad(self.ar1_r_std))
+        self.ar2_r_std    = self.put_in_range(np.deg2rad(self.ar2_r_std))
         self.hydra_r_std = self.put_in_range(np.deg2rad(self.hydra_r_std))
 
         # update frequency : the kalman filter updates the estimate explicitly at this rate.
@@ -50,7 +53,8 @@ class kalman:
     
         ## last observations : used to calculate observation velocities.
         self.hydra_prev = None
-        self.ar_prev    = None
+        self.ar2_prev    = None
+	self.ar2_prev   = None
 
         ## the filter's current belief and its time:
         self.t_filt = None # time
@@ -59,7 +63,8 @@ class kalman:
  
         self.motion_covar = None
         self.hydra_covar = None
-        self.ar_covar = None
+        self.ar1_covar = None
+    	self.ar2_covar = None
 
         ## store the observation matrix for the hydras and AR markers:
         ##  both hydra and ar markers observe xyz and rpy only:
@@ -67,7 +72,8 @@ class kalman:
         self.hydra_mat[0:3, 0:3] = np.eye(3)
         self.hydra_mat[3:6, 6:9] = np.eye(3)
 
-        self.ar_mat = self.hydra_mat
+        self.ar1_mat = self.hydra_mat
+	self.ar2_mat = self.hydra_mat
 
 
     def get_motion_covar(self, dt=1./30.):
@@ -104,13 +110,21 @@ class kalman:
         return (self.hydra_mat, self.hydra_covar)
         
 
-    def get_ar_mats(self):
+    def get_ar1_mats(self):
         """
         Returns a tuple : observation matrix and the corresponding noise covariance matrix
-                          for AR marker observations.
+                          for AR marker observations from camera 1.
         AR markers observe the translation to very high accuracy, but rotations are very noisy. 
         """
-        return (self.ar_mat, self.ar_covar)
+        return (self.ar1_mat, self.ar1_covar)
+
+    def get_ar2_mats(self):
+	"""
+        Returns a tuple : observation matrix and the corresponding noise covariance matrix
+                          for AR marker observations from camera 2.
+        AR markers observe the translation to very high accuracy, but rotations are very noisy. 
+        """
+	return (self.ar2_mat, self.ar2_covar)
         
 
     def control_update(self, x_p, S_p, dt=None):
@@ -149,7 +163,7 @@ class kalman:
         return (x_n, S_n)
     
 
-    def init_filter(self, t, x_init, S_init, motion_covar, hydra_covar, ar_covar):
+    def init_filter(self, t, x_init, S_init, motion_covar, hydra_covar, ar1_covar, ar2_covar):
         """
         Give the initial estimate for the filter.
         t is the time of the estimate.
@@ -161,7 +175,8 @@ class kalman:
         self.S_filt = S_init
         self.motion_covar = motion_covar
         self.hydra_covar  = hydra_covar
-        self.ar_covar     = ar_covar
+        self.ar1_covar    = ar1_covar
+        self.ar2_covar    = ar2_covar
         
 
     def __check_time__(self, t):
@@ -254,46 +269,64 @@ class kalman:
         self.x_filt, self.S_filt = self.control_update(self.x_filt, self.S_filt, dt)
         self.x_filt, self.S_filt = self.measurement_update(z, C, Q, self.x_filt, self.S_filt)
 
-
-    def register_observation(self, t, T_ar=None, T_hy=None):
+    def register_observation(self, t, T_ar1=None, T_ar2=None, T_hy=None):
         """
         New interface function to update the filter
-        with observations.
+        with observations from hydra and two kinects.
         
-        Can pass in both or any one of the hydra/ ar-marker estimate.
+        Can pass in any combination of the hydra/camera1-ar-marker/camera2-ar-marker estimate.
         t is the time of the observation.
         
-        NOTE: This does not update the {ar, hydra}_prev variables:
+        NOTE: This does not update the {ar1, ar2, hydra}_prev variables:
               THIS WILL CAUSE ERRORS if using velocities in observation updates.
               ======================
-        """ 
+        """
         if not self.__check_time__(t):
             return
-        
+
         dt = t - self.t_filt
         self.x_filt, self.S_filt = self.control_update(self.x_filt, self.S_filt, dt)
-       
-        # observe just the hydras:
+        
         z_obs, C, Q = None, None, None
-        if T_ar==None and T_hy != None:
-            pos, rpy = self.canonicalize_obs(T_hy)
-            z_obs = np.c_['0,2', pos, rpy]
-            C,Q = self.get_hydra_mats()
-        elif T_ar!=None and T_hy == None: # observe just the ar:
-            pos, rpy = self.canonicalize_obs(T_ar)
-            z_obs = np.c_['0,2', pos, rpy]
-            C,Q = self.get_ar_mats()
-        elif T_ar != None and T_hy != None: # observe both
-            p1, th1 = self.canonicalize_obs(T_ar)
-            C1,Q1   = self.get_ar_mats()
-            p2, th2 = self.canonicalize_obs(T_hy)
-            C2,Q2   = self.get_hydra_mats()
+        reading = False
+	if T_hy != None or T_ar1 != None or T_ar2 != None: # initilize if anything was observed	
+	    z_obs = np.array([])
+	    C     = None
+	    Q	  = None
 
-            z_obs = np.c_['0,2', p1, th1, p2, th2]
-            C = np.r_[C1, C2]
-            Q = scl.block_diag(Q1, Q2)
+	if T_ar1 != None: # observe the ar from camera 1
+	    pos, rpy     = self.canonicalize_obs(T_ar1)
+	    c_ar1, q_ar1 = self.get_ar1_mats()
+	    z_obs = np.c_['0,2', z_obs, pos, rpy]
+            C     = c_ar1
+	    Q     = q_ar1
+	    reading = True
 
-        if (z_obs != None and C!=None and Q!=None):
+	if T_ar2 != None: # observe the ar from camera 2
+	    pos, rpy     = self.canonicalize_obs(T_ar2)
+            c_ar2, q_ar2 = self.get_ar2_mats()
+            z_obs = np.c_['0,2', z_obs, pos, rpy]
+            if not reading:
+	        C = c_ar2
+	        Q = q_ar2
+	    else:
+	        C = np.r_[C, c_ar2]
+                Q = scl.block_diag(Q, q_ar2)
+            reading = True
+
+	if T_hy != None: # observe the hydra
+            pos, rpy     = self.canonicalize_obs(T_hy)
+            c_hy, q_hy = self.get_hydra_mats()
+            z_obs = np.c_['0,2', z_obs, pos, rpy]
+            if not reading:
+                C = c_hy
+                Q = q_hy
+            else:
+                C = np.r_[C, c_hy]
+                Q = scl.block_diag(Q, q_hy)
+
+
+	if (z_obs != None and C!=None and Q!=None):
             self.x_filt, self.S_filt = self.measurement_update(z_obs, C, Q, self.x_filt, self.S_filt)
 
 
