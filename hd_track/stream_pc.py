@@ -20,7 +20,7 @@ class streamize_pc():
     This class is iterable.
     """
     
-    def __init__(self, bag, cloud_topics, freq):
+    def __init__(self, bag, cloud_topics, freq, tstart=None):
         self.bag = bag
         
         if not isinstance(cloud_topics, list):
@@ -30,7 +30,6 @@ class streamize_pc():
         
         self.done = False
         
-        self.ts = []
         self.cloud_gen = bag.read_messages(topics=self.topics)
         
         try:
@@ -41,8 +40,9 @@ class streamize_pc():
             raise StopIteration ('Empty topics,')
         
         self.ts = 0
-        self.dt   = 1./freq
-        self.t = -self.dt
+        self.dt = 1./freq
+        
+        self.t  = -self.dt if tstart==None else tstart
         
         self.num_seen = 1
 
@@ -92,12 +92,11 @@ if __name__ == '__main__':
     import rosbag, rospy
     from sensor_msgs.msg import PointCloud2
     
-    bag = rosbag.Bag('/home/sibi/sandbox/human_demos/hd_data/demos/recorded/demo1.bag')
+    bag = rosbag.Bag('/media/data/recorded/demo1.bag')
     
     rospy.init_node('test_pc')
     pub = rospy.Publisher('/test_pointclouds', PointCloud2)
-    
-    
+
     freq = 1
     pc_streamer = streamize_pc(bag, '/camera1/depth_registered/points', 1)
     
@@ -106,6 +105,7 @@ if __name__ == '__main__':
             raw_input("Hit next when ready.")
             pc = pc_streamer.next()
             pc.header.stamp = rospy.Time.now()
+            print pc.header.frame_id
             pub.publish(pc)
         except StopIteration:
             break

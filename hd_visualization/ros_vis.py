@@ -30,5 +30,3 @@ def draw_trajectory(frame_id, hmats, angles=None, color=(0,0,1,0.5)):
     poses = hmats_to_pose_array(hmats, frame_id)
     handles = rviz.draw_trajectory(poses, angles=angles, color=color)
     return handles
-    
-    

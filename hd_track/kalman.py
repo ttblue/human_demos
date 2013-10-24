@@ -33,7 +33,7 @@ class kalman:
         ## standard deviations of the measurements:
         self.ar1_x_std     = 0.05 # m / sample
         self.ar1_r_std     = 5    # deg / sample
-	self.ar2_x_std     = 0.05 # m / sample
+        self.ar2_x_std     = 0.05 # m / sample
         self.ar2_r_std     = 5    # deg / sample
         self.hydra_vx_std = 0.01 # m/s / sample
         self.hydra_r_std  = 0.1  # deg/ sample
@@ -54,7 +54,7 @@ class kalman:
         ## last observations : used to calculate observation velocities.
         self.hydra_prev = None
         self.ar2_prev    = None
-	self.ar2_prev   = None
+        self.ar2_prev   = None
 
         ## the filter's current belief and its time:
         self.t_filt = None # time
@@ -64,7 +64,7 @@ class kalman:
         self.motion_covar = None
         self.hydra_covar = None
         self.ar1_covar = None
-    	self.ar2_covar = None
+        self.ar2_covar = None
 
         ## store the observation matrix for the hydras and AR markers:
         ##  both hydra and ar markers observe xyz and rpy only:
@@ -73,7 +73,7 @@ class kalman:
         self.hydra_mat[3:6, 6:9] = np.eye(3)
 
         self.ar1_mat = self.hydra_mat
-	self.ar2_mat = self.hydra_mat
+        self.ar2_mat = self.hydra_mat
 
 
     def get_motion_covar(self, dt=1./30.):
@@ -119,12 +119,12 @@ class kalman:
         return (self.ar1_mat, self.ar1_covar)
 
     def get_ar2_mats(self):
-	"""
+        """
         Returns a tuple : observation matrix and the corresponding noise covariance matrix
                           for AR marker observations from camera 2.
         AR markers observe the translation to very high accuracy, but rotations are very noisy. 
         """
-	return (self.ar2_mat, self.ar2_covar)
+        return (self.ar2_mat, self.ar2_covar)
         
 
     def control_update(self, x_p, S_p, dt=None):
@@ -154,12 +154,10 @@ class kalman:
         x_b = np.reshape(x_b, (12,1))
         L = np.linalg.inv(C_obs.dot(S_b).dot(C_obs.T) + Q_obs)
         K = S_b.dot(C_obs.T).dot(L)
-       
         x_n = x_b + K.dot(z_obs - C_obs.dot(x_b))
         S_n = S_b - K.dot(C_obs).dot(S_b)
         
         x_n[6:9] = self.put_in_range(x_n[6:9])
-
         return (x_n, S_n)
     
 
@@ -286,47 +284,48 @@ class kalman:
 
         dt = t - self.t_filt
         self.x_filt, self.S_filt = self.control_update(self.x_filt, self.S_filt, dt)
-        
+
         z_obs, C, Q = None, None, None
         reading = False
-	if T_hy != None or T_ar1 != None or T_ar2 != None: # initilize if anything was observed	
-	    z_obs = np.array([])
-	    C     = None
-	    Q	  = None
+        if T_hy != None or T_ar1 != None or T_ar2 != None: # initilize if anything was observed 
+            z_obs = np.array([])
+            C = None
+            Q = None
 
-	if T_ar1 != None: # observe the ar from camera 1
-	    pos, rpy     = self.canonicalize_obs(T_ar1)
-	    c_ar1, q_ar1 = self.get_ar1_mats()
-	    z_obs = np.c_['0,2', z_obs, pos, rpy]
+        if T_ar1 != None: # observe the ar from camera 1
+            pos, rpy     = self.canonicalize_obs(T_ar1)
+            c_ar1, q_ar1 = self.get_ar1_mats()
+            z_obs = np.c_['0,2', z_obs, pos, rpy]
             C     = c_ar1
-	    Q     = q_ar1
-	    reading = True
+            Q     = q_ar1
+            reading = True
 
-	if T_ar2 != None: # observe the ar from camera 2
-	    pos, rpy     = self.canonicalize_obs(T_ar2)
+        if T_ar2 != None: # observe the ar from camera 2
+            pos, rpy     = self.canonicalize_obs(T_ar2)
             c_ar2, q_ar2 = self.get_ar2_mats()
             z_obs = np.c_['0,2', z_obs, pos, rpy]
             if not reading:
-	        C = c_ar2
-	        Q = q_ar2
-	    else:
-	        C = np.r_[C, c_ar2]
+                C = c_ar2
+                Q = q_ar2
+                reading = True
+            else:
+                C = np.r_[C, c_ar2]
                 Q = scl.block_diag(Q, q_ar2)
-            reading = True
+                reading = True
 
-	if T_hy != None: # observe the hydra
+        if T_hy != None: # observe the hydra
             pos, rpy     = self.canonicalize_obs(T_hy)
             c_hy, q_hy = self.get_hydra_mats()
             z_obs = np.c_['0,2', z_obs, pos, rpy]
             if not reading:
                 C = c_hy
                 Q = q_hy
+                reading = True
             else:
                 C = np.r_[C, c_hy]
                 Q = scl.block_diag(Q, q_hy)
 
-
-	if (z_obs != None and C!=None and Q!=None):
+        if (z_obs != None and C!=None and Q!=None):
             self.x_filt, self.S_filt = self.measurement_update(z_obs, C, Q, self.x_filt, self.S_filt)
 
 
