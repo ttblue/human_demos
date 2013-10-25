@@ -289,16 +289,14 @@ class RvizWrapper:
         return handles
                 
                 
-    def draw_trajectory(self, pose_array, angles, color=(1,1,0,0.5), ns="default_ns"):
+    def draw_trajectory(self, pose_array, open_fracs, color=(1,1,0,0.5), ns="default_ns"):
         decimation = 1#max(len(pose_array.poses)//6, 1)
         ps = gm.PoseStamped()
         ps.header.frame_id = pose_array.header.frame_id        
         ps.header.stamp = rospy.Time.now()
         handles = []
- 
-        multiplier = 5.79 
-        
-        for (pose,angle) in zip(pose_array.poses,angles)[::decimation]:
+         
+        for (pose,open_frac) in zip(pose_array.poses,open_fracs)[::decimation]:
 
             ps.pose = deepcopy(pose)
             pointing_axis = transformations.quaternion_matrix([pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w])[:3,0]
@@ -306,16 +304,16 @@ class RvizWrapper:
             ps.pose.position.y -= .18*pointing_axis[1]
             ps.pose.position.z -= .18*pointing_axis[2]
             
-            
+            joint = .0166 + open_frac*(.463 - .0166)          
             root_link = "r_wrist_roll_link"
-            valuedict = {"r_gripper_l_finger_joint":angle*multiplier,
-                         "r_gripper_r_finger_joint":angle*multiplier,
-                         "r_gripper_l_finger_tip_joint":angle*multiplier,
-                         "r_gripper_r_finger_tip_joint":angle*multiplier,
-                         "r_gripper_joint":angle}
+            valuedict = {"r_gripper_l_finger_joint":joint,
+                         "r_gripper_r_finger_joint":joint,
+                         "r_gripper_l_finger_tip_joint":joint,
+                         "r_gripper_r_finger_tip_joint":joint,
+                         "r_gripper_joint":joint}
             handles.extend(self.place_kin_tree_from_link(ps, root_link, valuedict, color=color, ns=ns))
         return handles
-                
+
                 
     #def place_gripper(ps,open_frac=.5,ns='rviz_utils'):
         
