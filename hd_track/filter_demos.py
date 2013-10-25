@@ -199,10 +199,10 @@ def open_frac(th):
 
             
 if __name__ == '__main__':
-    demo_num = 5
+    demo_num = 1
     freq     = 30.
 
-	data_dir = os.getenv('HD_DATA_DIR') 
+    data_dir = os.getenv('HD_DATA_DIR') 
     bag = rosbag.Bag(osp.join(data_dir,'demos/recorded/demo'+str(demo_num)+'.bag'))
     rospy.init_node('viz_demos')
     pub = rospy.Publisher('/point_cloud1', PointCloud2)
