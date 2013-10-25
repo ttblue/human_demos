@@ -336,11 +336,14 @@ class RvizWrapper:
             #r_gripper_l_finger_tip_joint=joint))
         
         
+
+import os, os.path as osp
     
 @once
 def get_pr2_urdf():
     U = urdf.URDF()
-    U.load('/opt/ros/groovy/stacks/pr2_mechanism/pr2_mechanism_model/pr2.urdf')
+    urdf_path = osp.join('/opt/ros',os.getenv('ROS_DISTRO'),'stacks/pr2_mechanism/pr2_mechanism_model/pr2.urdf')
+    U.load(urdf_path)
     return U        
         
 def link_filter(names):

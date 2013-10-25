@@ -8,7 +8,7 @@ import tf
 from   sensor_msgs.msg import PointCloud2
 
 import numpy as np
-import os.path as osp
+import os, os.path as osp
 import cPickle as cp
 import scipy.linalg as scl
 import math
@@ -23,7 +23,9 @@ from hd_track.streamer import streamize
 from hd_track.stream_pc import streamize_pc
 from hd_visualization.ros_vis import draw_trajectory 
 
-hd_path = '/home/ankush/sandbox444/human_demos'
+hd_path = os.getenv('HD_DIR')
+if hd_path is None:
+    hd_path = '/home/ankush/sandbox444/human_demos'
 
 
 def load_covariances():
@@ -174,8 +176,10 @@ def rad2scale(th):
             
 if __name__ == '__main__':
     demo_num = 4
-    
-    bag = rosbag.Bag('/media/data/recorded/demo'+str(demo_num)+'.bag')
+   
+    data_dir = os.getenv('HD_DATA_DIR')
+ 
+    bag = rosbag.Bag(osp.join(data_dir,'demos/recorded/demo1.bag'))
     rospy.init_node('viz_demos')
     pub = rospy.Publisher('/point_cloud1', PointCloud2)
     pub2= rospy.Publisher('/point_cloud2', PointCloud2)
@@ -187,7 +191,7 @@ if __name__ == '__main__':
     T_filt = state_to_hmat(X_means)
     
     ## load the potentiometer-angle stream:
-    pot_data = cp.load(open(osp.join(hd_path, 'hd_data/demos/obs_data/demo'+str(demo_num)+'.data')))['pot_angles']
+    pot_data = cp.load(open(osp.join(data_dir, 'demos/obs_data/demo1.data')))['pot_angles']
     ang_ts   = np.array([tt[1] for tt in pot_data])  ## time-stamps
     ang_vals = [tt[0] for tt in pot_data]  ## angles
     ang_strm = streamize(ang_vals, ang_ts, freq, np.mean, tmin)

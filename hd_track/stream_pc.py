@@ -104,6 +104,9 @@ if __name__ == '__main__':
         try:
             raw_input("Hit next when ready.")
             pc = pc_streamer.next()
+            if pc is None:
+                redprint('No Pointcloud.')
+                continue
             pc.header.stamp = rospy.Time.now()
             print pc.header.frame_id
             pub.publish(pc)
