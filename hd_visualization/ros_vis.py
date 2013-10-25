@@ -20,13 +20,13 @@ def hmats_to_pose_array(hmats, frame_id):
     return pose_array
 
 
-def draw_trajectory(frame_id, hmats, angles=None, color=(0,0,1,0.5)):
+def draw_trajectory(frame_id, hmats, open_fracs=None, color=(0,0,1,0.5)):
     """
     Draws gripper trajectory in rviz. Init a ros-node before calling this.
     hold the return handles.
     """
-    if angles ==None:
-        angles = len(hmats)*[0]
+    if open_fracs ==None:
+        open_fracs = len(hmats)*[0]
     poses = hmats_to_pose_array(hmats, frame_id)
-    handles = rviz.draw_trajectory(poses, angles=angles, color=color)
+    handles = rviz.draw_trajectory(poses, open_fracs=open_fracs, color=color)
     return handles

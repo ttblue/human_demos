@@ -10,6 +10,13 @@ def pose_to_trans_rot(pose):
     return (pose.position.x, pose.position.y, pose.position.z),\
            (pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w)
 
+def pose_to_stamped_pose(pose, frame_id):
+    pose_stamped = gm.PoseStamped()
+    pose_stamped.pose = pose
+    pose_stamped.header.stamp = rospy.Time.now()
+    pose_stamped.header.frame_id = frame_id
+    return pose_stamped
+    
 
 def hmat_to_pose(hmat):
     trans,rot = hmat_to_trans_rot(hmat)

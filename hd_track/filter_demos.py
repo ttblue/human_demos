@@ -6,7 +6,7 @@ import rospy, rosbag
 roslib.load_manifest("tf")
 import tf
 from   sensor_msgs.msg import PointCloud2
-
+from   geometry_msgs.msg import PoseStamped
 import numpy as np
 import os.path as osp
 import cPickle as cp
@@ -31,9 +31,9 @@ def load_covariances():
     Load the noise covariance matrices:
     """
     covar_mats   =  cp.load(open(hd_path + '/hd_track/data/nodup-covars-1.cpickle'))
-    ar_covar     =  1e3*covar_mats['kinect']
-    motion_covar =  covar_mats['process']
-    hydra_covar  =  1e5*covar_mats['hydra']
+    ar_covar     =  1e2*covar_mats['kinect']
+    motion_covar =  1e-2*covar_mats['process']
+    hydra_covar  =  1e2*covar_mats['hydra']
 
     return (motion_covar, ar_covar, hydra_covar)
 
@@ -57,6 +57,28 @@ def load_data(fname = 'demo1.data'):
     return (cam1_ts, cam1_tfs, cam2_ts, cam2_tfs, hydra_ts, hydra_tfs)
 
 
+def relative_time_streams(fname, freq):
+    c1_ts, c1_tfs, c2_ts, c2_tfs, hy_ts, hy_tfs = load_data(fname)
+    dt =1/freq
+    
+    tmin = min(np.min(c1_ts), np.min(c2_ts), np.min(hy_ts))
+    tmax = max(np.max(c1_ts), np.max(c2_ts), np.max(hy_ts))
+
+    ## calculate the number of time-steps for the kalman filter.    
+    nsteps = int(math.ceil((tmax-tmin)/dt))
+    
+    ## get rid of absolute time, put the three data-streams on the same time-scale
+    c1_ts -= tmin
+    c2_ts -= tmin
+    hy_ts -= tmin
+    
+    ar1_strm = streamize(c1_tfs, c1_ts, freq, avg_transform)
+    ar2_strm = streamize(c2_tfs, c2_ts, freq, avg_transform)
+    hy_strm  = streamize(hy_tfs, hy_ts, freq, avg_transform)
+    
+    return tmin, tmax, nsteps, ar1_strm, ar2_strm, hy_strm
+
+
 def get_first_state(dt, c1_ts, c1_tfs, c2_ts, c2_tfs, hy_ts, hy_tfs):
     """
     Return the first state (mean, covar) to initialize the kalman filter with.
@@ -73,6 +95,7 @@ def get_first_state(dt, c1_ts, c1_tfs, c2_ts, c2_tfs, hy_ts, hy_tfs):
     hy =  [hy_tfs[i] for i in xrange(len(hy_ts)) if hy_ts[i] <= dt] 
     
     if ar1 != [] or ar2 != []:
+        ar1.extend(ar2)
         x0 =  state_from_tfms_no_velocity([avg_transform(ar1)])
         I3 = np.eye(3)
         S0 = scl.block_diag(1e-3*I3, 1e-2*I3, 1e-3*I3, 1e-3*I3)
@@ -83,7 +106,6 @@ def get_first_state(dt, c1_ts, c1_tfs, c2_ts, c2_tfs, hy_ts, hy_tfs):
         S0 = scl.block_diag(1e-1*I3, 1e-1*I3, 1e-2*I3, 1e-2*I3)
     return (x0, S0)
         
-
 
 def setup_kalman(fname, freq=30.):
     c1_ts, c1_tfs, c2_ts, c2_tfs, hy_ts, hy_tfs = load_data(fname)
@@ -156,7 +178,7 @@ def get_cam_transform():
 def publish_static_tfm(parent_frame, child_frame, tfm):
     import thread
     tf_broadcaster = tf.TransformBroadcaster()
-    trans, rot = hmat_to_trans_rot(tfm)
+    trans, rot     = hmat_to_trans_rot(tfm)
     def spin_pub():
         sleeper = rospy.Rate(100)
         while not rospy.is_shutdown():
@@ -167,20 +189,24 @@ def publish_static_tfm(parent_frame, child_frame, tfm):
     thread.start_new_thread(spin_pub, ())
 
 
-def rad2scale(th):
-    thmax = np.deg2rad(33)
+def open_frac(th):
+    thmax = 33
     return th/thmax
-
             
 if __name__ == '__main__':
-    demo_num = 4
-    
+    demo_num = 5
+    freq     = 30.
+
     bag = rosbag.Bag('/media/data/recorded/demo'+str(demo_num)+'.bag')
     rospy.init_node('viz_demos')
     pub = rospy.Publisher('/point_cloud1', PointCloud2)
     pub2= rospy.Publisher('/point_cloud2', PointCloud2)
-
-    freq     = 30.
+    
+    ## publishers for unfiltered-data:
+    c1_tfm_pub    = rospy.Publisher('/ar1_estimate', PoseStamped)
+    c2_tfm_pub    = rospy.Publisher('/ar2_estimate', PoseStamped)
+    hydra_tfm_pub = rospy.Publisher('/hydra_estimate', PoseStamped)
+    _, _, _, ar1_strm, ar2_strm, hy_strm = relative_time_streams('demo'+str(demo_num)+'.data', freq)
 
     ## run the kalman filter:
     nsteps, tmin, X_means,_,_,_ = run_kalman_filter('demo'+str(demo_num)+'.data', freq)
@@ -189,8 +215,8 @@ if __name__ == '__main__':
     ## load the potentiometer-angle stream:
     pot_data = cp.load(open(osp.join(hd_path, 'hd_data/demos/obs_data/demo'+str(demo_num)+'.data')))['pot_angles']
     ang_ts   = np.array([tt[1] for tt in pot_data])  ## time-stamps
-    ang_vals = [tt[0] for tt in pot_data]  ## angles
-    ang_strm = streamize(ang_vals, ang_ts, freq, np.mean, tmin)
+    ang_vals = [open_frac(tt[0]) for tt in pot_data]  ## angles
+    ang_strm = streamize(ang_vals, ang_ts, freq, lambda x : x[-1], tmin)
 
     ## get the point-cloud stream
     pc1_strm = streamize_pc(bag, '/camera1/depth_registered/points', freq)
@@ -207,30 +233,52 @@ if __name__ == '__main__':
     
     ## frame of the filter estimate:
     sleeper = rospy.Rate(freq)
+    T_far = np.eye(4)
+    T_far[0:3,3] = [10,10,10]
+        
     for i in xrange(nsteps):
         #raw_input("Hit next when ready.")
         
         ## show the point-cloud:
         try:
             pc              = pc1_strm.next()
-            pc.header.stamp = rospy.Time.now()
-            pub.publish(pc)
-        except:
+            if pc is not None:
+                pc.header.stamp = rospy.Time.now()
+                pub.publish(pc)
+        except StopIteration:
             print "no more point-clouds"
             pass
 
         try:
             pc2              = pc2_strm.next()
-            pc2.header.stamp = rospy.Time.now()
-            pub2.publish(pc2)
-        except:
+            if pc2 is not None:
+                pc2.header.stamp = rospy.Time.now()
+                pub2.publish(pc2)
+        except StopIteration:
             pass
         
         # show the kf estimate:
         ang_val = soft_next(ang_strm)
-        ang_val = [0*rad2scale(np.deg2rad(ang_val))] if ang_val != None else None
-        handles = draw_trajectory(cam1_frame_id, [T_filt[i]], color=(1,1,0,1))#, ang_val)
+        ang_val = [ang_val] if ang_val != None else None
+        handles = draw_trajectory(cam1_frame_id, [T_filt[i]], color=(1,1,0,1))#, open_fracs=ang_val)
+
+        # draw un-filtered estimates:
+        ar1_est = soft_next(ar1_strm)
+        if ar1_est != None:
+            c1_tfm_pub.publish(pose_to_stamped_pose(hmat_to_pose(ar1_est), cam1_frame_id))
+        else:
+            c1_tfm_pub.publish(pose_to_stamped_pose(hmat_to_pose(T_far), cam1_frame_id))
+            
+        ar2_est = soft_next(ar2_strm)
+        if ar2_est != None:
+            c2_tfm_pub.publish(pose_to_stamped_pose(hmat_to_pose(ar2_est), cam1_frame_id))
+        else:
+            c2_tfm_pub.publish(pose_to_stamped_pose(hmat_to_pose(T_far), cam1_frame_id))
+        
+        hy_est = soft_next(hy_strm)
+        if hy_est != None:
+            hydra_tfm_pub.publish(pose_to_stamped_pose(hmat_to_pose(hy_est), cam1_frame_id))
+        else:
+            hydra_tfm_pub.publish(pose_to_stamped_pose(hmat_to_pose(T_far), cam1_frame_id))
         
         sleeper.sleep()
-        
-        
