@@ -8,6 +8,7 @@ import tf
 from ar_track_alvar.msg import AlvarMarkers
 
 from hd_utils.colorize import *
+from hd_utils.defaults import tfm_link_rof
 from hd_utils import conversions, utils
 
 class ARMarkersRos:
@@ -187,10 +188,10 @@ class RosCameras:
             return None
         tfm = self.camera_transforms.get((c1,c2))
         if tfm is not None:
-            return tfm['tfm']
+            return np.linalg.inv(tfm_link_rof).dot(tfm['tfm']).dot(tfm_link_rof)
         else:
             tfm = self.camera_transforms.get((c2,c1))
-            return np.linalg.inv(tfm['tfm'])
+            return np.linalg.inv(tfm_link_rof).dot(np.linalg.inv(tfm['tfm'])).dot(tfm_link_rof)
 
     
     def get_transform_frame(self, cam, frame):

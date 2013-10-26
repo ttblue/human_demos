@@ -1,4 +1,4 @@
-"""
+"""    
 Runs the kalman filter on observations from the hydra.
 """
 from __future__ import division
@@ -15,13 +15,13 @@ import scipy.linalg as scl
 from l1 import l1
 import cvxopt as cvx
 
-hd_path = '/home/henrylu/henry_sandbox/human_demos'
+hd_path = '/home/sibi/sandbox/human_demos'
 #hd_path = '/home/ankush/sandbox444/human_demos'
 
 def run_kalman_filter(T_hydra, T_ar, x_init, covar_init, ar_cov_scale, hydra_cov_scale, f=30.):
     """
-Runs the kalman filter
-"""
+    Runs the kalman filter
+    """
     dt = 1/f
     N = len(T_hydra)
     
@@ -39,8 +39,13 @@ Runs the kalman filter
     filter_estimates = [] ## the kalman filter estimates
     filter_covariances = [] ## the kalman filter covariances
     ## run the filter:
+<<<<<<< HEAD
     for i in xrange(len(ts)-5):
         KF.register_observation(ts[i], T_ar[i+1], T_hydra[i+1])
+=======
+    for i in xrange(len(ts)-1):
+        KF.register_observationx(ts[i], T_ar[i+1], T_hydra[i+1])
+>>>>>>> 1df660059bdbe1ebe72731242160672ef7047b81
         filter_estimates.append(KF.x_filt)
         filter_covariances.append(KF.S_filt)
     
@@ -53,9 +58,9 @@ Runs the kalman filter
 
 def plot_kalman(X_kf, X_ks, X_bh_hg, X_bg, X_ba_ag_t, valid_stamps):
     """
-Plots the Kalman filter belief (X_kf), the observed states (X_bh),
-the true states (from PR2, X_bg_gh).
-"""
+    Plots the Kalman filter belief (X_kf), the observed states (X_bh),
+    the true states (from PR2, X_bg_gh).
+    """
     
     assert len(X_kf) == len(X_bh_hg) == len(X_bg), "The number of state vectors are not equal. %d, %d, %d"%(len(X_kf), len(X_bh_hg), len(X_bg))
     
@@ -74,10 +79,10 @@ the true states (from PR2, X_bg_gh).
     
 def get_auto_mat(X, k):
     """
-Returns a matrix of (n-k+1) x k dimensions,
-which is the auto-correlation matrix.
-X is an n-dimensional vector.
-"""
+    Returns a matrix of (n-k+1) x k dimensions,
+    which is the auto-correlation matrix.
+    X is an n-dimensional vector.
+    """
     n = len(X)
     amat = np.empty((n-k+1, k))
     for i in xrange(n-k+1):
@@ -86,12 +91,12 @@ X is an n-dimensional vector.
 
 def get_auto_mat2(X, k):
     """
-Returns a matrix of (n-k+1) x 2k dimensions,
-which is the auto-correlation matrix.
-X is an n-dimensional vector.
-squared terms are also included.
-TODO : add cross-terms and see if this does any better?
-"""
+    Returns a matrix of (n-k+1) x 2k dimensions,
+    which is the auto-correlation matrix.
+    X is an n-dimensional vector.
+    squared terms are also included.
+    TODO : add cross-terms and see if this does any better?
+    """
     n = len(X)
     amat = np.empty((n-k+1, 2*k))
     for i in xrange(n-k+1):
@@ -101,9 +106,9 @@ TODO : add cross-terms and see if this does any better?
 
 def fit_auto(X,Y, k, do_l1=False):
     """
-Yi = [Xi-1 Xi-2 ... Xi-1-k]*[a1 a2 ... ak]T
-Solves for a_k's : auto-regression.
-"""
+    Yi = [Xi-1 Xi-2 ... Xi-1-k]*[a1 a2 ... ak]T
+    Solves for a_k's : auto-regression.
+    """
     assert k < len(X), "order more than the length of the vector."
     assert X.ndim==1 and Y.ndim==1, "Vectors are not one-dimensional."
     assert len(X)==len(Y), "Vectors are not of the same size."
@@ -123,8 +128,8 @@ Solves for a_k's : auto-regression.
 
 def fit_calib_auto(X_bh, X_bg_gh, do_l1=False):
     """
-Does auto-regression on the 6-DOF variables : x,y,z,r,p,y.
-"""
+    Does auto-regression on the 6-DOF variables : x,y,z,r,p,y.
+    """
     assert X_bh.shape[0]==X_bg_gh.shape[0]==12, "calib data has unknown shape."
     
     #X_bh = X_bh[:,500:1000]
@@ -161,16 +166,21 @@ def load_data():
     dt = 1./30.
 
     ## load pr2-hydra calib data:
-    dat = cPickle.load(open(hd_path + '/hd_track/data/nodup-transforms-1.cpickle'))
+    dat   = cPickle.load(open(hd_path + '/hd_track/data/nodup-transforms-1.cpickle'))
     Ts_bh = dat['Ts_bh']
     Ts_bg = dat['Ts_bg']
     Ts_ba = dat['Ts_ba']
+<<<<<<< HEAD
     T_gh = dat['T_gh']
     T_ga = dat['T_ga']
     
 
     #Shifting the ar marker back three time stmps
     Ts_ba = Ts_ba[3:]
+=======
+    T_gh  = dat['T_gh']
+    T_ga  = dat['T_ga']
+>>>>>>> 1df660059bdbe1ebe72731242160672ef7047b81
 
     assert len(Ts_bg) == len(Ts_bh), "Number of hydra and pr2 transforms not equal."
     Ts_bh_hg = [t.dot(np.linalg.inv(T_gh)) for t in Ts_bh]
@@ -186,8 +196,8 @@ def load_data():
             Ts_ba_ag_t.append(t.dot(np.linalg.inv(T_ga)))
             ar_valid_stamps.append(i)
     
-    X_bg = state_from_tfms(Ts_bg, dt).T
-    X_bh_hg = state_from_tfms(Ts_bh_hg, dt).T
+    X_bg      = state_from_tfms(Ts_bg, dt).T
+    X_bh_hg   = state_from_tfms(Ts_bh_hg, dt).T
     X_ba_ag_t = state_from_tfms_no_velocity(Ts_ba_ag_t).T
     ar_valid_stamps = ar_valid_stamps[1:]
 
@@ -198,7 +208,6 @@ def load_data():
 
     return (Ts_bh, Ts_bg, T_gh, Ts_bh_hg, X_bg, X_bh_hg, Ts_ba_ag, X_ba_ag_t, ar_valid_stamps)
     
-
 
 def run_kalman_and_plot(ar_cov_scale, hydra_cov_scale):
     """

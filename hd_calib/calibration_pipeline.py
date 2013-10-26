@@ -8,6 +8,7 @@ import roslib, rospy
 roslib.load_manifest('tf')
 import tf
 from sensor_msgs.msg import PointCloud2
+from std_msgs.msg import Float32
 
 from hd_utils.colorize import *
 from hd_utils.yes_or_no import yes_or_no
@@ -17,8 +18,15 @@ from cameras import RosCameras
 from camera_calibration import CameraCalibrator
 from hydra_calibration import HydraCalibrator
 from gripper_calibration import GripperCalibrator
-import gripper_calibration
+import gripper
 import get_marker_transforms as gmt
+
+
+finished = False
+
+def done():
+    global finished
+    finished = True
 
 np.set_printoptions(precision=5, suppress=True)
 """
@@ -53,6 +61,9 @@ class CalibratedTransformPublisher(Thread):
         self.ready = False
         self.rate = 30.0
         self.tf_broadcaster = tf.TransformBroadcaster()
+        
+        self.angle_pub = rospy.Publisher('pot_angle', Float32)
+        
         self.cameras = cameras
         self.publish_grippers = False
         self.grippers = {}
@@ -61,7 +72,7 @@ class CalibratedTransformPublisher(Thread):
         """
         Publishes the transforms stored.
         """
-        while True:
+        while True and not finished:
             if self.ready:
                 for parent, child in self.transforms:
                     trans, rot = self.transforms[parent, child]
@@ -71,6 +82,7 @@ class CalibratedTransformPublisher(Thread):
                 if self.publish_grippers:
                     self.publish_gripper_tfms()
             time.sleep(1/self.rate)
+
     
     def fake_initialize (self):
         
@@ -122,17 +134,18 @@ class CalibratedTransformPublisher(Thread):
             
             
         
-    def add_gripper (self, gripper):
-        self.grippers[gripper.lr] = gripper
+    def add_gripper (self, gr):
+        self.grippers[gr.lr] = gr
 
     def publish_gripper_tfms (self):
         marker_tfms = self.cameras.get_ar_markers()
-        theta = gmt.get_pot_angle()
         parent_frame = self.cameras.parent_frame
 
+        theta = gmt.get_pot_angle()
+        self.angle_pub.publish(theta)
         transforms = []
-        for gripper in self.grippers.values():
-            transforms += gripper.get_all_transforms(parent_frame)
+        for gr in self.grippers.values():
+            transforms += gr.get_all_transforms(parent_frame, diff_cam=True)
             
         for transform in transforms:
             trans, rot = conversions.hmat_to_trans_rot(transform['tfm'])
@@ -168,10 +181,10 @@ class CalibratedTransformPublisher(Thread):
         file_name = osp.join('/home/sibi/sandbox/human_demos/hd_data/calib',file)
         with open(file_name,'r') as fh: calib_data = cPickle.load(fh)
         for lr,graph in calib_data['grippers'].items():
-            gripper = gripper_calibration.Gripper(lr, graph, self.cameras)
-            if 'tool_tip' in gripper.mmarkers:
-                gripper.tt_calculated = True 
-            self.add_gripper(gripper)
+            gr = gripper.Gripper(lr, graph, self.cameras)
+            if 'tool_tip' in gr.mmarkers:
+                gr.tt_calculated = True 
+            self.add_gripper(gr)
         self.add_transforms(calib_data['transforms'])
         
         if self.grippers: self.publish_grippers = True
@@ -189,10 +202,10 @@ class CalibratedTransformPublisher(Thread):
         file_name = osp.join('/home/sibi/sandbox/human_demos/hd_data/calib',file)
         with open(file_name,'r') as fh: calib_data = cPickle.load(fh)
         for lr,graph in calib_data['grippers'].items():
-            gripper = gripper_calibration.Gripper(lr, graph, self.cameras)
-            if 'tool_tip' in gripper.mmarkers:
-                gripper.tt_calculated = True 
-            self.add_gripper(gripper)
+            gr = gripper.Gripper(lr, graph, self.cameras)
+            if 'tool_tip' in gr.mmarkers:
+                gr.tt_calculated = True 
+            self.add_gripper(gr)
             
         self.publish_grippers = True
 
@@ -205,8 +218,8 @@ class CalibratedTransformPublisher(Thread):
         calib_data = {}
 
         gripper_data = {}
-        for lr,gripper in self.grippers.items():
-            gripper_data[lr] = gripper.transform_graph
+        for lr,gr in self.grippers.items():
+            gripper_data[lr] = gr.transform_graph
         calib_data['grippers'] = gripper_data
 
         calib_transforms = []
@@ -227,7 +240,7 @@ cameras = None
 tfm_pub = None
 
 CAM_N_OBS = 10
-CAM_N_AVG = 20
+CAM_N_AVG = 50
 
 
 def calibrate_cameras ():
@@ -383,6 +396,6 @@ def run_calibration_sequence (spin=False):
     while True and spin:
         # stall
         time.sleep(0.1)
-
-#if __name__=='__main__':
-#    run_calibration_sequence()
+ 
+# if __name__=='__main__':
+#     run_calibration_sequence()
