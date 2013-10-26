@@ -39,7 +39,7 @@ Runs the kalman filter
     filter_estimates = [] ## the kalman filter estimates
     filter_covariances = [] ## the kalman filter covariances
     ## run the filter:
-    for i in xrange(len(ts)-1):
+    for i in xrange(len(ts)-5):
         KF.register_observation(ts[i], T_ar[i+1], T_hydra[i+1])
         filter_estimates.append(KF.x_filt)
         filter_covariances.append(KF.S_filt)
@@ -167,6 +167,10 @@ def load_data():
     Ts_ba = dat['Ts_ba']
     T_gh = dat['T_gh']
     T_ga = dat['T_ga']
+    
+
+    #Shifting the ar marker back three time stmps
+    Ts_ba = Ts_ba[3:]
 
     assert len(Ts_bg) == len(Ts_bh), "Number of hydra and pr2 transforms not equal."
     Ts_bh_hg = [t.dot(np.linalg.inv(T_gh)) for t in Ts_bh]
