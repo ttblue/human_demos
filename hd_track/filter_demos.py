@@ -26,7 +26,7 @@ from hd_visualization.ros_vis import draw_trajectory
 
 hd_path = os.getenv('HD_DIR')
 if hd_path is None:
-    hd_path = '/home/ankush/sandbox444/human_demos'
+    hd_path = '/home/henrylu/sandbox/human_demos'
 
 
 def load_covariances():
