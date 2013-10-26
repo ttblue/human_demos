@@ -7,7 +7,6 @@ roslib.load_manifest("tf")
 import tf
 from   sensor_msgs.msg import PointCloud2
 from   geometry_msgs.msg import PoseStamped
-
 import numpy as np
 import os, os.path as osp
 import cPickle as cp
@@ -19,7 +18,6 @@ from hd_utils.conversions import *
 from hd_utils.utils import *
 from hd_utils.defaults import tfm_link_rof
 from hd_track.kalman import kalman
-from hd_track.kalman import smoother
 from hd_track.kalman_tuning import state_from_tfms_no_velocity
 from hd_track.streamer import streamize
 from hd_track.stream_pc import streamize_pc
@@ -111,7 +109,6 @@ def get_first_state(dt, c1_ts, c1_tfs, c2_ts, c2_tfs, hy_ts, hy_tfs):
     return (x0, S0)
         
 
-
 def setup_kalman(fname, freq=30.):
     c1_ts, c1_tfs, c2_ts, c2_tfs, hy_ts, hy_tfs = load_data(fname)
     motion_var, ar_var, hydra_var = load_covariances()
@@ -172,6 +169,7 @@ def run_kalman_filter(fname, freq=30.):
     A, R = KF.get_motion_mats(dt)
     return nsteps, tmin, mu, S, A, R
 
+
 def get_cam_transform():
     calib_file = osp.join(hd_path + '/hd_data/calib/calib_cam2')
     dat = cp.load(open(calib_file))
@@ -182,7 +180,7 @@ def get_cam_transform():
 def publish_static_tfm(parent_frame, child_frame, tfm):
     import thread
     tf_broadcaster = tf.TransformBroadcaster()
-    trans, rot = hmat_to_trans_rot(tfm)
+    trans, rot     = hmat_to_trans_rot(tfm)
     def spin_pub():
         sleeper = rospy.Rate(100)
         while not rospy.is_shutdown():
@@ -196,14 +194,20 @@ def publish_static_tfm(parent_frame, child_frame, tfm):
 def open_frac(th):
     thmax = 33
     return th/thmax
-
             
 if __name__ == '__main__':
-    demo_num = 1
+<<<<<<< HEAD
+    demo_num = 4
+   
+    data_dir = os.getenv('HD_DATA_DIR')
+ 
+    bag = rosbag.Bag(osp.join(data_dir,'demos/recorded/demo1.bag'))
+=======
+    demo_num = 5
     freq     = 30.
 
-    data_dir = os.getenv('HD_DATA_DIR') 
-    bag = rosbag.Bag(osp.join(data_dir,'demos/recorded/demo'+str(demo_num)+'.bag'))
+    bag = rosbag.Bag('/media/data/recorded/demo'+str(demo_num)+'.bag')
+>>>>>>> a67b1a2abec11f6030c33c54e8008dbd17d00b31
     rospy.init_node('viz_demos')
     pub = rospy.Publisher('/point_cloud1', PointCloud2)
     pub2= rospy.Publisher('/point_cloud2', PointCloud2)
@@ -215,13 +219,11 @@ if __name__ == '__main__':
     _, _, _, ar1_strm, ar2_strm, hy_strm = relative_time_streams('demo'+str(demo_num)+'.data', freq)
 
     ## run the kalman filter:
-    nsteps, tmin, X_means,S,A,R = run_kalman_filter('demo'+str(demo_num)+'.data', freq)
-    X_means = smoother(A, R, X_means, S)
-
+    nsteps, tmin, X_means,_,_,_ = run_kalman_filter('demo'+str(demo_num)+'.data', freq)
     T_filt = state_to_hmat(X_means)
     
     ## load the potentiometer-angle stream:
-    pot_data = cp.load(open(osp.join(data_dir, 'demos/obs_data/demo' +str(demo_num)+'.data')))['pot_angles']
+    pot_data = cp.load(open(osp.join(data_dir, 'demos/obs_data/demo1.data')))['pot_angles']
     ang_ts   = np.array([tt[1] for tt in pot_data])  ## time-stamps
     ang_vals = [open_frac(tt[0]) for tt in pot_data]  ## angles
     ang_strm = streamize(ang_vals, ang_ts, freq, lambda x : x[-1], tmin)
@@ -290,5 +292,3 @@ if __name__ == '__main__':
             hydra_tfm_pub.publish(pose_to_stamped_pose(hmat_to_pose(T_far), cam1_frame_id))
         
         sleeper.sleep()
-        
-        
