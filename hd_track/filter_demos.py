@@ -193,13 +193,14 @@ def publish_static_tfm(parent_frame, child_frame, tfm):
     thread.start_new_thread(spin_pub, ())
 
 
+
 def open_frac(th):
     thmax = 33
     return th/thmax
 
             
 if __name__ == '__main__':
-    demo_num = 1
+    demo_num = 2
     freq     = 30.
 
     data_dir = os.getenv('HD_DATA_DIR') 
@@ -251,6 +252,7 @@ if __name__ == '__main__':
         try:
             pc              = pc1_strm.next()
             if pc is not None:
+                print "pc1 not none"
                 pc.header.stamp = rospy.Time.now()
                 pub.publish(pc)
         except StopIteration:
@@ -260,6 +262,7 @@ if __name__ == '__main__':
         try:
             pc2              = pc2_strm.next()
             if pc2 is not None:
+                print "pc2 not none"
                 pc2.header.stamp = rospy.Time.now()
                 pub2.publish(pc2)
         except StopIteration:
