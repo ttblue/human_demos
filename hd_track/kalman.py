@@ -403,6 +403,21 @@ def register_observation_x(self, t, T_ar1=None, T_ar2=None, T_hy=None):
 
 
 def smoother(A, R, mu, sigma):
+
+    assert len(mu)==len(sigma), "Kalman smoother : Number of means should be equal to the number of covariances."
+
+    T = len(mu)
+
+    mu_smooth    = [np.empty(mu[0].shape) for _ in xrange(len(mu))]
+    sigma_smooth = [np.empty(sigma[0].shape) for _ in xrange(len(sigma))]
+
+    mu_smooth[-1]    = mu[-1]
+    sigma_smooth[-1] = sigma[-1]
+
+    #for t in xrange(T-2, -1, -1):
+    #    g = sigma[t].dot(A.T).
+
+def smoother(A, R, mu, sigma):
     """
     Kalman smoother implementation. 
     Implements the Rauch, Tung, and Striebel (RTS) smoother. 
@@ -417,7 +432,6 @@ def smoother(A, R, mu, sigma):
     assert len(mu)==len(sigma), "Kalman smoother : Number of means should be equal to the number of covariances."
     
     T = len(mu)
-   
     ## prediction : x+t = Ax_t + r ~ N(0,R)
     mu_p    = [A.dot(x) for x in mu]
     sigma_p = [A.dot(S).dot(A.T) + R for S in sigma]
@@ -435,9 +449,7 @@ def smoother(A, R, mu, sigma):
     sigma_smooth[-1] = sigma[-1]
     
     for t in xrange(T-2, -1, -1):
-        #L               = sigma[t].dot(A.T).dot(np.linalg.inv(sigma_p[t]))
-        L               = sigma[t].dot(A.T).dot(np.linalg.inv(sigma[t+1]))
-        mu_smooth[t]    = mu_p[t] + L.dot(mu_smooth[t+1] - mu[t+1])
-        #sigma_smooth[t] = sigma[t] + L.dot(sigma_smooth[t+1] - sigma_p[t]).dot(L.T)
+        L               = sigma[t].dot(A.T).dot(np.linalg.inv(sigma_p[t]))
+        mu_smooth[t]    = mu[t] + 0.9 * (L.dot(mu_smooth[t+1] - mu_p[t]))
         
     return (mu_smooth)
