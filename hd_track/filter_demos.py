@@ -27,7 +27,7 @@ from hd_visualization.ros_vis import draw_trajectory
 
 hd_path = os.getenv('HD_DIR')
 if hd_path is None:
-    hd_path = '/home/henrylu/sandbox/human_demos'
+    hd_path = '/home/ankush/sandbox444/human_demos'
 
 
 def load_covariances():
@@ -35,9 +35,13 @@ def load_covariances():
     Load the noise covariance matrices:
     """
     covar_mats   =  cp.load(open(hd_path + '/hd_track/data/nodup-covars-1.cpickle'))
+    #ar_covar     =  1e2*covar_mats['kinect']
+    #motion_covar =  1e-2*covar_mats['process']
+    #hydra_covar  =  1e2*covar_mats['hydra']
+
     ar_covar     =  1e2*covar_mats['kinect']
-    motion_covar =  1e-2*covar_mats['process']
-    hydra_covar  =  1e2*covar_mats['hydra']
+    motion_covar =  1e-3*covar_mats['process']
+    hydra_covar  =  1e-3*covar_mats['hydra']
 
     return (motion_covar, ar_covar, hydra_covar)
 
@@ -133,7 +137,13 @@ def setup_kalman(fname, freq=30.):
     KF     = kalman()
     
     ## ===> assumes that the variance for ar1 and ar2 are the same!!!
-    KF.init_filter(0,x0, S0, motion_var, hydra_var, ar_var, ar_var)
+    hydra_var_vel = np.zeros((6, 6))
+    hydra_var_vel[3:6, 3:6] = hydra_var[3:6, 3:6]
+    hydra_var_vel[0:3, 0:3] = 25e-8 * np.eye(3)
+    KF.init_filter(0,x0, S0, motion_var, hydra_var_vel, ar_var, ar_var)
+    
+    
+    
     
     ar1_strm = streamize(c1_tfs, c1_ts, freq, avg_transform)
     ar2_strm = streamize(c2_tfs, c2_ts, freq, avg_transform)
@@ -200,11 +210,14 @@ def open_frac(th):
 
             
 if __name__ == '__main__':
-    demo_num = 2
+    demo_num = 4
     freq     = 30.
 
     data_dir = os.getenv('HD_DATA_DIR') 
-    bag = rosbag.Bag(osp.join(data_dir,'demos/recorded/demo'+str(demo_num)+'.bag'))
+    #if data_dir is None:
+    bag = rosbag.Bag('/media/data/recorded/demo'+str(demo_num)+'.bag')
+    #else:
+    #	bag = rosbag.Bag(osp.join(data_dir,'demos/recorded/demo'+str(demo_num)+'.bag'))
     rospy.init_node('viz_demos')
     pub = rospy.Publisher('/point_cloud1', PointCloud2)
     pub2= rospy.Publisher('/point_cloud2', PointCloud2)
