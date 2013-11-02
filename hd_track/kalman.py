@@ -72,6 +72,10 @@ class kalman:
         self.hydra_mat[0:3, 0:3] = np.eye(3)
         self.hydra_mat[3:6, 6:9] = np.eye(3)
 
+        self.hydra_vmat = np.zeros((6,12))
+        self.hydra_vmat[0:3, 3:6] = np.eye(3)
+	self.hydra_vmat[3:6, 6:9] = np.eye(3)
+
         self.ar1_mat = self.hydra_mat
         self.ar2_mat = self.hydra_mat
 
@@ -109,6 +113,8 @@ class kalman:
         """
         return (self.hydra_mat, self.hydra_covar)
         
+    def get_hydra_vmats(self):
+        return (self.hydra_vmat, self.hydra_covar)
 
     def get_ar1_mats(self):
         """
@@ -314,6 +320,73 @@ class kalman:
                 reading = True
 
         if T_hy != None: # observe the hydra
+            pos, rpy = self.canonicalize_obs(T_hy)
+            if self.hydra_prev != None:
+                c_hy, q_hy = self.get_hydra_vmats()
+                vpos = (pos - self.hydra_prev) / dt
+                z_obs = np.c_['0,2', z_obs, vpos, rpy]
+                if not reading:
+                    C = c_hy
+                    Q = q_hy
+                    reading = True
+                else:
+                    C = np.r_[C, c_hy]
+                    Q = scl.block_diag(Q, q_hy)
+            self.hydra_prev = pos
+        else:
+            self.hydra_prev = None
+
+        if (z_obs != None and C!=None and Q!=None):
+            self.x_filt, self.S_filt = self.measurement_update(z_obs, C, Q, self.x_filt, self.S_filt)
+
+
+def register_observation_x(self, t, T_ar1=None, T_ar2=None, T_hy=None):
+        """
+        New interface function to update the filter
+        with observations from hydra and two kinects.
+        
+        Can pass in any combination of the hydra/camera1-ar-marker/camera2-ar-marker estimate.
+        t is the time of the observation.
+        
+        NOTE: This does not update the {ar1, ar2, hydra}_prev variables:
+              THIS WILL CAUSE ERRORS if using velocities in observation updates.
+              ======================
+        """
+        if not self.__check_time__(t):
+            return
+
+        dt = t - self.t_filt
+        self.x_filt, self.S_filt = self.control_update(self.x_filt, self.S_filt, dt)
+
+        z_obs, C, Q = None, None, None
+        reading = False
+        if T_hy != None or T_ar1 != None or T_ar2 != None: # initilize if anything was observed 
+            z_obs = np.array([])
+            C = None
+            Q = None
+
+        if T_ar1 != None: # observe the ar from camera 1
+            pos, rpy     = self.canonicalize_obs(T_ar1)
+            c_ar1, q_ar1 = self.get_ar1_mats()
+            z_obs = np.c_['0,2', z_obs, pos, rpy]
+            C     = c_ar1
+            Q     = q_ar1
+            reading = True
+
+        if T_ar2 != None: # observe the ar from camera 2
+            pos, rpy     = self.canonicalize_obs(T_ar2)
+            c_ar2, q_ar2 = self.get_ar2_mats()
+            z_obs = np.c_['0,2', z_obs, pos, rpy]
+            if not reading:
+                C = c_ar2
+                Q = q_ar2
+                reading = True
+            else:
+                C = np.r_[C, c_ar2]
+                Q = scl.block_diag(Q, q_ar2)
+                reading = True
+
+        if T_hy != None: # observe the hydra velocity
             pos, rpy     = self.canonicalize_obs(T_hy)
             c_hy, q_hy = self.get_hydra_mats()
             z_obs = np.c_['0,2', z_obs, pos, rpy]
@@ -330,6 +403,21 @@ class kalman:
 
 
 def smoother(A, R, mu, sigma):
+
+    assert len(mu)==len(sigma), "Kalman smoother : Number of means should be equal to the number of covariances."
+
+    T = len(mu)
+
+    mu_smooth    = [np.empty(mu[0].shape) for _ in xrange(len(mu))]
+    sigma_smooth = [np.empty(sigma[0].shape) for _ in xrange(len(sigma))]
+
+    mu_smooth[-1]    = mu[-1]
+    sigma_smooth[-1] = sigma[-1]
+
+    #for t in xrange(T-2, -1, -1):
+    #    g = sigma[t].dot(A.T).
+
+def smoother(A, R, mu, sigma):
     """
     Kalman smoother implementation. 
     Implements the Rauch, Tung, and Striebel (RTS) smoother. 
@@ -344,7 +432,6 @@ def smoother(A, R, mu, sigma):
     assert len(mu)==len(sigma), "Kalman smoother : Number of means should be equal to the number of covariances."
     
     T = len(mu)
-   
     ## prediction : x+t = Ax_t + r ~ N(0,R)
     mu_p    = [A.dot(x) for x in mu]
     sigma_p = [A.dot(S).dot(A.T) + R for S in sigma]
@@ -362,9 +449,7 @@ def smoother(A, R, mu, sigma):
     sigma_smooth[-1] = sigma[-1]
     
     for t in xrange(T-2, -1, -1):
-        #L               = sigma[t].dot(A.T).dot(np.linalg.inv(sigma_p[t]))
-        L               = sigma[t].dot(A.T).dot(np.linalg.inv(sigma[t+1]))
-        mu_smooth[t]    = mu_p[t] + L.dot(mu_smooth[t+1] - mu[t+1])
-        #sigma_smooth[t] = sigma[t] + L.dot(sigma_smooth[t+1] - sigma_p[t]).dot(L.T)
+        L               = sigma[t].dot(A.T).dot(np.linalg.inv(sigma_p[t]))
+        mu_smooth[t]    = mu[t] + 0.9 * (L.dot(mu_smooth[t+1] - mu_p[t]))
         
     return (mu_smooth)
