@@ -7,6 +7,7 @@ roslib.load_manifest("tf")
 import tf
 from   sensor_msgs.msg import PointCloud2
 from   geometry_msgs.msg import PoseStamped
+import matplotlib.pylab as plt
 
 import numpy as np
 import os, os.path as osp
@@ -14,7 +15,7 @@ import cPickle as cp
 import scipy.linalg as scl
 import math
 
-from hd_utils.colorize import colorize
+from hd_utils.colorize import *
 from hd_utils.conversions import *
 from hd_utils.utils import *
 from hd_utils.defaults import tfm_link_rof
@@ -210,7 +211,7 @@ def open_frac(th):
 
             
 if __name__ == '__main__':
-    demo_num = 4
+    demo_num = 1
     freq     = 30.
 
     data_dir = os.getenv('HD_DATA_DIR') 
@@ -238,6 +239,7 @@ if __name__ == '__main__':
     pot_data = cp.load(open(osp.join(data_dir, 'demos/obs_data/demo' +str(demo_num)+'.data')))['pot_angles']
     ang_ts   = np.array([tt[1] for tt in pot_data])  ## time-stamps
     ang_vals = [open_frac(tt[0]) for tt in pot_data]  ## angles
+    
     ang_strm = streamize(ang_vals, ang_ts, freq, lambda x : x[-1], tmin)
 
     ## get the point-cloud stream
@@ -257,7 +259,8 @@ if __name__ == '__main__':
     sleeper = rospy.Rate(freq)
     T_far = np.eye(4)
     T_far[0:3,3] = [10,10,10]
-        
+            
+    prev_ang = 0
     for i in xrange(nsteps):
         #raw_input("Hit next when ready.")
         
@@ -283,8 +286,12 @@ if __name__ == '__main__':
         
         # show the kf estimate:
         ang_val = soft_next(ang_strm)
-        ang_val = [ang_val] if ang_val != None else None
-        handles = draw_trajectory(cam1_frame_id, [T_filt[i]], color=(1,1,0,1))#, open_fracs=ang_val)
+        if ang_val != None:
+            prev_ang = ang_val
+            ang_val  = [ang_val]
+        else:
+            ang_val = [prev_ang]
+        handles = draw_trajectory(cam1_frame_id, [T_filt[i]], color=(1,1,0,1), open_fracs=ang_val)
 
         # draw un-filtered estimates:
         ar1_est = soft_next(ar1_strm)
@@ -306,5 +313,4 @@ if __name__ == '__main__':
             hydra_tfm_pub.publish(pose_to_stamped_pose(hmat_to_pose(T_far), cam1_frame_id))
         
         sleeper.sleep()
-        
-        
+            

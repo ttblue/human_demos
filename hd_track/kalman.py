@@ -5,6 +5,20 @@ import numpy as np
 import scipy.linalg as scl
 
 
+def put_in_range(x):
+    """
+    Puts all the values in x in the range [-180, 180).
+    """
+    return ( (x+np.pi)%(2*np.pi) )- np.pi
+            
+
+def closer_angle(x, a):
+    """
+    returns the angle f(x) which is closer to the angle a in absolute value.
+    """
+    return a + put_in_range(x-a)  
+
+
 class kalman:
     """
     Simple Kalman filter to track 6DOF pose.
@@ -39,13 +53,13 @@ class kalman:
         self.hydra_r_std  = 0.1  # deg/ sample
 
         ## convert the above numbers to radians:
-        self.min_r_std   = self.put_in_range(np.deg2rad(self.min_r_std))
-        self.min_vr_std  = self.put_in_range(np.deg2rad(self.min_vr_std))
-        self.r_std_t     = self.put_in_range(np.deg2rad(self.r_std_t))
-        self.vr_std_t    = self.put_in_range(np.deg2rad(self.vr_std_t))
-        self.ar1_r_std    = self.put_in_range(np.deg2rad(self.ar1_r_std))
-        self.ar2_r_std    = self.put_in_range(np.deg2rad(self.ar2_r_std))
-        self.hydra_r_std = self.put_in_range(np.deg2rad(self.hydra_r_std))
+        self.min_r_std   = put_in_range(np.deg2rad(self.min_r_std))
+        self.min_vr_std  = put_in_range(np.deg2rad(self.min_vr_std))
+        self.r_std_t     = put_in_range(np.deg2rad(self.r_std_t))
+        self.vr_std_t    = put_in_range(np.deg2rad(self.vr_std_t))
+        self.ar1_r_std    = put_in_range(np.deg2rad(self.ar1_r_std))
+        self.ar2_r_std    = put_in_range(np.deg2rad(self.ar2_r_std))
+        self.hydra_r_std = put_in_range(np.deg2rad(self.hydra_r_std))
 
         # update frequency : the kalman filter updates the estimate explicitly at this rate.
         # it also updates when a measurement is given to it.
@@ -74,7 +88,7 @@ class kalman:
 
         self.hydra_vmat = np.zeros((6,12))
         self.hydra_vmat[0:3, 3:6] = np.eye(3)
-	self.hydra_vmat[3:6, 6:9] = np.eye(3)
+        self.hydra_vmat[3:6, 6:9] = np.eye(3)
 
         self.ar1_mat = self.hydra_mat
         self.ar2_mat = self.hydra_mat
@@ -145,7 +159,7 @@ class kalman:
         A, R = self.get_motion_mats(dt)
         x_n = A.dot(x_p)
         S_n = A.dot(S_p).dot(A.T) + R
-        x_n[6:9] = self.put_in_range(x_n[6:9])
+        x_n[6:9] = put_in_range(x_n[6:9])
         return (x_n, S_n)
 
 
@@ -163,7 +177,7 @@ class kalman:
         x_n = x_b + K.dot(z_obs - C_obs.dot(x_b))
         S_n = S_b - K.dot(C_obs).dot(S_b)
         
-        x_n[6:9] = self.put_in_range(x_n[6:9])
+        x_n[6:9] = put_in_range(x_n[6:9])
         return (x_n, S_n)
     
 
@@ -194,21 +208,6 @@ class kalman:
         
         return True
 
-
-    def put_in_range(self, x):
-        """
-        Puts all the values in x in the range [-180, 180).
-        """
-        return ( (x+np.pi)%(2*np.pi) )- np.pi
-            
-
-    def closer_angle(self, x, a):
-        """
-        returns the angle f(x) which is closer to the angle a in absolute value.
-        """
-        return a + self.put_in_range(x-a)  
-
-
     def canonicalize_obs(self, T_obs):
         """
         Returns the position and translation from T_obs (4x4 mat).
@@ -217,7 +216,7 @@ class kalman:
         """
         pos = T_obs[0:3,3]
         rpy = np.array(tfm.euler_from_matrix(T_obs), ndmin=2).T
-        rpy = self.closer_angle(rpy, self.x_filt[6:9])
+        rpy = closer_angle(rpy, self.x_filt[6:9])
         return (pos, rpy)
 
 
@@ -402,20 +401,20 @@ def register_observation_x(self, t, T_ar1=None, T_ar2=None, T_hy=None):
             self.x_filt, self.S_filt = self.measurement_update(z_obs, C, Q, self.x_filt, self.S_filt)
 
 
-def smoother(A, R, mu, sigma):
 
-    assert len(mu)==len(sigma), "Kalman smoother : Number of means should be equal to the number of covariances."
 
-    T = len(mu)
+def canonicalize_obs(X_base, X_obs):
+    """
+    Returns the position and translation from T_obs (4x4 mat).
+    Puts the rotation in a form which makes it closer to filter's
+    current estimate in absolute terms.
+    """
+    rpy_base = X_base[6:9]
+    rpy = X_obs[6:9]
+    rpy = closer_angle(rpy, rpy_base)
+    X_obs[6:9] = rpy
+    return X_obs
 
-    mu_smooth    = [np.empty(mu[0].shape) for _ in xrange(len(mu))]
-    sigma_smooth = [np.empty(sigma[0].shape) for _ in xrange(len(sigma))]
-
-    mu_smooth[-1]    = mu[-1]
-    sigma_smooth[-1] = sigma[-1]
-
-    #for t in xrange(T-2, -1, -1):
-    #    g = sigma[t].dot(A.T).
 
 def smoother(A, R, mu, sigma):
     """
@@ -450,6 +449,7 @@ def smoother(A, R, mu, sigma):
     
     for t in xrange(T-2, -1, -1):
         L               = sigma[t].dot(A.T).dot(np.linalg.inv(sigma_p[t]))
-        mu_smooth[t]    = mu[t] + 0.9 * (L.dot(mu_smooth[t+1] - mu_p[t]))
+        mu_p_canon = canonicalize_obs(mu_smooth[t+1], mu_p[t])
+        mu_smooth[t]    = mu[t] + 0.9 * (L.dot(mu_smooth[t+1] - mu_p_canon))
         
     return (mu_smooth)
