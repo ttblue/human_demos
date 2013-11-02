@@ -146,7 +146,7 @@ def get_pot_angle ():
     """
     global pot_initialized, arduino, a, b
     if not pot_initialized:
-        arduino = read_arduino.Arduino()
+        arduino = read_arduino.get_arduino()
         pot_initialized = True
         print "POT INITIALIZED"
         

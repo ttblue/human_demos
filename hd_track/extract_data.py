@@ -54,6 +54,28 @@ def save_observations (bag, calib_file, save_file=None):
     tfm_c1_c2 = None
     tfm_c1_h = None
     
+#     for (topic, msg, _) in bag.read_messages(topics=['/tf']):
+#         for tfm in msg.transforms:
+#             if tfm.header.frame_id == '/' + c1_frame and tfm.child_frame_id == '/'+c2_frame:
+#                 if tfm_c1_c2 is not None:
+#                     t,r = tfm.transform.translation, tfm.transform.rotation
+#                     trans = (t.x,t.y,t.z)
+#                     rot = (r.x, r.y, r.z, r.w)
+#                     t_found = conversions.trans_rot_to_hmat(trans, rot)
+#                     tfm_c1_c2  = nlg.inv(tfm_link_rof).dot(t_found).dot(tfm_link_rof)
+#             
+#             elif tfm.header.frame_id == '/' + c1_frame and tfm.child_frame_id == '/'+hydra_frame:
+#                 if tfm_c1_h is not None:
+#                     t,r = tfm.transform.translation, tfm.transform.rotation
+#                     trans = (t.x,t.y,t.z)
+#                     rot = (r.x, r.y, r.z, r.w)
+#                     t_found = tfm_c1_h.dot(conversions.trans_rot_to_hmat(trans, rot))
+#                     tfm_c1_h  = nlg.inv(tfm_link_rof).dot(t_found)
+#         
+#         if tfm_c1_c2 is not None and tfm_c1_h is not None:
+#             break
+#         
+    
     for tfm in calib_data['transforms']:
         if tfm['parent'] == c1_frame or tfm['parent'] == '/' + c1_frame:
             if tfm['child'] == c2_frame or tfm['child'] == '/' + c2_frame:
@@ -73,21 +95,22 @@ def save_observations (bag, calib_file, save_file=None):
     gr = gripper.Gripper(lr, graph)
     assert 'tool_tip' in gr.mmarkers
     gr.tt_calculated = True
-
     
     ar1_tfms = []
     ar1_count = 0
+    cam1_count = 0
     ar2_tfms = []
     ar2_count = 0
+    cam2_count = 0
     hyd_tfms = []
     hyd_count = 0
     pot_angles = []
     pot_count = 0
     
     yellowprint('Camera1')
-    for (topic, msg, _) in bag.read_messages(topics=['/camera1/depth_registered/points']):
+    for (topic, msg, _) in bag.read_messages(topics=['/camera1/depth_registered/points','camera1/depth_registered/points']):
         marker_poses = get_ar_marker_poses (msg)
-        
+        cam1_count += 1
         if marker_poses:
             for m in marker_poses:
                 marker_poses[m] = np.array(marker_poses[m])
@@ -100,9 +123,9 @@ def save_observations (bag, calib_file, save_file=None):
                 ar1_count += 1
         
     yellowprint('Camera2')
-    for (topic, msg, _) in bag.read_messages(topics=['/camera2/depth_registered/points']):
+    for (topic, msg, _) in bag.read_messages(topics=['/camera2/depth_registered/points','camera2/depth_registered/points']):
         marker_poses = get_ar_marker_poses (msg)
-        
+        cam2_count += 1
         if marker_poses:
             for m in marker_poses:
                 marker_poses[m] = tfm_c1_c2.dot(np.array(marker_poses[m]))
@@ -145,14 +168,15 @@ def save_observations (bag, calib_file, save_file=None):
 	pot_count += 1
 
 
-    yellowprint("Found %i transforms from camera1"%ar1_count)
-    yellowprint("Found %i transforms from camera2"%ar2_count)
+    yellowprint("Found %i transforms out of %i point clouds from camera1"%(ar1_count, cam1_count))
+    yellowprint("Found %i transforms out of %i point clouds from camera2"%(ar2_count, cam2_count))
     yellowprint("Found %i transforms from hydra"%hyd_count)
     yellowprint("Found %i potentiometer readings"%pot_count)
     
     if save_file is None:
+        bag_name = osp.basename(bag.filename)
         save_file = ''
-        for name in bag.filename.split('.')[0:-1]:
+        for name in bag_name.split('.')[0:-1]:
             save_file += name + '.'
         save_file += 'data'
     save_filename = osp.join('/home/sibi/sandbox/human_demos/hd_data/demos/obs_data', save_file)

@@ -4,6 +4,7 @@ from hd_utils.colorize import colorize
 import time
 from threading import Thread
 
+from hd_utils.func_utils import once
 
 class Arduino:
     """
@@ -66,6 +67,11 @@ class Arduino:
             except:
                 pass
 
+
+@once
+def get_arduino ():
+    ard = Arduino()
+    return ard
 
 if __name__ == '__main__':
     ard = Arduino()
