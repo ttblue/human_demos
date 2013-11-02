@@ -95,7 +95,7 @@ def is_ready (masterGraph, min_obs=5):
     """
     for group in masterGraph.nodes_iter():
         G = masterGraph.node[group]["graph"]
-        if not G: 
+        if not G:
             if VERBOSE: print group, "graph is null"
             return False
         if nx.is_connected(G) and G.number_of_nodes() == len(masterGraph.node[group]["markers"]):
@@ -639,9 +639,9 @@ class GripperCalibrator:
             
             if not ar_tfm or (not hyd_tfm and self.hydras):
                 if not ar_tfm:
-                    yellowprint('Could not find all required ar markers.')
+                    yellowprint('Could not find required ar markers from '+str(self.ar_markers))
                 else:
-                    yellowprint('Could not find all required hydra transforms.')
+                    yellowprint('Could not find required hydra transforms from '+str(self.hydras))
                 thresh -= 1
                 if thresh == 0: return False
                 continue
@@ -669,6 +669,9 @@ class GripperCalibrator:
 
         for marker in avg_tfms:
             avg_tfms[marker] = utils.avg_transform(avg_tfms[marker])
+        
+        if len(avg_tfms) == 1:
+            yellowprint('Found %i marker only. Not enough to update.'%avg_tfms.keys()[0])
 
         update_groups_from_observations(self.masterGraph, avg_tfms, pot_angle)
         return True
@@ -692,6 +695,7 @@ class GripperCalibrator:
             if not worked:
                 yellowprint("Something went wrong. Try again.")
                 self.iterations -= 1
+                continue
             if is_ready(self.masterGraph, min_obs):
                 if yes_or_no("Enough data has been gathered. Proceed with transform optimization?"):
                     break

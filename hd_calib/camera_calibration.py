@@ -133,6 +133,7 @@ class CameraCalibrator:
         ar1, ar2 = common_ar_markers(self.observed_ar_transforms[c1], self.observed_ar_transforms[c2])
         if not ar1 or not ar2:
             yellowprint("Did not find common visible AR markers between cameras %d and %d."%(c1,c2))
+            return
         
         if len(ar1.keys()) == 1:
             transform = ar1.values()[0].dot(np.linalg.inv(ar2.values()[0]))
@@ -144,11 +145,34 @@ class CameraCalibrator:
 #         IPython.embed()
 
         return transform
+    
+    def extend_camera_pointsets(self, c1, c2):
+        if not self.observed_ar_transforms or \
+           not self.observed_ar_transforms[c1] or \
+           not self.observed_ar_transforms[c2]:
+            yellowprint("Not enough points found from cameras %i,%i iteration."%(c1,c2))
+            return False
+
+        ar1, ar2 = common_ar_markers(self.observed_ar_transforms[c1], self.observed_ar_transforms[c2])
+        if not ar1 or not ar2:
+            yellowprint("Did not find common visible AR markers between cameras %i and %i."%(c1,c2))
+            return False
+        
+        if (c1,c2) not in self.point_list:
+            self.point_list[(c1,c2)] = {c1:[],c2:[]}
+            
+        self.point_list[(c1,c2)][c1].extend(convert_hmats_to_points(ar1.values()))
+        self.point_list[(c1,c2)][c2].extend(convert_hmats_to_points(ar2.values()))
+        greenprint("Extended pointsets by %i"%(len(ar1)*4))
+        
+        return True
+                
 
         
     def initialize_calibration(self):
-        # Stores transforms between cameras 
-        self.transform_list = {}
+        # Stores transforms between cameras
+        #self.transform_list = {} 
+        self.point_list = {}
         
     
     def process_observation(self, n_avg=5):
@@ -156,7 +180,6 @@ class CameraCalibrator:
         Get an observation and update transform list.
         """
         
-        yellowprint("Please hold still for a few seconds. Make sure the transforms look good on rviz.")
         self.observed_ar_transforms = {i:{} for i in xrange(self.num_cameras)}
         
         sleeper = rospy.Rate(30)
@@ -180,14 +203,11 @@ class CameraCalibrator:
 
         got_something = False
         for i in xrange(1,self.num_cameras):
-            transform = self.find_transform_between_cameras_from_obs(0, i)
-            if transform is None:
-                redprint("Did not find a transform between cameras 0 and %d"%i)
+            result = self.extend_camera_pointsets(0, i)
+            if result is False:
+                redprint("Did get info for cameras 0 and %d"%i)
                 continue
             got_something = True
-            if self.transform_list.get((0,i)) is None:
-               self.transform_list[0,i] = []
-            self.transform_list[0,i].append(transform)
         
         return got_something
 
@@ -196,13 +216,14 @@ class CameraCalibrator:
         Average out transforms and store final values.
         Return true/false based on whether transforms were found. 
         """
-        if not self.transform_list: return False
+        if not self.point_list: return False
 
-        for c1,c2 in self.transform_list:
+        for c1,c2 in self.point_list:
+            points_c1 = self.point_list[c1,c2][c1]
+            points_c2 = self.point_list[c1,c2][c2]
+            tfm = find_rigid_tfm(points_c1, points_c2)
             cam_transform= {}
             cam_transform['parent'] = 'camera%d_link'%(c1+1)
-            print self.transform_list[c1,c2]
-            tfm = utils.avg_transform(self.transform_list[c1,c2])
             cam_transform['child'] = 'camera%d_link'%(c2+1)
             cam_transform['tfm'] = tfm_link_rof.dot(tfm).dot(np.linalg.inv(tfm_link_rof))
 
@@ -222,6 +243,7 @@ class CameraCalibrator:
         self.initialize_calibration()
         i = 0
         while i < n_obs:
+            yellowprint("Please hold still for a few seconds. Make sure the transforms look good on rviz.")
             raw_input(colorize("Observation %d from %d. Press return when ready."%(i,n_obs),'green',True))
             got_something =  self.process_observation(n_avg)
             if got_something: i += 1

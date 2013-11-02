@@ -59,7 +59,7 @@ class ARMarkersRos:
     def get_frequency (self):
         return self.freq 
         
-    def get_marker_transforms(self, markers=None, time_thresh=0.5, get_time=False):
+    def get_marker_transforms(self, markers=None, time_thresh=0.6, get_time=False):
         """
         Threshold represents the tolerance for stale transforms.
         """

@@ -394,7 +394,7 @@ class Gripper:
         """
         Add marker to the gripper, after calibration.
         
-        @marker: marker id
+        @marker: marker id (a number for AR markers, either 'left' or 'right' for hydras)
         @group: 'l','r' or 'master'
         @m_type: type of marker - 'AR' or 'hydra'
         @n_tfm,@n_avg - the usual 

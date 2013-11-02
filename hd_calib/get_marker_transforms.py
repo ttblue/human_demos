@@ -137,9 +137,8 @@ def get_transform_frames (parent_frame, child_frame):
     trans, quat = tf_l.lookupTransform(parent_frame, child_frame, rospy.Time(0))
     return conversions.trans_rot_to_hmat(trans, quat)
 
-
-b = 90.0       
-a = (330.0-b)/30.0
+b = 0.0
+a = (300.0-b)/30.0
 
 def get_pot_angle ():
     """

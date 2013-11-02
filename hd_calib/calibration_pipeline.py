@@ -1,4 +1,6 @@
 #!/usr/bin/python
+from __future__ import division
+
 import numpy as np
 from threading import Thread
 import time, os, os.path as osp
@@ -21,6 +23,7 @@ from gripper_calibration import GripperCalibrator
 import gripper
 import get_marker_transforms as gmt
 
+import read_arduino
 
 finished = False
 
@@ -165,10 +168,12 @@ class CalibratedTransformPublisher(Thread):
         if self.publish_grippers: self.ready = True
 
 
-    def reset (self):
-        self.ready = False
+    def reset (self, grippers_only = False):
+        if not grippers_only:
+            self.ready = False
+            self.transforms = {}
+        
         self.publish_grippers = False
-        self.transforms = {}
         self.grippers = {}
         
     def load_calibration(self, file):
@@ -197,7 +202,7 @@ class CalibratedTransformPublisher(Thread):
         Use this if gripper markers have not changed.
         Load files which have been saved by this class. Specific format involved.
         """
-        self.reset()
+        self.reset(grippers_only=True)
         
         file_name = osp.join('/home/sibi/sandbox/human_demos/hd_data/calib',file)
         with open(file_name,'r') as fh: calib_data = cPickle.load(fh)
@@ -234,6 +239,23 @@ class CalibratedTransformPublisher(Thread):
 
         file_name = osp.join('/home/sibi/sandbox/human_demos/hd_data/calib',file)        
         with open(file_name, 'w') as fh: cPickle.dump(calib_data, fh)
+
+
+def calibrate_potentiometer ():
+    if not gmt.pot_initialized:
+        gmt.arduino = read_arduino.Arduino()
+        pot_initialized = True
+        print "POT INITIALIZED"
+        
+    yellowprint("Calibrating potentiometer:")
+    raw_input(colorize("Close gripper all the way to 0 degrees.", 'yellow', True))
+    gmt.b = gmt.arduino.get_reading()
+    
+    raw_input(colorize("Now, open gripper all the way.", 'yellow', True))
+    gmt.a = (gmt.arduino.get_reading() - gmt.b)/30.0
+    
+    greenprint("Potentiometer calibrated!")
+    
 
 #Global variables
 cameras = None
