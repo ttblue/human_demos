@@ -16,7 +16,7 @@ def closer_angle(x, a):
     """
     returns the angle f(x) which is closer to the angle a in absolute value.
     """
-    return a + put_in_range(x-a)  
+    return a + put_in_range(x-a)
 
 
 class kalman:
@@ -339,68 +339,6 @@ class kalman:
             self.x_filt, self.S_filt = self.measurement_update(z_obs, C, Q, self.x_filt, self.S_filt)
 
 
-def register_observation_x(self, t, T_ar1=None, T_ar2=None, T_hy=None):
-        """
-        New interface function to update the filter
-        with observations from hydra and two kinects.
-        
-        Can pass in any combination of the hydra/camera1-ar-marker/camera2-ar-marker estimate.
-        t is the time of the observation.
-        
-        NOTE: This does not update the {ar1, ar2, hydra}_prev variables:
-              THIS WILL CAUSE ERRORS if using velocities in observation updates.
-              ======================
-        """
-        if not self.__check_time__(t):
-            return
-
-        dt = t - self.t_filt
-        self.x_filt, self.S_filt = self.control_update(self.x_filt, self.S_filt, dt)
-
-        z_obs, C, Q = None, None, None
-        reading = False
-        if T_hy != None or T_ar1 != None or T_ar2 != None: # initilize if anything was observed 
-            z_obs = np.array([])
-            C = None
-            Q = None
-
-        if T_ar1 != None: # observe the ar from camera 1
-            pos, rpy     = self.canonicalize_obs(T_ar1)
-            c_ar1, q_ar1 = self.get_ar1_mats()
-            z_obs = np.c_['0,2', z_obs, pos, rpy]
-            C     = c_ar1
-            Q     = q_ar1
-            reading = True
-
-        if T_ar2 != None: # observe the ar from camera 2
-            pos, rpy     = self.canonicalize_obs(T_ar2)
-            c_ar2, q_ar2 = self.get_ar2_mats()
-            z_obs = np.c_['0,2', z_obs, pos, rpy]
-            if not reading:
-                C = c_ar2
-                Q = q_ar2
-                reading = True
-            else:
-                C = np.r_[C, c_ar2]
-                Q = scl.block_diag(Q, q_ar2)
-                reading = True
-
-        if T_hy != None: # observe the hydra velocity
-            pos, rpy     = self.canonicalize_obs(T_hy)
-            c_hy, q_hy = self.get_hydra_mats()
-            z_obs = np.c_['0,2', z_obs, pos, rpy]
-            if not reading:
-                C = c_hy
-                Q = q_hy
-                reading = True
-            else:
-                C = np.r_[C, c_hy]
-                Q = scl.block_diag(Q, q_hy)
-
-        if (z_obs != None and C!=None and Q!=None):
-            self.x_filt, self.S_filt = self.measurement_update(z_obs, C, Q, self.x_filt, self.S_filt)
-
-
 
 
 def canonicalize_obs(X_base, X_obs):
@@ -450,6 +388,6 @@ def smoother(A, R, mu, sigma):
     for t in xrange(T-2, -1, -1):
         L               = sigma[t].dot(A.T).dot(np.linalg.inv(sigma_p[t]))
         mu_p_canon = canonicalize_obs(mu_smooth[t+1], mu_p[t])
-        mu_smooth[t]    = mu[t] + 0.9 * (L.dot(mu_smooth[t+1] - mu_p_canon))
+        mu_smooth[t]    = mu[t] + 0.9*(L.dot(mu_smooth[t+1] - mu_p_canon))
         
     return (mu_smooth)

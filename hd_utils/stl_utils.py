@@ -1,6 +1,7 @@
 import os, os.path as osp
 import time        
 
+
 import openravepy as opr
 import numpy as np, numpy.linalg as nlg
 
@@ -175,15 +176,17 @@ def get_surface_point_cloud(object_files, env=None):
     
     return unique_rows(surface_points)
     
+def change_visibility(env, visible=False):
+    for body in env.GetBodies():
+        body.SetVisible(visible)
 
-    
     
 if __name__=='__main__':
     from os import listdir
     from os.path import isfile, join
      
     mypath = '/home/sibi/sandbox/pr2-lfd/assemblies/STLs/'
-    object_files = [ join(mypath,f) for f in listdir(mypath) if isfile(join(mypath,f)) ]
+    object_files = [ join(mypath,f) for f in listdir(mypath) if isfile(join(mypath,f)) and "5Degree" in f]
     env = opr.Environment()
 #     for file in object_files:
 #         check = env.Load(file)
@@ -194,7 +197,9 @@ if __name__=='__main__':
     colors[:] = 0
     colors[:,0] = 1
     handles.append(env.plot3(points=points, pointsize=2, colors=colors))
+
     
+
 #     r = env.GetRobot('pr2')
 #     tfm = np.eye(4)
 #     tfm[0,3] = 2

@@ -11,7 +11,7 @@ from   geometry_msgs.msg import PoseStamped
 import numpy as np
 import os, os.path as osp
 import cPickle as cp
-import scipy.linalg as scl
+import scipy.linalg as scl, scipy.interpolate as si
 import math
 import matplotlib.pylab as plt
 
@@ -19,12 +19,14 @@ from hd_utils.colorize import colorize
 from hd_utils.conversions import *
 from hd_utils.utils import *
 from hd_utils.defaults import tfm_link_rof
-from hd_track.kalman import kalman
+from hd_track.kalman import kalman, closer_angle
 from hd_track.kalman import smoother
 from hd_track.kalman_tuning import state_from_tfms_no_velocity
 from hd_track.streamer import streamize
 from hd_track.stream_pc import streamize_pc
 from hd_visualization.ros_vis import draw_trajectory 
+
+import hd_utils.transformations as tfms
 
 hd_path = os.getenv('HD_DIR')
 if hd_path is None:
@@ -39,6 +41,10 @@ def load_covariances():
     ar_covar     =  1e2*covar_mats['kinect']
     motion_covar =  1e-3*covar_mats['process']
     hydra_covar  =  1e-3*covar_mats['hydra']
+    
+    motion_covar = np.diag(np.diag(motion_covar))
+    ar_covar = np.diag(np.diag(ar_covar))
+    hydra_covar = np.diag(np.diag(hydra_covar))
 
     return (motion_covar, ar_covar, hydra_covar)
 
@@ -137,7 +143,7 @@ def setup_kalman(fname, freq=30.):
     hydra_var_vel = np.zeros((6, 6))
     hydra_var_vel[3:6, 3:6] = hydra_var[3:6, 3:6]
     hydra_var_vel[0:3, 0:3] = 25e-8 * np.eye(3)
-    KF.init_filter(0,x0, S0, motion_var, hydra_var_vel, ar_var, ar_var)
+    KF.init_filter(-dt,x0, S0, motion_var, hydra_var_vel, ar_var, ar_var)
     
     ar1_strm = streamize(c1_tfs, c1_ts, freq, avg_transform)
     ar2_strm = streamize(c2_tfs, c2_ts, freq, avg_transform)
@@ -158,8 +164,46 @@ def soft_next(stream):
     return ret
         
 
+def fit_spline_to_stream(strm, nsteps):
+    x = []
+    y = []
+    
+    deg = 3
+    
+    prev_rpy = None
+    for i in xrange(nsteps):
+        next = soft_next(strm)
+        if next is not None:
+            pos = next[0:3,3]
+            rpy = np.array(tfms.euler_from_matrix(next), ndmin=2).T
+            rpy = np.squeeze(rpy)
+            if prev_rpy is not None:
+                rpy = closer_angle(rpy, prev_rpy)
+            prev_rpy = rpy
 
-def run_kalman_filter(fname, freq=30.):
+            x.append(i)
+            y.append(pos.tolist()+rpy.tolist())
+
+    x = np.asarray(x)
+    y = np.asarray(y)
+
+    s = len(x)*.001**2
+    (tck, _) = si.splprep(y.T, s=s, u=x, k=deg)
+    
+    new_x = xrange(nsteps)
+    xyzrpys = np.r_[si.splev(new_x, tck)].T
+    
+    smooth_tfms = []
+    for xyzrpy in xyzrpys:
+        tfm = tfms.euler_matrix(*xyzrpy[3:6])
+        tfm[0:3,3] = xyzrpy[0:3]
+        smooth_tfms.append(tfm)
+        
+    return smooth_tfms
+
+
+
+def run_kalman_filter(fname, freq=30., use_spline=False):
     """
     Runs the kalman filter
     """
@@ -168,8 +212,14 @@ def run_kalman_filter(fname, freq=30.):
     
     ## run the filter:
     mu,S = [], []
+    
+    if use_spline:
+        smooth_hy = (t for t in fit_spline_to_stream(hy_strm, nsteps))
+    else:
+        smooth_hy = hy_strm
+    
     for i in xrange(nsteps):
-        KF.register_observation(dt*(i+1), soft_next(ar1_strm), soft_next(ar2_strm), soft_next(hy_strm))
+        KF.register_observation(dt*i, soft_next(ar1_strm), soft_next(ar2_strm), soft_next(smooth_hy)) 
         mu.append(KF.x_filt)
         S.append(KF.S_filt)
 
@@ -207,7 +257,7 @@ def plot_kalman(X_kf, X_ks, X_ar1, vs_ar1, X_ar2, vs_ar2, X_hy, vs_hy):
     
     """
 
-    to_plot=[0,1,2,6,7,8]
+    to_plot=[0,1,2,3, 4, 5, 6,7,8]
     axlabels = ['x', 'y', 'z', 'vx', 'vy', 'vz', 'roll', 'pitch', 'yaw', 'v_roll', 'v_pitch', 'v_yaw']
     for i in to_plot:
         plt.subplot(4,3,i+1)
@@ -217,13 +267,14 @@ def plot_kalman(X_kf, X_ks, X_ar1, vs_ar1, X_ar2, vs_ar2, X_hy, vs_hy):
         plt.plot(vs_ar2, X_ar2[i,:], '.', label='camera2')
         plt.plot(vs_hy, X_hy[i,:], '.', label='hydra')
         plt.ylabel(axlabels[i])
-        plt.legend()
+        #plt.legend()
 
 
             
 if __name__ == '__main__':
-    demo_num = 1
+    demo_num = 6
     freq     = 30.
+    use_spline = True
 
     data_dir = os.getenv('HD_DATA_DIR') 
     #bag = rosbag.Bag(osp.join(data_dir,'demos/recorded/demo'+str(demo_num)+'.bag'))
@@ -238,7 +289,7 @@ if __name__ == '__main__':
     _, _, _, ar1_strm, ar2_strm, hy_strm = relative_time_streams('demo'+str(demo_num)+'.data', freq)
 
     ## run the kalman filter:
-    nsteps, tmin, F_means,S,A,R = run_kalman_filter('demo'+str(demo_num)+'.data', freq)
+    nsteps, tmin, F_means,S,A,R = run_kalman_filter('demo'+str(demo_num)+'.data', freq, use_spline)
     S_means = smoother(A, R, F_means, S)
     #print S_means[0]
     X_kf = np.array(F_means)
@@ -275,10 +326,15 @@ if __name__ == '__main__':
     Ts_ar2 = []
     Ts_hy = []
 
+    if use_spline:
+        smooth_hy = (t for t in fit_spline_to_stream(hy_strm, nsteps))
+    else:
+        smooth_hy = hy_strm
+
     for i in xrange(nsteps):
         ar1_est = soft_next(ar1_strm)
         ar2_est = soft_next(ar2_strm)
-        hy_est = soft_next(hy_strm)
+        hy_est = soft_next(smooth_hy)
 
         if ar1_est != None:
             Ts_ar1.append(ar1_est)
