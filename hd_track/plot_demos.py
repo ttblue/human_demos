@@ -70,7 +70,7 @@ def load_data(fname = 'demo1.data'):
 
 def relative_time_streams(fname, freq):
     c1_ts, c1_tfs, c2_ts, c2_tfs, hy_ts, hy_tfs = load_data(fname)
-    dt =1/freq
+    dt =1./freq
     
     tmin = min(np.min(c1_ts), np.min(c2_ts), np.min(hy_ts))
     tmax = max(np.max(c1_ts), np.max(c2_ts), np.max(hy_ts))
@@ -116,13 +116,13 @@ def get_first_state(dt, c1_ts, c1_tfs, c2_ts, c2_tfs, hy_ts, hy_tfs):
         I3 = np.eye(3)
         S0 = scl.block_diag(1e-1*I3, 1e-1*I3, 1e-2*I3, 1e-2*I3)
     return (x0, S0)
-        
+
 
 
 def setup_kalman(fname, freq=30.):
     c1_ts, c1_tfs, c2_ts, c2_tfs, hy_ts, hy_tfs = load_data(fname)
     motion_var, ar_var, hydra_var = load_covariances()
-    dt = 1/freq
+    dt = 1./freq
     
     tmin = min(np.min(c1_ts), np.min(c2_ts), np.min(hy_ts))
     tmax = max(np.max(c1_ts), np.max(c2_ts), np.max(hy_ts))
@@ -162,7 +162,7 @@ def soft_next(stream):
     except :
         pass
     return ret
-        
+
 
 def fit_spline_to_stream(strm, nsteps):
     x = []
@@ -227,7 +227,7 @@ def run_kalman_filter(fname, freq=30., use_spline=False):
     return nsteps, tmin, mu, S, A, R
 
 def get_cam_transform():
-    calib_file = osp.join(hd_path + '/hd_data/calib/calib_cam2')
+    calib_file = osp.join(hd_path,'hd_data/calib/calib_cam1')
     dat = cp.load(open(calib_file))
     T_l1l2 = dat['transforms'][0]['tfm']
 
@@ -241,8 +241,8 @@ def publish_static_tfm(parent_frame, child_frame, tfm):
         sleeper = rospy.Rate(100)
         while not rospy.is_shutdown():
             tf_broadcaster.sendTransform(trans, rot,
-                                     rospy.Time.now(),
-                                     child_frame, parent_frame)
+                                         rospy.Time.now(),
+                                         child_frame, parent_frame)
             sleeper.sleep()
     thread.start_new_thread(spin_pub, ())
 
@@ -269,9 +269,14 @@ def plot_kalman(X_kf, X_ks, X_ar1, vs_ar1, X_ar2, vs_ar2, X_hy, vs_hy):
         plt.ylabel(axlabels[i])
         #plt.legend()
 
-
-            
-if __name__ == '__main__':
+def correlation_shift(xa,xb):
+    shifts = []
+    for idx in [0,1,2]:
+        shifts.append(np.argmax(np.correlate(xa[idx,:],xb[idx,:],'full'))-(xb.shape[1]-1))
+    return int(np.max(shifts))
+    
+        
+def main_plot():
     demo_num = 6
     freq     = 30.
     use_spline = True
@@ -297,8 +302,16 @@ if __name__ == '__main__':
 
     X_ks = np.array(S_means)
     X_ks = np.reshape(X_ks, (X_ks.shape[0], X_ks.shape[1])).T
+    
 
-    T_filt = state_to_hmat(S_means)
+    # Shifting
+    shift = correlation_shift(X_kf,X_ks)
+    X_ks = np.roll(X_ks,shift,axis=1)
+    X_ks[:,:shift]  = X_ks[:,shift][:,None]
+    
+    T_filt = state_to_hmat(list(X_ks))
+    
+    #T_filt = state_to_hmat(S_means)
     
     ## load the potentiometer-angle stream:
     pot_data = cp.load(open(osp.join(data_dir, 'demos/obs_data/demo' +str(demo_num)+'.data')))['pot_angles']
@@ -352,3 +365,149 @@ if __name__ == '__main__':
 
     plot_kalman(X_kf[:,1:], X_ks[:,1:], X_ar1, vs_ar1, X_ar2, vs_ar2, X_hy, vs_hy)
     plt.show()
+
+
+
+def main_filter():
+    demo_num = 6
+    freq     = 30.
+    use_spline = True
+
+    data_dir = os.getenv('HD_DATA_DIR') 
+    #if data_dir is None:
+    bag = rosbag.Bag(hd_path + '/hd_data/demos/recorded/demo'+str(demo_num)+'.bag')
+    #else:
+    #	bag = rosbag.Bag(osp.join(data_dir,'demos/recorded/demo'+str(demo_num)+'.bag'))
+    rospy.init_node('viz_demos')
+    pub = rospy.Publisher('/point_cloud1', PointCloud2)
+    pub2= rospy.Publisher('/point_cloud2', PointCloud2)
+    
+    ## publishers for unfiltered-data:
+    c1_tfm_pub    = rospy.Publisher('/ar1_estimate', PoseStamped)
+    c2_tfm_pub    = rospy.Publisher('/ar2_estimate', PoseStamped)
+    hydra_tfm_pub = rospy.Publisher('/hydra_estimate', PoseStamped)
+    _, _, _, ar1_strm, ar2_strm, hy_strm = relative_time_streams('demo'+str(demo_num)+'.data', freq)
+
+    ## run the kalman filter:
+    nsteps, tmin, F_means,S,A,R = run_kalman_filter('demo'+str(demo_num)+'.data', freq, use_spline)
+    S_means = smoother(A, R, F_means, S)
+
+    X_kf = np.array(F_means)
+    X_kf = np.reshape(X_kf, (X_kf.shape[0], X_kf.shape[1])).T
+
+    X_ks = np.array(S_means)
+    X_ks = np.reshape(X_ks, (X_ks.shape[0], X_ks.shape[1])).T
+    
+    # Shifting
+    shift = correlation_shift(X_kf,X_ks)
+    X_ks = np.roll(X_ks,shift,axis=1)
+    X_ks[:,:shift]  = X_ks[:,shift][:,None]
+    T_filt = state_to_hmat(list(X_ks.T))
+    
+    ## load the potentiometer-angle stream:
+    pot_data = cp.load(open(osp.join(data_dir, 'demos/obs_data/demo' +str(demo_num)+'.data')))['pot_angles']
+    ang_ts   = np.array([tt[1] for tt in pot_data])  ## time-stamps
+    ang_vals = [open_frac(tt[0]) for tt in pot_data]  ## angles
+    ang_strm = streamize(ang_vals, ang_ts, freq, lambda x : x[-1], tmin)
+
+    ## get the point-cloud stream
+    pc1_strm = streamize_pc(bag, '/camera1/depth_registered/points', freq, tmin)
+    pc2_strm = streamize_pc(bag, '/camera2/depth_registered/points', freq, tmin)
+
+    cam1_frame_id = '/camera1_rgb_optical_frame'
+    cam2_frame_id = '/camera2_rgb_optical_frame'
+
+    ## get the relative-transforms between the cameras:
+    cam_tfm  = get_cam_transform()
+    publish_static_tfm(cam1_frame_id, cam2_frame_id, cam_tfm)
+
+    handles = []
+    
+    ## frame of the filter estimate:
+    sleeper = rospy.Rate(freq)
+    T_far = np.eye(4)
+    T_far[0:3,3] = [10,10,10]
+    
+    if use_spline:
+        smooth_hy = (t for t in fit_spline_to_stream(hy_strm, nsteps))
+    else:
+        smooth_hy = hy_strm
+
+    prev_ang = 0
+    print nsteps
+    for i in xrange(nsteps):
+        #raw_input("Hit next when ready.")
+        print "Kalman ts: ", tmin+(0.0+i)/freq
+        
+        ## show the point-cloud:
+        found_pc = False
+        try:
+            pc              = pc1_strm.next()
+            if pc is not None:
+                print "pc1 ts:", pc.header.stamp.to_sec()
+                pc.header.stamp = rospy.Time.now()
+                pub.publish(pc)
+                found_pc = True
+            else:
+                print "pc1 ts:",None
+        except StopIteration:
+            print "pc1 ts: finished"
+            #print "no more point-clouds"
+            pass
+
+        try:
+            pc2              = pc2_strm.next()
+            if pc2 is not None:
+                #print "pc2 not none"
+                print "pc2 ts:", pc2.header.stamp.to_sec()
+                pc2.header.stamp = rospy.Time.now()
+                pub2.publish(pc2)
+                found_pc = True
+            else:
+                print "pc2 ts:", None
+        except StopIteration:
+            print "pc2 ts: finished"
+            pass
+        
+        # show the kf estimate:
+        ang_val = soft_next(ang_strm)
+        if ang_val != None:
+            prev_ang = ang_val
+            ang_val  = [ang_val]
+        else:
+            ang_val = [prev_ang]
+            
+        if found_pc:
+            handles = draw_trajectory(cam1_frame_id, [T_filt[i]], color=(1,1,0,1), open_fracs=ang_val)
+        else:
+            handles = draw_trajectory(cam1_frame_id, [T_filt[i]], color=(1,0,0,1), open_fracs=ang_val)
+        
+
+        # draw un-filtered estimates:
+        ar1_est = soft_next(ar1_strm)
+        if ar1_est != None:
+            c1_tfm_pub.publish(pose_to_stamped_pose(hmat_to_pose(ar1_est), cam1_frame_id))
+        else:
+            c1_tfm_pub.publish(pose_to_stamped_pose(hmat_to_pose(T_far), cam1_frame_id))
+            
+        ar2_est = soft_next(ar2_strm)
+        if ar2_est != None:
+            c2_tfm_pub.publish(pose_to_stamped_pose(hmat_to_pose(ar2_est), cam1_frame_id))
+        else:
+            c2_tfm_pub.publish(pose_to_stamped_pose(hmat_to_pose(T_far), cam1_frame_id))
+        
+        hy_est = soft_next(smooth_hy)
+        if hy_est != None:
+            hydra_tfm_pub.publish(pose_to_stamped_pose(hmat_to_pose(hy_est), cam1_frame_id))
+        else:
+            hydra_tfm_pub.publish(pose_to_stamped_pose(hmat_to_pose(T_far), cam1_frame_id))
+        
+        sleeper.sleep()
+        
+if __name__=="__main__":
+    
+    import sys
+    if len(sys.argv) > 1:
+        main_filter()
+    else:
+        main_plot()
