@@ -400,9 +400,6 @@ def register_observation_x(self, t, T_ar1=None, T_ar2=None, T_hy=None):
         if (z_obs != None and C!=None and Q!=None):
             self.x_filt, self.S_filt = self.measurement_update(z_obs, C, Q, self.x_filt, self.S_filt)
 
-
-
-
 def canonicalize_obs(X_base, X_obs):
     """
     Returns the position and translation from T_obs (4x4 mat).
@@ -446,10 +443,10 @@ def smoother(A, R, mu, sigma):
     ## base case:  for last time-step
     mu_smooth[-1]    = mu[-1]
     sigma_smooth[-1] = sigma[-1]
-    
+
     for t in xrange(T-2, -1, -1):
         L               = sigma[t].dot(A.T).dot(np.linalg.inv(sigma_p[t]))
-        mu_p_canon = canonicalize_obs(mu_smooth[t+1], mu_p[t])
+        mu_p_canon      = canonicalize_obs(mu_smooth[t+1], mu_p[t])
         mu_smooth[t]    = mu[t] + 0.9 * (L.dot(mu_smooth[t+1] - mu_p_canon))
         
     return (mu_smooth)

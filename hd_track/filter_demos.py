@@ -184,7 +184,7 @@ def run_kalman_filter(fname, freq=30.):
     return nsteps, tmin, mu, S, A, R
 
 def get_cam_transform():
-    calib_file = osp.join(hd_path + '/hd_data/calib/calib_cam2')
+    calib_file = osp.join(hd_path + '/hd_data/calib/calib_cam1')
     dat = cp.load(open(calib_file))
     T_l1l2 = dat['transforms'][0]['tfm']
 
@@ -211,7 +211,7 @@ def open_frac(th):
 
             
 if __name__ == '__main__':
-    demo_num = 1
+    demo_num = 6
     freq     = 30.
 
     data_dir = os.getenv('HD_DATA_DIR') 
@@ -256,14 +256,13 @@ if __name__ == '__main__':
     handles = []
     
     ## frame of the filter estimate:
-    sleeper = rospy.Rate(freq)
+    sleeper = rospy.Rate(freq/2.)
     T_far = np.eye(4)
     T_far[0:3,3] = [10,10,10]
             
     prev_ang = 0
     for i in xrange(nsteps):
         #raw_input("Hit next when ready.")
-        
         ## show the point-cloud:
         try:
             pc              = pc1_strm.next()
