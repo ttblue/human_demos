@@ -388,6 +388,6 @@ def smoother(A, R, mu, sigma):
     for t in xrange(T-2, -1, -1):
         L               = sigma[t].dot(A.T).dot(np.linalg.inv(sigma_p[t]))
         mu_p_canon = canonicalize_obs(mu_smooth[t+1], mu_p[t])
-        mu_smooth[t]    = mu[t] + 0.9*(L.dot(mu_smooth[t+1] - mu_p_canon))
+        mu_smooth[t]    = mu[t] + 0.8*(L.dot(mu_smooth[t+1] - mu_p_canon))
         
     return (mu_smooth)

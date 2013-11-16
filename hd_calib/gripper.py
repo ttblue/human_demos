@@ -260,7 +260,7 @@ class Gripper:
             if diff_cam:
                 for i,cor_tfm in cor_ar_cams.items():
                     ret_tfms.append({'parent':parent_frame, 
-                                     'child':'%sgripper_tooltip_camera%i'%(self.lr,i),
+                                     'child':'%sgripper_tooltip_camera%i'%(self.lr,i+1),
                                      'tfm':cor_tfm.dot(tfm)})
 
 

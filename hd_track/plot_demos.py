@@ -252,30 +252,37 @@ def open_frac(th):
     return th/thmax
 
 
-def plot_kalman(X_kf, X_ks, X_ar1, vs_ar1, X_ar2, vs_ar2, X_hy, vs_hy):
+def plot_kalman(X_kf, X_ks, X_ar1, vs_ar1, X_ar2, vs_ar2, X_hy, vs_hy, plot_commands='fs12h'):
     """
     
     """
-
+    if plot_commands == '': return
+    
     to_plot=[0,1,2,3, 4, 5, 6,7,8]
     axlabels = ['x', 'y', 'z', 'vx', 'vy', 'vz', 'roll', 'pitch', 'yaw', 'v_roll', 'v_pitch', 'v_yaw']
     for i in to_plot:
         plt.subplot(4,3,i+1)
-        plt.plot(X_kf[i,:], label='filter')
-        plt.plot(X_ks[i,:], label='smoother')
-        plt.plot(vs_ar1, X_ar1[i,:], '.', label='camera1')
-        plt.plot(vs_ar2, X_ar2[i,:], '.', label='camera2')
-        plt.plot(vs_hy, X_hy[i,:], '.', label='hydra')
+        if 'f' in plot_commands:
+            plt.plot(X_kf[i,:], label='filter')
+        if 's' in plot_commands:
+            plt.plot(X_ks[i,:], label='smoother')
+        if '1' in plot_commands:
+            plt.plot(vs_ar1, X_ar1[i,:], '.', label='camera1')
+        if '2' in plot_commands:
+            plt.plot(vs_ar2, X_ar2[i,:], '.', label='camera2')
+        if 'h' in plot_commands:
+            plt.plot(vs_hy, X_hy[i,:], '.', label='hydra')
         plt.ylabel(axlabels[i])
         #plt.legend()
 
 def correlation_shift(xa,xb):
     shifts = []
-    for idx in [0,1,2]:
+    for idx in [0,1,2,3,4,5,6,7,8,9,10,11]:
         shifts.append(np.argmax(np.correlate(xa[idx,:],xb[idx,:],'full'))-(xb.shape[1]-1))
-    return int(np.max(shifts))
-    
-        
+    print shifts
+    return  4+ int(np.max(shifts))
+
+
 def main_plot():
     demo_num = 6
     freq     = 30.
@@ -308,9 +315,7 @@ def main_plot():
     shift = correlation_shift(X_kf,X_ks)
     X_ks = np.roll(X_ks,shift,axis=1)
     X_ks[:,:shift]  = X_ks[:,shift][:,None]
-    
-    T_filt = state_to_hmat(list(X_ks))
-    
+    T_filt = state_to_hmat(list(X_ks.T))
     #T_filt = state_to_hmat(S_means)
     
     ## load the potentiometer-angle stream:
@@ -363,7 +368,7 @@ def main_plot():
     X_ar2 = state_from_tfms_no_velocity(Ts_ar2).T
     X_hy  = state_from_tfms_no_velocity(Ts_hy).T
 
-    plot_kalman(X_kf[:,1:], X_ks[:,1:], X_ar1, vs_ar1, X_ar2, vs_ar2, X_hy, vs_hy)
+    plot_kalman(X_kf[:,1:], X_ks[:,1:], X_ar1, vs_ar1, X_ar2, vs_ar2, X_hy, vs_hy, 's12fh')
     plt.show()
 
 
@@ -403,6 +408,7 @@ def main_filter():
     X_ks = np.roll(X_ks,shift,axis=1)
     X_ks[:,:shift]  = X_ks[:,shift][:,None]
     T_filt = state_to_hmat(list(X_ks.T))
+    #T_filt = state_to_hmat(S_means)
     
     ## load the potentiometer-angle stream:
     pot_data = cp.load(open(osp.join(data_dir, 'demos/obs_data/demo' +str(demo_num)+'.data')))['pot_angles']
