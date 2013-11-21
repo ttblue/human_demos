@@ -93,6 +93,8 @@ class RosCameras:
     camera_frames = {}
     camera_markers = {}
     
+    f = 544.260779961
+    
     calibrated = False
     
     camera_transforms = None
@@ -167,6 +169,9 @@ class RosCameras:
             return marker_tfms, time_stamp
         else:
             return marker_tfms
+    
+    def get_checkerboard_points (self, rows, cols):
+        pass
     
     # Make clique
     def store_calibrated_transforms (self, transforms):

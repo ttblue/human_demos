@@ -85,9 +85,9 @@ def convert_hmats_to_points (hmats):
         x,y,z,p = hmat[0:3].T
         
         points.append(p)
-        points.append(p+dist*x)
-        points.append(p+dist*y)
-        points.append(p+dist*z)
+        #points.append(p+dist*x)
+        #points.append(p+dist*y)
+        #points.append(p+dist*z)
         
     return points
 

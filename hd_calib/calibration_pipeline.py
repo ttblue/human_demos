@@ -115,7 +115,7 @@ class CalibratedTransformPublisher(Thread):
         
     def remove_transform(self, parent, child):
         if (parent,child) in self.transforms:
-            self.transforms.pop(parent,child)
+            self.transforms.pop((parent,child))
     
     def get_all_transforms(self):
         rtn_tfms = []

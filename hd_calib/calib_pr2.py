@@ -69,10 +69,10 @@ def calibrate_cameras ():
                 transform['child'] = 'camera_link'
     
                 transform2 = {}
-                transform2['parent'] = transform['parent']
-                transform2['child']='base_footprint'
-                transform2['tfm']=transform['tfm'].dot(nlg.inv(Tbk))
-                tfm_pub.add_transforms([transform,transform2])
+                transform2['child'] = transform['parent']
+                transform2['parent']='base_footprint'
+                transform2['tfm']=nlg.inv(transform['tfm'].dot(nlg.inv(Tbk)))
+                tfm_pub.add_transforms([transform2])
                 if yes_or_no("Are you happy with the calibration? Check RVIZ."):
                     done = True
                 else:

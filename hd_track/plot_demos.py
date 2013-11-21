@@ -276,7 +276,7 @@ def plot_kalman(X_kf, X_ks, X_ar1, vs_ar1, X_ar2, vs_ar2, X_hy, vs_hy, plot_comm
 
 def correlation_shift(xa,xb):
     shifts = []
-    for idx in xrange(12):
+    for idx in [0,1,2,3,4,5,6,7,8,9,10,11]:
         shifts.append(np.argmax(np.correlate(xa[idx,:],xb[idx,:],'full'))-(xb.shape[1]-1))
     print shifts
     return  int(np.max(shifts))
@@ -285,7 +285,7 @@ def correlation_shift(xa,xb):
 def main_plot():
     demo_num = 6
     freq     = 30.
-    use_spline = False
+    use_spline = True
 
     data_dir = os.getenv('HD_DATA_DIR') 
     #bag = rosbag.Bag(osp.join(data_dir,'demos/recorded/demo'+str(demo_num)+'.bag'))
@@ -302,10 +302,10 @@ def main_plot():
     
 
     # Shifting
-    #shift = correlation_shift(X_kf,X_ks)
-    #X_ks = np.roll(X_ks,shift,axis=1)
-    #X_ks[:,:shift]  = X_ks[:,shift][:,None]
-    #T_filt = state_to_hmat(list(X_ks.T))
+    shift = correlation_shift(X_kf,X_ks)
+    X_ks = np.roll(X_ks,shift,axis=1)
+    X_ks[:,:shift]  = X_ks[:,shift][:,None]
+    T_filt = state_to_hmat(list(X_ks.T))
     #T_filt = state_to_hmat(S_means)
     
     ## load the potentiometer-angle stream:
@@ -321,6 +321,10 @@ def main_plot():
     cam_tfm  = get_cam_transform()
     publish_static_tfm(cam1_frame_id, cam2_frame_id, cam_tfm)
 
+  
+    ## frame of the filter estimate:
+    sleeper = rospy.Rate(freq)
+    
     vs_ar1 = []
     vs_ar2 = []
     vs_hy = []
@@ -388,11 +392,11 @@ def main_filter():
     X_ks = np.reshape(X_ks, (X_ks.shape[0], X_ks.shape[1])).T
     
     # Shifting
-    #shift = correlation_shift(X_kf,X_ks)
-    #X_ks = np.roll(X_ks,shift,axis=1)
-    #X_ks[:,:shift]  = X_ks[:,shift][:,None]
-    #T_filt = state_to_hmat(list(X_ks.T))
-    T_filt = state_to_hmat(S_means)
+    shift = correlation_shift(X_kf,X_ks)
+    X_ks = np.roll(X_ks,shift,axis=1)
+    X_ks[:,:shift]  = X_ks[:,shift][:,None]
+    T_filt = state_to_hmat(list(X_ks.T))
+    #T_filt = state_to_hmat(S_means)
     
     ## load the potentiometer-angle stream:
     pot_data = cp.load(open(osp.join(data_dir, 'demos/obs_data/demo' +str(demo_num)+'.data')))['pot_angles']
@@ -502,3 +506,5 @@ if __name__=="__main__":
         main_plot()
     else:
         main_filter()
+    else:
+        main_plot()

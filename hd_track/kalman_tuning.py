@@ -185,8 +185,109 @@ def fit_ar_noise(Ts_bg, Ts_ba_raw, T_ga, f):
     err = C.dot(X_ba) - C.dot(X_bg_ga)
     covar = (err.dot(err.T))/err.shape[1]
     return (err, covar)
-    
 
+
+"""
+def fit_noise_EM (y, A, C, Q, R, init_x, init_V):
+
+    T = size(y,2)
+    ss = size(Q,1)
+    
+    cxpred = zeros(size(init_x,1),T+1);
+    xfilt = zeros(size(init_x,1),T);
+    
+    xpred[:,1] = init_x;
+    I = eye(size(init_x,1));
+    
+    K = init_V*C'/(C*init_V*C'+R);
+    mu_prev = init_x + K*(y(:,1)-(C*init_x+d));
+    cov_prev = (I-K*C)*init_V;
+    xfilt(:,1) = mu_prev;
+    Vfilt{1} = cov_prev;
+    
+    cov_r = C*init_V*C'+R;
+    cov_r = (cov_r + cov_r')./2;
+    loglik = log(mvnpdf(y(:,1),C*init_x+d, cov_r));
+    
+    for t=1:T-1
+        % dynamics update:
+        mu_d = A*mu_prev + B*u(:,t);
+        cov_d = A*cov_prev*A' + Q;
+        
+        % measurement update:
+        K = cov_d*C'/(C*cov_d*C'+R);
+        mu_prev = mu_d + K*(y(:,t+1)-(C*mu_d+d));
+        cov_prev = (I-K*C)*cov_d;
+        
+        % saving values you
+        xpred(:,t+1) = mu_d;
+        xfilt(:,t+1) = mu_prev;
+        Vfilt{t+1} = cov_prev;
+        
+        %log likelihood;
+        % remove asymmetry
+        cov_r = C*cov_d*C'+R;
+        cov_r = (cov_r + cov_r')./2;
+        loglik = loglik + log(mvnpdf(y(:,t+1),C*mu_d+d,cov_r));
+        
+    end
+    xpred(:,T+1) = A*mu_prev + B*u(:,T);
+    
+    %%
+    %%
+    if(n_var_out >= 1), varargout(1) = {xpred}; end
+    if(n_var_out >= 2), varargout(2) = {Vfilt}; end
+    if(n_var_out >= 3), varargout(3) = {loglik}; end
+    
+    
+    %% Backward pass (RTS Smoother and EM algorithm)
+    if(n_var_out >= 4)
+        
+        
+        %YOUR code here
+        xsmooth = zeros(size(init_x,1),T);
+        xsmooth(:,T) = xfilt(:,T);
+        Vsmooth{T} = Vfilt{T};
+        
+        Q_new = zeros(size(Q));
+        R_new = zeros(size(R));
+        
+        for t=T-1:-1:1
+            xnext = A*xfilt(:,t) + B*u(:,t);
+            Vnext = A*Vfilt{t}*A' + Q;
+            L = Vfilt{t}*A'/Vnext;
+            xsmooth(:,t) = xfilt(:,t) + L*(xsmooth(:,t+1)-xnext);
+            Vsmooth{t} = Vfilt{t} + L*(Vsmooth{t+1}-Vnext)*L';
+       
+            x_diff = xsmooth(:,t+1)-A*xsmooth(:,t)-B*u(:,t);
+            v_term = A*L*Vsmooth{t+1};
+            q_term = x_diff*x_diff' + A*Vsmooth{t}*A' + Vsmooth{t+1} -(v_term + v_term');
+            q_term = (q_term+q_term')./2;% + (q_term-q_term')./2;
+            Q_new = Q_new + q_term;
+            
+            y_diff = y(:,t) - C*xsmooth(:,t) - d;
+            r_term = y_diff*y_diff' + C*Vsmooth{t}*C';
+            r_term = (r_term+r_term')./2;% + (r_term-r_term')./2;
+            R_new = R_new + r_term;
+        end
+        
+        y_diff = y(:,T) - C*xsmooth(:,T) - d;
+        r_term = y_diff*y_diff' + C*Vsmooth{T}*C';
+        r_term = (r_term+r_term')./2;% + (r_term-r_term')./2;
+        R_new = R_new + r_term;
+        
+        Q_new = Q_new./(T-1);
+        Q_new = (Q_new+Q_new')./2;% + (Q_new-Q_new')./2;
+        R_new = R_new./(T);
+        R_new = (R_new+R_new')./2;% + (R_new-R_new')./2;
+        
+        varargout(4) = {xsmooth};
+        if(n_var_out >= 5), varargout(5) = {Vsmooth}; end
+        if(n_var_out >= 6), varargout(6) = {Q_new}; end
+        if(n_var_out == 7), varargout(7) = {R_new}; end
+    end
+    
+"""
 
 def plot_ar_data(Ts_bg, Ts_ba, T_ga, f):
     """
