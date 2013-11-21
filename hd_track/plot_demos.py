@@ -258,7 +258,7 @@ def plot_kalman(X_kf, X_ks, X_ar1, vs_ar1, X_ar2, vs_ar2, X_hy, vs_hy, plot_comm
     """
     if plot_commands == '': return
     
-    to_plot=[0,1,2,3, 4, 5, 6,7,8]
+    to_plot=[0,1,2,6,7,8]
     axlabels = ['x', 'y', 'z', 'vx', 'vy', 'vz', 'roll', 'pitch', 'yaw', 'v_roll', 'v_pitch', 'v_yaw']
     for i in to_plot:
         plt.subplot(4,3,i+1)
@@ -273,7 +273,7 @@ def plot_kalman(X_kf, X_ks, X_ar1, vs_ar1, X_ar2, vs_ar2, X_hy, vs_hy, plot_comm
         if 'h' in plot_commands:
             plt.plot(vs_hy, X_hy[i,:], '.', label='hydra')
         plt.ylabel(axlabels[i])
-        #plt.legend()
+        plt.legend()
 
 def correlation_shift(xa,xb):
     shifts = []
@@ -312,11 +312,13 @@ def main_plot():
     
 
     # Shifting
+    """
     shift = correlation_shift(X_kf,X_ks)
     X_ks = np.roll(X_ks,shift,axis=1)
     X_ks[:,:shift]  = X_ks[:,shift][:,None]
     T_filt = state_to_hmat(list(X_ks.T))
-    #T_filt = state_to_hmat(S_means)
+    """
+    T_filt = state_to_hmat(S_means)
     
     ## load the potentiometer-angle stream:
     pot_data = cp.load(open(osp.join(data_dir, 'demos/obs_data/demo' +str(demo_num)+'.data')))['pot_angles']

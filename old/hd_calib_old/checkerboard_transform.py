@@ -25,7 +25,7 @@ def get_corners_rgb(rgb,rows=None,cols=None):
     if not rows: rows = cb_rows
     if not cols: cols = cb_cols
     
-    rtn, corners = rtn, corners = cv.FindChessboardCorners(cv_rgb, (cb_rows, cb_cols))
+    rtn, corners = cv.FindChessboardCorners(cv_rgb, (cb_rows, cb_cols))
     return rtn, corners
 
 def get_xyz_from_corners (corners, xyz):
