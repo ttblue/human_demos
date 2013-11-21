@@ -1,5 +1,6 @@
 import numpy as np
 import conversions
+from colorize import redprint
 import transformations as tfms
 
 def avg_quaternions(qs):
@@ -25,7 +26,8 @@ def avg_transform (tfms):
     """
 
     if len(tfms) == 0:
-        return np.eye(4)
+        redprint("List empty for averaging transforms!")
+        return None
     
     trans_rots = [conversions.hmat_to_trans_rot(tfm) for tfm in tfms]
     trans = np.asarray([trans for (trans, rot) in trans_rots])

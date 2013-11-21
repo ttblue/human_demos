@@ -2,6 +2,8 @@
 from __future__ import division
 import numpy as np
 
+from hd_utils.colorize import *
+
 class streamize_pc():
     """
     A class that takes in a bag file and a topic. 
@@ -20,8 +22,9 @@ class streamize_pc():
     This class is iterable.
     """
     
-    def __init__(self, bag, cloud_topics, freq, tstart=None):
+    def __init__(self, bag, cloud_topics, freq, tstart=None, verbose=False):
         self.bag = bag
+        self.verbose = verbose
         
         if not isinstance(cloud_topics, list):
             self.topics = [cloud_topics]
@@ -37,20 +40,22 @@ class streamize_pc():
             self.base_ts = self.curr_msg.header.stamp.to_sec()
         except StopIteration:
             self.done = True
-            raise StopIteration ('Empty topics,')
-        
-        self.ts = 0
+            raise StopIteration ('Empty topics.')
+                
         self.dt = 1./freq
-        
-        self.t  = -self.dt if tstart==None else tstart
+        self.t  = -self.dt if tstart==None else tstart-self.base_ts-self.dt
+        self.ts = 0.0
         
         self.num_seen = 1
 
     def __iter__(self):
         return self
     
-    def time_now(self):
+    def latest_time(self):
         return self.base_ts + self.ts
+    
+    def time_now(self):
+        return self.base_ts + self.t
     
     def next(self):
         if self.done:
@@ -60,7 +65,8 @@ class streamize_pc():
             self.t += self.dt
 
             if self.ts > ttarg:
-                print "Returning None."                
+                if self.verbose:
+                    print "Returning None."                
                 return None
             
             msg = None
@@ -80,7 +86,8 @@ class streamize_pc():
                     break
 
             rtn_msg = self.curr_msg
-            print "Time stamp: ", self.base_ts + self.ts
+            if self.verbose:
+                print "Time stamp: ", self.base_ts + self.ts
 
             self.curr_msg = msg
             self.ts = curr_t            
@@ -89,16 +96,16 @@ class streamize_pc():
 
             
 if __name__ == '__main__':
-    import rosbag, rospy
+    import rosbag, rospy, os
     from sensor_msgs.msg import PointCloud2
     
-    bag = rosbag.Bag('/media/data/recorded/demo1.bag')
+    bag = rosbag.Bag('/home/sibi/sandbox/human_demos/hd_data/demos/recorded/demo6.bag')
     
     rospy.init_node('test_pc')
     pub = rospy.Publisher('/test_pointclouds', PointCloud2)
 
     freq = 1
-    pc_streamer = streamize_pc(bag, '/camera1/depth_registered/points', 1)
+    pc_streamer = streamize_pc(bag, '/camera1/depth_registered/points', 1, tstart=1383366737.35)
     
     while True:
         try:
@@ -107,6 +114,7 @@ if __name__ == '__main__':
             if pc is None:
                 redprint('No Pointcloud.')
                 continue
+            print pc.header.stamp.to_sec()
             pc.header.stamp = rospy.Time.now()
             print pc.header.frame_id
             pub.publish(pc)

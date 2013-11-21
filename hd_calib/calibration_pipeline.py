@@ -112,6 +112,10 @@ class CalibratedTransformPublisher(Thread):
             trans, rot = conversions.hmat_to_trans_rot(transform['tfm'])
             self.transforms[transform['parent'],transform['child']] = (trans,rot)
         self.ready = True
+        
+    def remove_transform(self, parent, child):
+        if (parent,child) in self.transforms:
+            self.transforms.pop(parent,child)
     
     def get_all_transforms(self):
         rtn_tfms = []
@@ -193,8 +197,9 @@ class CalibratedTransformPublisher(Thread):
         self.add_transforms(calib_data['transforms'])
         
         if self.grippers: self.publish_grippers = True
-        self.cameras.calibrated = True
-        self.cameras.store_calibrated_transforms(self.get_camera_transforms())
+        if self.cameras is not None:
+            self.cameras.calibrated = True
+            self.cameras.store_calibrated_transforms(self.get_camera_transforms())
         
         
     def load_gripper_calibration(self, file):
@@ -398,7 +403,7 @@ def calibrate_grippers ():
 NUM_CAMERAS = 2
 def initialize_calibration(num_cams=NUM_CAMERAS):
     global cameras, tfm_pub
-    rospy.init_node('calibration')
+    rospy.init_node('calibration',anonymous=True)
     cameras = RosCameras(num_cameras=num_cams)
     tfm_pub = CalibratedTransformPublisher(cameras)
     #tfm_pub.fake_initialize()

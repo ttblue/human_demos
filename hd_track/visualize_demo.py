@@ -17,7 +17,7 @@ def scale_tfms(Ts, s=1.):
 rospy.init_node('draw_demos')
 
 ## load data
-demo_dir  = '/home/ankush/sandbox444/human_demos/hd_data/demos/obs_data'
+demo_dir  = '/home/sibi/sandbox/human_demos/hd_data/demos/obs_data'
 demo_file = 'demo1.data'
 
 fname = osp.join(demo_dir, demo_file)

@@ -9,6 +9,8 @@ from   sensor_msgs.msg import PointCloud2
 from   geometry_msgs.msg import PoseStamped
 import matplotlib.pylab as plt
 
+
+
 import numpy as np
 import os, os.path as osp
 import cPickle as cp
@@ -206,7 +208,7 @@ def publish_static_tfm(parent_frame, child_frame, tfm):
 
 
 def open_frac(th):
-    thmax = 33.
+    thmax = 33
     return th/thmax;
             
 if __name__ == '__main__':
@@ -218,97 +220,14 @@ if __name__ == '__main__':
     bag = rosbag.Bag(hd_path + '/hd_data/demos/recorded/demo'+str(demo_num)+'.bag')
     #else:
     #	bag = rosbag.Bag(osp.join(data_dir,'demos/recorded/demo'+str(demo_num)+'.bag'))
-    rospy.init_node('viz_demos')
-    pub = rospy.Publisher('/point_cloud1', PointCloud2)
-    pub2= rospy.Publisher('/point_cloud2', PointCloud2)
+    rospy.init_node('process_pc')
     
-    ## publishers for unfiltered-data:
-    c1_tfm_pub    = rospy.Publisher('/ar1_estimate', PoseStamped)
-    c2_tfm_pub    = rospy.Publisher('/ar2_estimate', PoseStamped)
-    hydra_tfm_pub = rospy.Publisher('/hydra_estimate', PoseStamped)
-    _, _, _, ar1_strm, ar2_strm, hy_strm = relative_time_streams('demo'+str(demo_num)+'.data', freq)
-
-    ## run the kalman filter:
-    nsteps, tmin, X_means,S,A,R = run_kalman_filter('demo'+str(demo_num)+'.data', freq)
-    #X_means = smoother(A, R, X_means, S)
-
-    T_filt = state_to_hmat(X_means)
-    
-    ## load the potentiometer-angle stream:
-    pot_data = cp.load(open(osp.join(data_dir, 'demos/obs_data/demo' +str(demo_num)+'.data')))['pot_angles']
-    ang_ts   = np.array([tt[1] for tt in pot_data])  ## time-stamps
-    ang_vals = [open_frac(tt[0]) for tt in pot_data]  ## angles
-    
-    ang_strm = streamize(ang_vals, ang_ts, freq, lambda x : x[-1], tmin)
-
     ## get the point-cloud stream
     pc1_strm = streamize_pc(bag, '/camera1/depth_registered/points', freq)
     pc2_strm = streamize_pc(bag, '/camera2/depth_registered/points', freq)
 
-    cam1_frame_id = '/camera1_rgb_optical_frame'
-    cam2_frame_id = '/camera2_rgb_optical_frame'
-
-    ## get the relative-transforms between the cameras:
-    cam_tfm  = get_cam_transform()
-    publish_static_tfm(cam1_frame_id, cam2_frame_id, cam_tfm)
-
-    handles = []
+    pc = None
+    while pc is None:
+        pc = pc1_strm.next()
+    print type(pc)
     
-    ## frame of the filter estimate:
-    sleeper = rospy.Rate(freq/2.)
-    T_far = np.eye(4)
-    T_far[0:3,3] = [10,10,10]
-            
-    prev_ang = 0
-    for i in xrange(nsteps):
-        #raw_input("Hit next when ready.")
-        ## show the point-cloud:
-        try:
-            pc              = pc1_strm.next()
-            if pc is not None:
-                print "pc1 not none"
-                pc.header.stamp = rospy.Time.now()
-                pub.publish(pc)
-        except StopIteration:
-            print "no more point-clouds"
-            pass
-
-        try:
-            pc2              = pc2_strm.next()
-            if pc2 is not None:
-                print "pc2 not none"
-                pc2.header.stamp = rospy.Time.now()
-                pub2.publish(pc2)
-        except StopIteration:
-            pass
-        
-        # show the kf estimate:
-        ang_val = soft_next(ang_strm)
-        if ang_val != None:
-            prev_ang = ang_val
-            ang_val  = [ang_val]
-        else:
-            ang_val = [prev_ang]
-        handles = draw_trajectory(cam1_frame_id, [T_filt[i]], color=(1,1,0,1), open_fracs=ang_val)
-
-        # draw un-filtered estimates:
-        ar1_est = soft_next(ar1_strm)
-        if ar1_est != None:
-            c1_tfm_pub.publish(pose_to_stamped_pose(hmat_to_pose(ar1_est), cam1_frame_id))
-        else:
-            c1_tfm_pub.publish(pose_to_stamped_pose(hmat_to_pose(T_far), cam1_frame_id))
-            
-        ar2_est = soft_next(ar2_strm)
-        if ar2_est != None:
-            c2_tfm_pub.publish(pose_to_stamped_pose(hmat_to_pose(ar2_est), cam1_frame_id))
-        else:
-            c2_tfm_pub.publish(pose_to_stamped_pose(hmat_to_pose(T_far), cam1_frame_id))
-        
-        hy_est = soft_next(hy_strm)
-        if hy_est != None:
-            hydra_tfm_pub.publish(pose_to_stamped_pose(hmat_to_pose(hy_est), cam1_frame_id))
-        else:
-            hydra_tfm_pub.publish(pose_to_stamped_pose(hmat_to_pose(T_far), cam1_frame_id))
-        
-        sleeper.sleep()
-            
