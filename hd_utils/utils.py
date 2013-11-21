@@ -26,7 +26,7 @@ def avg_transform (tfms):
     """
 
     if len(tfms) == 0:
-        redprint("List empty for averaging transforms!")
+        #redprint("List empty for averaging transforms!")
         return None
     
     trans_rots = [conversions.hmat_to_trans_rot(tfm) for tfm in tfms]
