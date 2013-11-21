@@ -6,6 +6,7 @@ import roslib; roslib.load_manifest('tf')
 roslib.load_manifest('ar_track_alvar')
 import tf
 from ar_track_alvar.msg import AlvarMarkers
+from sensor_msgs.msg import PointCloud2
 
 from hd_utils.colorize import *
 from hd_utils.defaults import tfm_link_rof
@@ -85,6 +86,33 @@ class ARMarkersRos:
         else:
             return marker_transforms, self.latest_time
 
+
+class CameraPointClouds:
+
+    def __init__(self, camera_frame):
+        if camera_frame[0] == "/":
+                camera_frame = camera_frame[1:]
+            
+        self.camera_name = camera_frame.split("_")[0]
+        self.pc_topic = '/'+self.camera_name+'/depth_registered/points'
+        self.pc = None
+        self.latest_time = 0
+        
+        if rospy.get_name() == '/unnamed':
+            rospy.init_node('point_clouds_'+self.camera_name)
+        
+        self.pc_sub = rospy.Subscriber(self.pc_topic, PointCloud2, callback = self.store_last_callback, tcp_nodelay=True)
+        
+    def store_last_callback (self, data):
+        self.pc = data
+        self.latest_time = data.header.stamp.to_sec()
+        
+    def get_latest_pointcloud(self):
+        if self.pc is None:
+            redprint("No point clouds has been received yet on topic",self.pc_topic)
+        else:
+            return self.pc
+
 class RosCameras:
     """
     This class uses ROS to get camera data.
@@ -92,6 +120,7 @@ class RosCameras:
     # Making assumptions on the frames.
     camera_frames = {}
     camera_markers = {}
+    camera_pointclouds = {}
     
     f = 544.260779961
     
@@ -115,6 +144,7 @@ class RosCameras:
         for i in xrange(self.num_cameras):
             self.camera_frames[i] = camera_frame%(i+1)
             self.camera_markers[i] = ARMarkersRos(camera_frame%(i+1))
+            self.camera_pointclouds[i] = CameraPointClouds(camera_frame%(i+1))
                 
         self.parent_frame = 'camera1_rgb_optical_frame'
     
@@ -169,6 +199,11 @@ class RosCameras:
             return marker_tfms, time_stamp
         else:
             return marker_tfms
+        
+    def get_pointcloud(self, camera=0):
+        if camera not in range(self.num_cameras):
+            redprint("Camera %i out of range."%camera)
+        return self.camera_pointclouds[camera].get_latest_pointcloud()
     
     def get_checkerboard_points (self, rows, cols):
         pass

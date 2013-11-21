@@ -266,8 +266,8 @@ def calibrate_potentiometer ():
 cameras = None
 tfm_pub = None
 
-CAM_N_OBS = 10
-CAM_N_AVG = 50
+CAM_N_OBS = 5
+CAM_N_AVG = 10
 
 
 def calibrate_cameras ():
