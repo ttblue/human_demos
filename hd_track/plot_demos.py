@@ -202,7 +202,7 @@ def fit_spline_to_stream(strm, nsteps, deg=3):
 
 
 
-def run_kalman_filter(fname, freq=30., use_spline=False):
+def run_kalman_filter(fname, freq=30., use_spline=False, use_hydra=True):
     """
     Runs the kalman filter
     """
@@ -212,13 +212,18 @@ def run_kalman_filter(fname, freq=30., use_spline=False):
     ## run the filter:
     mu,S = [], []
     
-    if use_spline:
+    if use_hydra and use_spline:
         smooth_hy = (t for t in fit_spline_to_stream(hy_strm, nsteps))
     else:
         smooth_hy = hy_strm
     
+
     for i in xrange(nsteps):
-        KF.register_observation(dt*i, soft_next(ar1_strm), soft_next(ar2_strm), soft_next(smooth_hy)) 
+        if use_hydra:
+            KF.register_observation(dt*i, soft_next(ar1_strm), soft_next(ar2_strm), soft_next(smooth_hy)) 
+        else:
+            KF.register_observation(dt*i, soft_next(ar1_strm), soft_next(ar2_strm), None)
+           
         mu.append(KF.x_filt)
         S.append(KF.S_filt)
 
@@ -276,7 +281,7 @@ def plot_kalman(X_kf, X_ks, X_ar1, vs_ar1, X_ar2, vs_ar2, X_hy, vs_hy, plot_comm
 
 def correlation_shift(xa,xb):
     shifts = []
-    for idx in [0,1,2,3,4,5,6,7,8,9,10,11]:
+    for idx in [0,1,2]:
         shifts.append(np.argmax(np.correlate(xa[idx,:],xb[idx,:],'full'))-(xb.shape[1]-1))
     print shifts
     return  int(np.max(shifts))
@@ -302,11 +307,11 @@ def main_plot():
     
 
     # Shifting
-    shift = correlation_shift(X_kf,X_ks)
-    X_ks = np.roll(X_ks,shift,axis=1)
-    X_ks[:,:shift]  = X_ks[:,shift][:,None]
-    T_filt = state_to_hmat(list(X_ks.T))
-    #T_filt = state_to_hmat(S_means)
+    #shift = correlation_shift(X_kf,X_ks)
+    #X_ks = np.roll(X_ks,shift,axis=1)
+    #X_ks[:,:shift]  = X_ks[:,shift][:,None]
+    #T_filt = state_to_hmat(list(X_ks.T))
+    T_filt = state_to_hmat(S_means)
     
     ## load the potentiometer-angle stream:
     pot_data = cp.load(open(osp.join(data_dir, 'demos/obs_data/demo' +str(demo_num)+'.data')))['pot_angles']
@@ -363,7 +368,7 @@ def main_plot():
 
 
 def main_filter():
-    demo_num = 6
+    demo_num = 7
     freq     = 30.
     use_spline = True
 
@@ -381,22 +386,31 @@ def main_filter():
     hydra_tfm_pub = rospy.Publisher('/hydra_estimate', PoseStamped)
     _, _, _, ar1_strm, ar2_strm, hy_strm = relative_time_streams('demo'+str(demo_num)+'.data', freq)
 
-    ## run the kalman filter:
-    nsteps, tmin, F_means,S,A,R = run_kalman_filter('demo'+str(demo_num)+'.data', freq, use_spline)
+    #=====================================================
+    
+    ## run the KF with the Cameras only:
+    _, _, F_means_cams, _,_,_ = run_kalman_filter('demo'+str(demo_num)+'.data', freq, use_spline=False, use_hydra=False)
+    X_kf_cams = np.array(F_means_cams)
+    X_kf_cams = np.reshape(X_kf_cams, (X_kf_cams.shape[0], X_kf_cams.shape[1])).T
+
+    
+    ## run the KF and smoother on everything:
+    nsteps, tmin, F_means, S,A,R = run_kalman_filter('demo'+str(demo_num)+'.data', freq, use_spline, use_hydra=True)
     S_means = smoother(A, R, F_means, S)
-
-    X_kf = np.array(F_means)
-    X_kf = np.reshape(X_kf, (X_kf.shape[0], X_kf.shape[1])).T
-
     X_ks = np.array(S_means)
     X_ks = np.reshape(X_ks, (X_ks.shape[0], X_ks.shape[1])).T
+
     
     # Shifting
-    shift = correlation_shift(X_kf,X_ks)
+    shift = correlation_shift(X_kf_cams,X_ks)
+    print "SHIFT:  ", shift
     X_ks = np.roll(X_ks,shift,axis=1)
     X_ks[:,:shift]  = X_ks[:,shift][:,None]
     T_filt = state_to_hmat(list(X_ks.T))
-    #T_filt = state_to_hmat(S_means)
+    #T_filt = state_to_hmat(F_means)   
+    
+    #======================================================
+  
     
     ## load the potentiometer-angle stream:
     pot_data = cp.load(open(osp.join(data_dir, 'demos/obs_data/demo' +str(demo_num)+'.data')))['pot_angles']
@@ -506,5 +520,3 @@ if __name__=="__main__":
         main_plot()
     else:
         main_filter()
-    else:
-        main_plot()

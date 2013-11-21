@@ -289,7 +289,7 @@ class kalman:
             return
 
         dt = t - self.t_filt
-        self.x_filt_n, self.S_filt = self.control_update(self.x_filt, self.S_filt, dt)
+        self.x_filt, self.S_filt = self.control_update(self.x_filt, self.S_filt, dt)
         
         z_obs, C, Q = None, None, None
         reading = False
