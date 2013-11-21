@@ -195,7 +195,7 @@ class kalman:
         self.hydra_covar  = hydra_covar
         self.ar1_covar    = ar1_covar
         self.ar2_covar    = ar2_covar
-        
+        self.qcount = 0
 
     def __check_time__(self, t):
         if self.t_filt == None:
@@ -217,6 +217,7 @@ class kalman:
         pos = T_obs[0:3,3]
         rpy = np.array(tfm.euler_from_matrix(T_obs), ndmin=2).T
         rpy = closer_angle(rpy, self.x_filt[6:9])
+ 
         return (pos, rpy)
 
 
@@ -288,8 +289,8 @@ class kalman:
             return
 
         dt = t - self.t_filt
-        self.x_filt, self.S_filt = self.control_update(self.x_filt, self.S_filt, dt)
-
+        self.x_filt_n, self.S_filt = self.control_update(self.x_filt, self.S_filt, dt)
+        
         z_obs, C, Q = None, None, None
         reading = False
         if T_hy != None or T_ar1 != None or T_ar2 != None: # initilize if anything was observed 
@@ -386,8 +387,8 @@ def smoother(A, R, mu, sigma):
     sigma_smooth[-1] = sigma[-1]
     
     for t in xrange(T-2, -1, -1):
-        L               = sigma[t].dot(A.T).dot(np.linalg.inv(sigma_p[t]))
-        mu_p_canon = canonicalize_obs(mu_smooth[t+1], mu_p[t])
-        mu_smooth[t]    = mu[t] + 0.8*(L.dot(mu_smooth[t+1] - mu_p_canon))
-        
+        L                   = sigma[t].dot(A.T).dot(np.linalg.inv(sigma_p[t]))
+        mu_p_canon          = canonicalize_obs(mu_smooth[t+1], mu_p[t])
+        mu_smooth[t]        = mu[t] + 0.8*(L.dot(mu_smooth[t+1] - mu_p_canon))
+        mu_smooth[t][6:9,:] = put_in_range(mu_smooth[t][6:9,:])
     return (mu_smooth)

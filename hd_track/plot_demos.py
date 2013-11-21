@@ -7,6 +7,7 @@ roslib.load_manifest("tf")
 import tf
 from   sensor_msgs.msg import PointCloud2
 from   geometry_msgs.msg import PoseStamped
+import argparse
 
 import numpy as np
 import os, os.path as osp
@@ -164,12 +165,10 @@ def soft_next(stream):
     return ret
 
 
-def fit_spline_to_stream(strm, nsteps):
+def fit_spline_to_stream(strm, nsteps, deg=3):
     x = []
     y = []
-    
-    deg = 3
-    
+
     prev_rpy = None
     for i in xrange(nsteps):
         next = soft_next(strm)
@@ -258,7 +257,7 @@ def plot_kalman(X_kf, X_ks, X_ar1, vs_ar1, X_ar2, vs_ar2, X_hy, vs_hy, plot_comm
     """
     if plot_commands == '': return
     
-    to_plot=[0,1,2,6,7,8]
+    to_plot=[0,1,2,3, 4, 5, 6,7,8]
     axlabels = ['x', 'y', 'z', 'vx', 'vy', 'vz', 'roll', 'pitch', 'yaw', 'v_roll', 'v_pitch', 'v_yaw']
     for i in to_plot:
         plt.subplot(4,3,i+1)
@@ -273,14 +272,14 @@ def plot_kalman(X_kf, X_ks, X_ar1, vs_ar1, X_ar2, vs_ar2, X_hy, vs_hy, plot_comm
         if 'h' in plot_commands:
             plt.plot(vs_hy, X_hy[i,:], '.', label='hydra')
         plt.ylabel(axlabels[i])
-        plt.legend()
+        #plt.legend()
 
 def correlation_shift(xa,xb):
     shifts = []
     for idx in [0,1,2,3,4,5,6,7,8,9,10,11]:
         shifts.append(np.argmax(np.correlate(xa[idx,:],xb[idx,:],'full'))-(xb.shape[1]-1))
     print shifts
-    return  4+ int(np.max(shifts))
+    return  int(np.max(shifts))
 
 
 def main_plot():
@@ -290,20 +289,11 @@ def main_plot():
 
     data_dir = os.getenv('HD_DATA_DIR') 
     #bag = rosbag.Bag(osp.join(data_dir,'demos/recorded/demo'+str(demo_num)+'.bag'))
-    rospy.init_node('viz_demos')
-    pub = rospy.Publisher('/point_cloud1', PointCloud2)
-    pub2= rospy.Publisher('/point_cloud2', PointCloud2)
-    
-    ## publishers for unfiltered-data:
-    c1_tfm_pub    = rospy.Publisher('/ar1_estimate', PoseStamped)
-    c2_tfm_pub    = rospy.Publisher('/ar2_estimate', PoseStamped)
-    hydra_tfm_pub = rospy.Publisher('/hydra_estimate', PoseStamped)
     _, _, _, ar1_strm, ar2_strm, hy_strm = relative_time_streams('demo'+str(demo_num)+'.data', freq)
 
     ## run the kalman filter:
     nsteps, tmin, F_means,S,A,R = run_kalman_filter('demo'+str(demo_num)+'.data', freq, use_spline)
     S_means = smoother(A, R, F_means, S)
-    #print S_means[0]
     X_kf = np.array(F_means)
     X_kf = np.reshape(X_kf, (X_kf.shape[0], X_kf.shape[1])).T
 
@@ -312,13 +302,11 @@ def main_plot():
     
 
     # Shifting
-    """
     shift = correlation_shift(X_kf,X_ks)
     X_ks = np.roll(X_ks,shift,axis=1)
     X_ks[:,:shift]  = X_ks[:,shift][:,None]
     T_filt = state_to_hmat(list(X_ks.T))
-    """
-    T_filt = state_to_hmat(S_means)
+    #T_filt = state_to_hmat(S_means)
     
     ## load the potentiometer-angle stream:
     pot_data = cp.load(open(osp.join(data_dir, 'demos/obs_data/demo' +str(demo_num)+'.data')))['pot_angles']
@@ -333,8 +321,7 @@ def main_plot():
     cam_tfm  = get_cam_transform()
     publish_static_tfm(cam1_frame_id, cam2_frame_id, cam_tfm)
 
-    handles = []
-    
+  
     ## frame of the filter estimate:
     sleeper = rospy.Rate(freq)
     
@@ -385,7 +372,6 @@ def main_filter():
     bag = rosbag.Bag(hd_path + '/hd_data/demos/recorded/demo'+str(demo_num)+'.bag')
     #else:
     #	bag = rosbag.Bag(osp.join(data_dir,'demos/recorded/demo'+str(demo_num)+'.bag'))
-    rospy.init_node('viz_demos')
     pub = rospy.Publisher('/point_cloud1', PointCloud2)
     pub2= rospy.Publisher('/point_cloud2', PointCloud2)
     
@@ -485,11 +471,8 @@ def main_filter():
         else:
             ang_val = [prev_ang]
             
-        if found_pc:
-            handles = draw_trajectory(cam1_frame_id, [T_filt[i]], color=(1,1,0,1), open_fracs=ang_val)
-        else:
-            handles = draw_trajectory(cam1_frame_id, [T_filt[i]], color=(1,0,0,1), open_fracs=ang_val)
-        
+        handles = draw_trajectory(cam1_frame_id, [T_filt[i]], color=(1,1,0,1), open_fracs=ang_val)
+
 
         # draw un-filtered estimates:
         ar1_est = soft_next(ar1_strm)
@@ -513,9 +496,15 @@ def main_filter():
         sleeper.sleep()
         
 if __name__=="__main__":
-    
-    import sys
-    if len(sys.argv) > 1:
+    rospy.init_node('viz_demos')    
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--plot', help="Plot the data", action="store_true", default=False)
+    parser.add_argument('--rviz', help="Publish the data on topics for visualization on RVIZ", action="store_true", default=True)
+    vals = parser.parse_args()
+
+    if vals.plot:
+        main_plot()
+    else:
         main_filter()
     else:
         main_plot()
