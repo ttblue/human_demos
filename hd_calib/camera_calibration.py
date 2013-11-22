@@ -1,6 +1,6 @@
 import rospy
-import numpy as np
-import cv2
+import numpy as np, numpy.linalg as nlg
+import cv2, cv
 import time
 
 from hd_utils import ros_utils as ru, clouds, conversions, utils
@@ -61,6 +61,70 @@ def find_rigid_tfm (points1, points2, homogeneous=True):
         return Tfm
     else:
         return R,t
+    
+
+cb_rows = 8
+cb_cols = 6
+
+
+def get_corners_rgb(rgb,rows=None,cols=None):
+    cv_rgb = cv.fromarray(rgb)
+    
+    if not rows: rows = cb_rows
+    if not cols: cols = cb_cols
+    
+    rtn, corners = cv.FindChessboardCorners(cv_rgb, (cb_rows, cb_cols))
+    return rtn, corners
+
+def get_xyz_from_corners (corners, xyz):
+    points = []
+    for j,i in corners:
+        x = i - np.floor(i)
+        y = j - np.floor(j)
+        p1 = xyz[np.floor(i),np.floor(j)]
+        p2 = xyz[np.floor(i),np.ceil(j)]
+        p3 = xyz[np.ceil(i),np.ceil(j)]
+        p4 = xyz[np.ceil(i),np.floor(j)]        
+        p = p1*(1-x)*(1-y) + p2*(1-x)*y + p3*x*y + p4*x*(1-y)
+        points.append(p)
+
+    return np.asarray(points)
+
+def get_corners_from_pc(pc,rows=None,cols=None):
+    xyz, rgb = ru.pc2xyzrgb(pc)
+    rtn, corners = get_corners_rgb(rgb, rows, cols)
+    points = get_xyz_from_corners(corners, xyz)
+    return rtn, points
+    
+def get_corresponding_points(points1, points2, guess_tfm, rows=None, cols=None):
+    """
+    Returns two lists of points such that the transform explains the relation between
+    pointsets the most. Also, returns the norm of the difference between point sets.
+    tfm is from cam1 -> cam2
+    """
+    points1 = np.asarray(points1)
+    points2 = np.asarray(points2)
+    
+    p12 = np.c_[points1,points2]
+    p12 = p12[np.bitwise_not(np.isnan(p12).any(axis=1)),:]
+    p1 = p12[:,0:3]
+    p2 = p12[:,3:6]
+    est = np.c_[p2,np.ones((p2.shape[0],1))].dot(guess_tfm.T)[:,0:3]
+    dist = nlg.norm(p1-est,ord=np.inf)
+    
+    corr = range(rows*cols-1,-1,-1)
+    p12r = np.c_[points1,points2[corr,:]]
+    p12r = p12r[np.bitwise_not(np.isnan(p12r).any(axis=1)),:]
+    p1r = p12r[:,0:3]
+    p2r = p12r[:,3:6]
+    est = np.c_[p2r,np.ones((p2r.shape[0],1))].dot(guess_tfm.T)[:,0:3]
+    dist_new = nlg.norm(p1r-est, ord=np.inf)
+    if dist_new < dist:
+        points1, points2, dist = p1, p2, dist_new
+    else:
+        points1, points2 = p1, p2
+
+    return points1, points2, dist
 
    
 def common_ar_markers (ar_pos1, ar_pos2):
@@ -151,7 +215,7 @@ class CameraCalibrator:
 
         return transform
     
-    def extend_camera_pointsets(self, c1, c2):
+    def extend_camera_pointsets_ar(self, c1, c2):
         if not self.observed_ar_transforms or \
            not self.observed_ar_transforms[c1] or \
            not self.observed_ar_transforms[c2]:
@@ -172,19 +236,32 @@ class CameraCalibrator:
         
         return True
                 
+    def extend_camera_pointsets_cb(self, c1, c2):
+        
+        if (c1,c2) not in self.point_list:
+            self.point_list[(c1,c2)] = {c1:[],c2:[]}
+        
+        p1,p2,dist = get_corresponding_points(self.observed_cb_points[c1], 
+                                              self.observed_cb_points[c2],
+                                              self.est_tfms[c1,c2])
+        print "Distance difference between camera %i and camera %i points:", dist
+        
+        self.point_list[(c1,c2)][c1].extend(p1)
+        self.point_list[(c1,c2)][c2].extend(p2)
+        greenprint("Extended pointsets by %i"%(p1.shape[0]))
 
         
-    def initialize_calibration(self):
-        # Stores transforms between cameras
-        #self.transform_list = {} 
+    def initialize_calibration(self, use_ar):
         self.point_list = {}
         
+        if not use_ar:
+            self.estimate_initial_transform()
+        
     
-    def process_observation(self, n_avg=5):
+    def process_observation_ar(self, n_avg=5):
         """
         Get an observation and update transform list.
         """
-        
         self.observed_ar_transforms = {i:{} for i in xrange(self.num_cameras)}
         
         sleeper = rospy.Rate(30)
@@ -208,15 +285,80 @@ class CameraCalibrator:
 
         got_something = False
         for i in xrange(1,self.num_cameras):
-            result = self.extend_camera_pointsets(0, i)
+            result = self.extend_camera_pointsets_ar(0, i)
             if result is False:
                 redprint("Did get info for cameras 0 and %d"%i)
                 continue
             got_something = True
         
         return got_something
+    
+    def estimate_initial_transform(self):
+        raw_input("Place AR marker(s) visible to all cameras to get an initial estimate. Then hit enter.")
+        N_AVG = 10
 
-    def finish_calibration(self):
+        self.est_tfms = {i:{} for i in xrange(1,self.num_cameras)}
+        tfms_found = {i:{} for i in xrange(self.num_cameras)}
+        for _ in xrange(N_AVG):
+            for i in xrange(self.num_cameras):
+                mtfms = self.cameras.get_ar_markers(camera=i)
+                for m in mtfms:
+                    if m not in tfms_found[i]:
+                        tfms_found[i][m] = []
+                    tfms_found[i][m].append(mtfms[m])
+            
+            for i in tfms_found:
+                for m in tfms_found[i]:
+                    tfms_found[i][m] = utils.avg_transform(tfms_found[i][m])
+
+            for i in xrange(1,self.num_cameras):
+                ar1, ar2 = common_ar_markers(tfms_found[0], tfms_found[i])
+                if not ar1 or not ar2:
+                    redprint("No common AR Markers found between camera 1 and %i"%(i+1))
+                    self.est_tfms[0,i] = None
+
+                if len(ar1.keys()) == 1:
+                    self.est_tfms[0,i] = ar1.values()[0].dot(nlg.inv(ar2.values()[0]))
+                else:
+                    self.est_tfms[0,i] = find_rigid_tfm(convert_hmats_to_points(ar1.values()),
+                                               convert_hmats_to_points(ar2.values()))
+                
+    
+    def process_observation_cb(self):
+        """
+        Get an observation and update transform list.
+        """
+        
+        self.observed_cb_points = {}
+        
+        sleeper = rospy.Rate(10)
+        for j in xrange(self.num_cameras):
+            tries = 10
+            while tries > 0:
+                
+                pc = self.cameras.get_pointcloud(j)
+                rtn, points = get_corners_pc(pc)
+                if rtn == 0:
+                    yellowprint("Could not find all the points on the checkerboard for camera%i"%(j+1))
+                    tries -= 1
+                    sleeper.sleep()
+                else: break
+            if tries == 0:
+                redprint ("Could not find all the chessboard points for camera %i."%(j+1))
+                return False
+            self.observed_cb_points[j] = points
+
+        #print self.observed_ar_transforms
+        for i in self.observed_ar_transforms:
+            for marker in self.observed_ar_transforms[i]:
+                self.observed_ar_transforms[i][marker] = utils.avg_transform(self.observed_ar_transforms[i][marker])        
+
+        for i in xrange(1,self.num_cameras):
+            self.extend_camera_pointsets_cb(0, i)
+        
+        return True
+
+    def finish_calibration(self, use_icp):
         """
         Average out transforms and store final values.
         Return true/false based on whether transforms were found. 
@@ -233,63 +375,67 @@ class CameraCalibrator:
             cam_transform['child'] = 'camera%d_link'%(c2+1)
             cam_transform['tfm'] = tfm_link_rof.dot(tfm).dot(np.linalg.inv(tfm_link_rof))
 
-            if self.icpService is None:
-                self.icpService = rospy.ServiceProxy("icpTransform", ICPTransform)
-            
-            
-            greenprint("Refining calibration with ICP.")
-            req = ICPTransformRequest()
-            
-            
-            # Interchange pc1 and pc2 or use inv(cam_transform) as guess.
-            raw_input(colorize("Cover camera %i and hit enter!"%(c2+1),'yellow',True))
-            pc2 = self.cameras.get_pointcloud(c1)
-            pc2_points = ru.pc2xyz(pc2)
-            pc2_points = np.reshape(pc2_points, (640*480,3), order='F')
-            pc2_points = pc2_points[np.bitwise_not(np.isnan(pc2_points).any(axis=1)),:]
-            req.pc2 = ru.xyz2pc(pc2_points, pc2.header.frame_id)
-
-            raw_input(colorize("Cover camera %i and hit enter!"%(c1+1),'yellow',True))
-            pc1 = self.cameras.get_pointcloud(c2)
-            pc1_points = ru.pc2xyz(pc1)
-            pc1_points = np.reshape(pc1_points, (640*480,3), order='F')
-            pc1_points = pc1_points[np.bitwise_not(np.isnan(pc1_points).any(axis=1)),:]
-            pc1_points = (np.c_[pc1_points, np.ones((pc1_points.shape[0],1))].dot(tfm.T))[:,0:3]
-            req.pc1 = ru.xyz2pc(pc1_points, pc1.header.frame_id)
-
-            req.guess = conversions.hmat_to_pose(np.eye(4))
-
-            try:
-                res = self.icpService(req)
-                print res
-                res_tfm = conversions.pose_to_hmat(res.pose)
-                ttt = tfm_link_rof.dot(res_tfm.dot(tfm)).dot(np.linalg.inv(tfm_link_rof))
-                cam_transform['tfm'] = ttt
-            except:
-                redprint("ICP failed. Using AR-only calibration.")
-            
+            if use_icp:
+                if self.icpService is None:
+                    self.icpService = rospy.ServiceProxy("icpTransform", ICPTransform)
+                
+                
+                greenprint("Refining calibration with ICP.")
+                req = ICPTransformRequest()
+                
+                
+                # Interchange pc1 and pc2 or use inv(cam_transform) as guess.
+                raw_input(colorize("Cover camera %i and hit enter!"%(c2+1),'yellow',True))
+                pc2 = self.cameras.get_pointcloud(c1)
+                pc2_points = ru.pc2xyz(pc2)
+                pc2_points = np.reshape(pc2_points, (640*480,3), order='F')
+                pc2_points = pc2_points[np.bitwise_not(np.isnan(pc2_points).any(axis=1)),:]
+                req.pc2 = ru.xyz2pc(pc2_points, pc2.header.frame_id)
+    
+                raw_input(colorize("Cover camera %i and hit enter!"%(c1+1),'yellow',True))
+                pc1 = self.cameras.get_pointcloud(c2)
+                pc1_points = ru.pc2xyz(pc1)
+                pc1_points = np.reshape(pc1_points, (640*480,3), order='F')
+                pc1_points = pc1_points[np.bitwise_not(np.isnan(pc1_points).any(axis=1)),:]
+                pc1_points = (np.c_[pc1_points, np.ones((pc1_points.shape[0],1))].dot(tfm.T))[:,0:3]
+                req.pc1 = ru.xyz2pc(pc1_points, pc1.header.frame_id)
+    
+                req.guess = conversions.hmat_to_pose(np.eye(4))
+    
+                try:
+                    res = self.icpService(req)
+                    print res
+                    res_tfm = conversions.pose_to_hmat(res.pose)
+                    ttt = tfm_link_rof.dot(res_tfm.dot(tfm)).dot(np.linalg.inv(tfm_link_rof))
+                    cam_transform['tfm'] = ttt
+                except:
+                    redprint("ICP failed. Using AR-only calibration.")
+                
             self.camera_transforms[c1,c2] = cam_transform
         
         self.cameras.calibrated = True
         self.cameras.store_calibrated_transforms(self.camera_transforms)
         return True
     
-    def calibrate (self, n_obs=10, n_avg=5):
+    def calibrate (self, use_ar=False, use_icp=False, n_obs=10, n_avg=5):
         if self.num_cameras == 1:
             redprint ("Only one camera. You don't need to calibrate.", True)
             self.calibrated = True
             self.cameras.calibrated = True
             return
         
-        self.initialize_calibration()
+        self.initialize_calibration(use_ar)
         i = 0
         while i < n_obs:
             yellowprint("Please hold still for a few seconds. Make sure the transforms look good on rviz.")
             raw_input(colorize("Observation %d from %d. Press return when ready."%(i,n_obs),'green',True))
-            got_something =  self.process_observation(n_avg)
+            if use_ar:
+                got_something =  self.process_observation_ar(n_avg)
+            else:
+                got_something =  self.process_observation_cb()
             if got_something: i += 1
 
-        self.calibrated = self.finish_calibration()
+        self.calibrated = self.finish_calibration(use_icp)
         self.cameras.calibrated  = self.calibrated
         
     def get_transforms(self):
