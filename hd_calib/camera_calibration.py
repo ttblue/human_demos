@@ -14,7 +14,7 @@ import roslib; roslib.load_manifest('icp_service')
 from icp_service.srv import ICPTransform, ICPTransformRequest, ICPTransformResponse
 
 asus_xtion_pro_f = 544.260779961
-
+WIN_NAME = 'cv_test'
 """
 Calibrates based on AR markers.
 TODO: if three kinects work together, maybe do graph optimization.
@@ -86,13 +86,17 @@ def get_xyz_from_corners (corners, xyz):
         p3 = xyz[np.ceil(i),np.ceil(j)]
         p4 = xyz[np.ceil(i),np.floor(j)]        
         p = p1*(1-x)*(1-y) + p2*(1-x)*y + p3*x*y + p4*x*(1-y)
+        if np.isnan(p).any(): print p
         points.append(p)
 
     return np.asarray(points)
 
 def get_corners_from_pc(pc,rows=None,cols=None):
     xyz, rgb = ru.pc2xyzrgb(pc)
+    rgb = np.copy(rgb)
     rtn, corners = get_corners_rgb(rgb, rows, cols)
+    if len(corners) == 0:
+        return 0, None
     points = get_xyz_from_corners(corners, xyz)
     return rtn, points
     
@@ -102,6 +106,10 @@ def get_corresponding_points(points1, points2, guess_tfm, rows=None, cols=None):
     pointsets the most. Also, returns the norm of the difference between point sets.
     tfm is from cam1 -> cam2
     """
+    if not rows: rows = cb_rows
+    if not cols: cols = cb_cols
+
+    
     points1 = np.asarray(points1)
     points2 = np.asarray(points2)
     
@@ -255,7 +263,11 @@ class CameraCalibrator:
         self.point_list = {}
         
         if not use_ar:
-            self.estimate_initial_transform()
+            ready = False
+            sleeper = rospy.Rate(10)
+            while not ready:
+                ready = self.estimate_initial_transform()
+                sleeper.sleep()
         
     
     def process_observation_ar(self, n_avg=5):
@@ -299,6 +311,7 @@ class CameraCalibrator:
 
         self.est_tfms = {i:{} for i in xrange(1,self.num_cameras)}
         tfms_found = {i:{} for i in xrange(self.num_cameras)}
+        sleeper = rospy.Rate(30)
         for _ in xrange(N_AVG):
             for i in xrange(self.num_cameras):
                 mtfms = self.cameras.get_ar_markers(camera=i)
@@ -306,22 +319,25 @@ class CameraCalibrator:
                     if m not in tfms_found[i]:
                         tfms_found[i][m] = []
                     tfms_found[i][m].append(mtfms[m])
+            sleeper.sleep()
             
-            for i in tfms_found:
-                for m in tfms_found[i]:
-                    tfms_found[i][m] = utils.avg_transform(tfms_found[i][m])
+        for i in tfms_found:
+            for m in tfms_found[i]:
+                tfms_found[i][m] = utils.avg_transform(tfms_found[i][m])
 
-            for i in xrange(1,self.num_cameras):
-                ar1, ar2 = common_ar_markers(tfms_found[0], tfms_found[i])
-                if not ar1 or not ar2:
-                    redprint("No common AR Markers found between camera 1 and %i"%(i+1))
-                    self.est_tfms[0,i] = None
+        for i in xrange(1,self.num_cameras):
+            ar1, ar2 = common_ar_markers(tfms_found[0], tfms_found[i])
+            if not ar1 or not ar2:
+                redprint("No common AR Markers found between camera 1 and %i"%(i+1))
+                return False
 
-                if len(ar1.keys()) == 1:
-                    self.est_tfms[0,i] = ar1.values()[0].dot(nlg.inv(ar2.values()[0]))
-                else:
-                    self.est_tfms[0,i] = find_rigid_tfm(convert_hmats_to_points(ar1.values()),
-                                               convert_hmats_to_points(ar2.values()))
+            if len(ar1.keys()) == 1:
+                self.est_tfms[0,i] = ar1.values()[0].dot(nlg.inv(ar2.values()[0]))
+            else:
+                self.est_tfms[0,i] = find_rigid_tfm(convert_hmats_to_points(ar1.values()),
+                                           convert_hmats_to_points(ar2.values()))
+        
+        return True
                 
     
     def process_observation_cb(self):
@@ -337,7 +353,7 @@ class CameraCalibrator:
             while tries > 0:
                 
                 pc = self.cameras.get_pointcloud(j)
-                rtn, points = get_corners_pc(pc)
+                rtn, points = get_corners_from_pc(pc)
                 if rtn == 0:
                     yellowprint("Could not find all the points on the checkerboard for camera%i"%(j+1))
                     tries -= 1
@@ -347,11 +363,6 @@ class CameraCalibrator:
                 redprint ("Could not find all the chessboard points for camera %i."%(j+1))
                 return False
             self.observed_cb_points[j] = points
-
-        #print self.observed_ar_transforms
-        for i in self.observed_ar_transforms:
-            for marker in self.observed_ar_transforms[i]:
-                self.observed_ar_transforms[i][marker] = utils.avg_transform(self.observed_ar_transforms[i][marker])        
 
         for i in xrange(1,self.num_cameras):
             self.extend_camera_pointsets_cb(0, i)
@@ -417,7 +428,7 @@ class CameraCalibrator:
         self.cameras.store_calibrated_transforms(self.camera_transforms)
         return True
     
-    def calibrate (self, use_ar=False, use_icp=False, n_obs=10, n_avg=5):
+    def calibrate (self, use_ar=False, use_icp=True, n_obs=10, n_avg=5):
         if self.num_cameras == 1:
             redprint ("Only one camera. You don't need to calibrate.", True)
             self.calibrated = True

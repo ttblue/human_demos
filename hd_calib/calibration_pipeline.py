@@ -279,7 +279,7 @@ def calibrate_cameras ():
 
     done = False
     while not done:
-        cam_calib.calibrate(CAM_N_OBS, CAM_N_AVG)
+        cam_calib.calibrate(n_obs=CAM_N_OBS, n_avg=CAM_N_AVG)
         if cameras.num_cameras == 1:
             break
         if not cam_calib.calibrated:
