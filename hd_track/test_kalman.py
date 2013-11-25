@@ -73,7 +73,7 @@ def x_to_tf(Xs):
 
 
 if __name__ == '__main__':
-    N = 10
+    N = 100
     t_true  = gen_tfms(N)
     t_noise = add_noise(t_true)
     
@@ -103,7 +103,7 @@ if __name__ == '__main__':
     kf_Ts = x_to_tf(ke)
     
     for t in kf_Ts:
-        req  = gen_custom_request('transform', t, size=0.02)
+        req  = gen_custom_request('transform', t, size=0.03)
         plotter.request(req)    
     true2est = []
     for i in xrange(len(t_true)-1):

@@ -99,7 +99,7 @@ class PlotterInit(object):
         self.lock = Lock()
         self.abc = list()
         from pyface.timer.api import Timer
-        self.keycb_timer = MyTimer(0.05, self.__key_callback_server__)
+        self.keycb_timer = MyTimer(0.005, self.__key_callback_server__)
         
         # start the mayavi process
         self.mayavi_process = Process(target=create_mayavi, args=(self.pipe_mayavi,))
