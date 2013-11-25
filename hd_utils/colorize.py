@@ -23,3 +23,12 @@ def colorize(string, color, bold=False, highlight = False):
     attr.append(str(num))
     if bold: attr.append('1')
     return '\x1b[%sm%s\x1b[0m' % (';'.join(attr), string)
+
+def redprint(text, bold=True):
+    print colorize(text,'red',bold)
+def blueprint(text, bold=True):
+    print colorize(text,'blue',bold)
+def greenprint(text, bold=True):
+    print colorize(text,'green',bold)
+def yellowprint(text, bold=True):
+    print colorize(text,'yellow',bold)

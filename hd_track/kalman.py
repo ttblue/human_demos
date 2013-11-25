@@ -5,6 +5,20 @@ import numpy as np
 import scipy.linalg as scl
 
 
+def put_in_range(x):
+    """
+    Puts all the values in x in the range [-180, 180).
+    """
+    return ( (x+np.pi)%(2*np.pi) )- np.pi
+            
+
+def closer_angle(x, a):
+    """
+    returns the angle f(x) which is closer to the angle a in absolute value.
+    """
+    return a + put_in_range(x-a)
+
+
 class kalman:
     """
     Simple Kalman filter to track 6DOF pose.
@@ -25,27 +39,27 @@ class kalman:
         self.min_vr_std = 1     # deg/s
 
         # time-dependent uncertainty : as time grows, so does the uncertainty:
-        self.x_std_t  = 1  # m/s
+        self.x_std_t  = 0.001  # m/s
         self.vx_std_t = 1  # m/s /s
-        self.r_std_t  = 90 # deg/s
+        self.r_std_t  = 40 # deg/s
         self.vr_std_t = 90 # deg/s /s
-
       
         ## standard deviations of the measurements:
-        self.ar_x_std     = 0.1 # m / sample
-        self.ar_r_std     = 30    # deg / sample
+        self.ar1_x_std     = 0.05 # m / sample
+        self.ar1_r_std     = 5    # deg / sample
+        self.ar2_x_std     = 0.05 # m / sample
+        self.ar2_r_std     = 5    # deg / sample
         self.hydra_vx_std = 0.01 # m/s / sample
         self.hydra_r_std  = 0.1  # deg/ sample
 
-
         ## convert the above numbers to radians:
-        self.min_r_std   = self.put_in_range(np.deg2rad(self.min_r_std))
-        self.min_vr_std  = self.put_in_range(np.deg2rad(self.min_vr_std))
-        self.r_std_t     = self.put_in_range(np.deg2rad(self.r_std_t))
-        self.vr_std_t    = self.put_in_range(np.deg2rad(self.vr_std_t))
-        self.ar_r_std    = self.put_in_range(np.deg2rad(self.ar_r_std))
-        self.hydra_r_std = self.put_in_range(np.deg2rad(self.hydra_r_std))
-
+        self.min_r_std   = put_in_range(np.deg2rad(self.min_r_std))
+        self.min_vr_std  = put_in_range(np.deg2rad(self.min_vr_std))
+        self.r_std_t     = put_in_range(np.deg2rad(self.r_std_t))
+        self.vr_std_t    = put_in_range(np.deg2rad(self.vr_std_t))
+        self.ar1_r_std    = put_in_range(np.deg2rad(self.ar1_r_std))
+        self.ar2_r_std    = put_in_range(np.deg2rad(self.ar2_r_std))
+        self.hydra_r_std = put_in_range(np.deg2rad(self.hydra_r_std))
 
         # update frequency : the kalman filter updates the estimate explicitly at this rate.
         # it also updates when a measurement is given to it.
@@ -53,26 +67,39 @@ class kalman:
     
         ## last observations : used to calculate observation velocities.
         self.hydra_prev = None
-        self.ar_prev    = None
+        self.ar2_prev    = None
+        self.ar2_prev   = None
 
         ## the filter's current belief and its time:
-        self.t_filt = None
-        self.x_filt = None
-        self.S_filt = None
+        self.t_filt = None # time
+        self.x_filt = None # mean
+        self.S_filt = None # covariance
+ 
+        self.motion_covar = None
+        self.hydra_covar = None
+        self.ar1_covar = None
+        self.ar2_covar = None
+
+        ## store the observation matrix for the hydras and AR markers:
+        ##  both hydra and ar markers observe xyz and rpy only:
+        self.hydra_mat = np.zeros((6,12))
+        self.hydra_mat[0:3, 0:3] = np.eye(3)
+        self.hydra_mat[3:6, 6:9] = np.eye(3)
+
+        self.hydra_vmat = np.zeros((6,12))
+        self.hydra_vmat[0:3, 3:6] = np.eye(3)
+        self.hydra_vmat[3:6, 6:9] = np.eye(3)
+
+        self.ar1_mat = self.hydra_mat
+        self.ar2_mat = self.hydra_mat
 
 
-    def get_motion_covar(self, dt):
+    def get_motion_covar(self, dt=1./30.):
         """
         Returns the noise covariance for the motion model.
         Assumes a diagonal structure for now.
         """
-        covar = np.eye(12)
-        sq = np.square
-        covar[0:3,0:3]   *= sq(max( self.x_std_t * dt,  self.min_x_std ))
-        covar[3:6,3:6]   *= sq(max( self.vx_std_t * dt, self.min_vx_std))
-        covar[6:9,6:9]   *= sq(max( self.r_std_t * dt,  self.min_r_std ))
-        covar[9:12,9:12] *= sq(max( self.vr_std_t * dt, self.min_vr_std))
-        return covar
+        return self.motion_covar
 
 
     def get_motion_mat(self, dt):
@@ -91,52 +118,34 @@ class kalman:
         return (self.get_motion_mat(dt), self.get_motion_covar(dt))
 
 
-    def get_hydra_mats(self, pos_vel=True):
+    def get_hydra_mats(self):
         """
         Returns a tuple : 1. The observation matrix mapping the state to the observation.
                           2. The noise covariance matrix
 
         Hydras observe rotations and the translation velocities to high accuracy.
-
-        Assumed that we observe the translation velocity and the rotation position from the hydras.
-        Absolute position from the hydras is not that great.
-        
-        If pos_vel is True : then the translation velocity is also included in the observation.
-                             otherwise only the rotational position is included.
         """
-        if pos_vel: # observe translation velocity and rotation
-            cmat = np.zeros((6,12))
-            cmat[0:3, 3:6] = np.eye(3)
-            cmat[3:6, 6:9] = np.eye(3)
-            
-            vmat = np.eye(6)
-            vmat[0:3,0:3] *= (self.hydra_vx_std*self.hydra_vx_std)
-            vmat[3:6,3,6] *= (self.hydra_r_std*self.hydra_r_std) 
-            return (cmat, vmat)
+        return (self.hydra_mat, self.hydra_covar)
         
-        else: # can observe only the rotation
-            cmat = np.zeros((3,12))
-            cmat[0:3, 6:9] = np.eye(3)
-            vmat = (self.hydra_r_std*self.hydra_r_std)*np.eye(3) 
-            return (cmat, vmat)
-        
+    def get_hydra_vmats(self):
+        return (self.hydra_vmat, self.hydra_covar)
 
-    def get_ar_mats(self):
+    def get_ar1_mats(self):
         """
         Returns a tuple : observation matrix and the corresponding noise covariance matrix
-                          for AR marker observations.
+                          for AR marker observations from camera 1.
         AR markers observe the translation to very high accuracy, but rotations are very noisy. 
         """
-        cmat = np.zeros((6,12))
-        cmat[0:3,0:3] = np.eye(3)
-        cmat[3:6,6:9] = np.eye(3)
-        
-        vmat = np.eye(6)
-        vmat[0:3,0:3] *= (self.ar_x_std*self.ar_x_std)        
-        vmat[3:6,3:6] *= (self.ar_r_std*self.ar_r_std)
-        
-        return (cmat, vmat)
+        return (self.ar1_mat, self.ar1_covar)
 
+    def get_ar2_mats(self):
+        """
+        Returns a tuple : observation matrix and the corresponding noise covariance matrix
+                          for AR marker observations from camera 2.
+        AR markers observe the translation to very high accuracy, but rotations are very noisy. 
+        """
+        return (self.ar2_mat, self.ar2_covar)
+        
 
     def control_update(self, x_p, S_p, dt=None):
         """
@@ -146,13 +155,14 @@ class kalman:
         """
         if dt == None:
             dt = 1./self.freq
-        
+
         A, R = self.get_motion_mats(dt)
         x_n = A.dot(x_p)
         S_n = A.dot(S_p).dot(A.T) + R
+        x_n[6:9] = put_in_range(x_n[6:9])
         return (x_n, S_n)
 
-    
+
     def measurement_update(self, z_obs, C_obs, Q_obs, x_b, S_b):
         """
         z_obs        : Measurement vector
@@ -164,14 +174,14 @@ class kalman:
         x_b = np.reshape(x_b, (12,1))
         L = np.linalg.inv(C_obs.dot(S_b).dot(C_obs.T) + Q_obs)
         K = S_b.dot(C_obs.T).dot(L)
-       
         x_n = x_b + K.dot(z_obs - C_obs.dot(x_b))
         S_n = S_b - K.dot(C_obs).dot(S_b)
         
+        x_n[6:9] = put_in_range(x_n[6:9])
         return (x_n, S_n)
     
 
-    def init_filter(self, t, x_init, S_init):
+    def init_filter(self, t, x_init, S_init, motion_covar, hydra_covar, ar1_covar, ar2_covar):
         """
         Give the initial estimate for the filter.
         t is the time of the estimate.
@@ -181,8 +191,12 @@ class kalman:
         self.t_filt = t
         self.x_filt = np.reshape(x_init, (12,1))
         self.S_filt = S_init
-        
-        
+        self.motion_covar = motion_covar
+        self.hydra_covar  = hydra_covar
+        self.ar1_covar    = ar1_covar
+        self.ar2_covar    = ar2_covar
+        self.qcount = 0
+
     def __check_time__(self, t):
         if self.t_filt == None:
             print colorize('[Filter ERROR:] Filter not initialized.', 'red', True)
@@ -194,21 +208,6 @@ class kalman:
         
         return True
 
-
-    def put_in_range(self, x):
-        """
-        Puts all the values in x in the range [-180, 180).
-        """
-        return ( (x+np.pi)%(2*np.pi) )- np.pi
-            
-
-    def closer_angle(self, x, a):
-        """
-        returns the angle f(x) which is closer to the angle a in absolute value.
-        """
-        return a + self.put_in_range(x-a)  
-
-
     def canonicalize_obs(self, T_obs):
         """
         Returns the position and translation from T_obs (4x4 mat).
@@ -217,7 +216,8 @@ class kalman:
         """
         pos = T_obs[0:3,3]
         rpy = np.array(tfm.euler_from_matrix(T_obs), ndmin=2).T
-        rpy = self.closer_angle(rpy, self.x_filt[6:9])
+        rpy = closer_angle(rpy, self.x_filt[6:9])
+ 
         return (pos, rpy)
 
 
@@ -262,13 +262,133 @@ class kalman:
         if self.hydra_prev == None:   ## in this case, we cannot observe the translational velocity
             self.hydra_prev = (t, z_obs)
             return
-            
-        ## calculate translation velocity:
+
+        ## calculate translation velocity : NOT BEING USED CURRENTLY
         t_p, z_b = self.hydra_prev
         vx_obs   = (z_obs[0:3] - z_b[0:3]) / (t-t_p)
         self.hydra_prev = (t, z_obs)
 
-        z = np.c_['0,2', vx_obs, rpy]            
-        C,Q = self.get_hyda_mats(True)
+        z = z_obs#np.c_['0,2', vx_obs, rpy]            
+        C,Q = self.get_hydra_mats()
         self.x_filt, self.S_filt = self.control_update(self.x_filt, self.S_filt, dt)
         self.x_filt, self.S_filt = self.measurement_update(z, C, Q, self.x_filt, self.S_filt)
+
+    def register_observation(self, t, T_ar1=None, T_ar2=None, T_hy=None):
+        """
+        New interface function to update the filter
+        with observations from hydra and two kinects.
+        
+        Can pass in any combination of the hydra/camera1-ar-marker/camera2-ar-marker estimate.
+        t is the time of the observation.
+        
+        NOTE: This does not update the {ar1, ar2, hydra}_prev variables:
+              THIS WILL CAUSE ERRORS if using velocities in observation updates.
+              ======================
+        """
+        if not self.__check_time__(t):
+            return
+
+        dt = t - self.t_filt
+        self.x_filt, self.S_filt = self.control_update(self.x_filt, self.S_filt, dt)
+        
+        z_obs, C, Q = None, None, None
+        reading = False
+        if T_hy != None or T_ar1 != None or T_ar2 != None: # initilize if anything was observed 
+            z_obs = np.array([])
+            C = None
+            Q = None
+
+        if T_ar1 != None: # observe the ar from camera 1
+            pos, rpy     = self.canonicalize_obs(T_ar1)
+            c_ar1, q_ar1 = self.get_ar1_mats()
+            z_obs = np.c_['0,2', z_obs, pos, rpy]
+            C     = c_ar1
+            Q     = q_ar1
+            reading = True
+
+        if T_ar2 != None: # observe the ar from camera 2
+            pos, rpy     = self.canonicalize_obs(T_ar2)
+            c_ar2, q_ar2 = self.get_ar2_mats()
+            z_obs = np.c_['0,2', z_obs, pos, rpy]
+            if not reading:
+                C = c_ar2
+                Q = q_ar2
+                reading = True
+            else:
+                C = np.r_[C, c_ar2]
+                Q = scl.block_diag(Q, q_ar2)
+                reading = True
+
+        if T_hy != None: # observe the hydra
+            pos, rpy = self.canonicalize_obs(T_hy)
+            if self.hydra_prev != None:
+                c_hy, q_hy = self.get_hydra_vmats()
+                vpos = (pos - self.hydra_prev) / dt
+                z_obs = np.c_['0,2', z_obs, vpos, rpy]
+                if not reading:
+                    C = c_hy
+                    Q = q_hy
+                    reading = True
+                else:
+                    C = np.r_[C, c_hy]
+                    Q = scl.block_diag(Q, q_hy)
+            self.hydra_prev = pos
+        else:
+            self.hydra_prev = None
+
+        if (z_obs != None and C!=None and Q!=None):
+            self.x_filt, self.S_filt = self.measurement_update(z_obs, C, Q, self.x_filt, self.S_filt)
+
+
+
+
+def canonicalize_obs(X_base, X_obs):
+    """
+    Returns the position and translation from T_obs (4x4 mat).
+    Puts the rotation in a form which makes it closer to filter's
+    current estimate in absolute terms.
+    """
+    rpy_base = X_base[6:9]
+    rpy = X_obs[6:9]
+    rpy = closer_angle(rpy, rpy_base)
+    X_obs[6:9] = rpy
+    return X_obs
+
+
+def smoother(A, R, mu, sigma):
+    """
+    Kalman smoother implementation. 
+    Implements the Rauch, Tung, and Striebel (RTS) smoother. 
+
+    A    : Dynamics matrix, i.e. x_{t+1} = A*x_{t}
+    R    : Dynamics noise covariance
+    mu   : A list of time-series of the state means which are output of a kalman filter
+    sigma: A list of state-covariances corresponding to the means above.
+
+    Returns, (mu_smooth, sigma_smooth) : same size as mu, sigma.
+    """
+    assert len(mu)==len(sigma), "Kalman smoother : Number of means should be equal to the number of covariances."
+    
+    T = len(mu)
+    ## prediction : x+t = Ax_t + r ~ N(0,R)
+    mu_p    = [A.dot(x) for x in mu]
+    sigma_p = [A.dot(S).dot(A.T) + R for S in sigma]
+
+    conds = [np.linalg.cond(s) for s in sigma_p]
+    print "condition min/max : ", np.min(conds), " , ", np.max(conds)
+
+    mu_smooth    = [np.empty(mu[0].shape) for _ in xrange(len(mu))]
+    sigma_smooth = [np.empty(sigma[0].shape) for _ in xrange(len(sigma))]
+
+    # recursive smoother:
+    #====================
+    ## base case:  for last time-step
+    mu_smooth[-1]    = mu[-1]
+    sigma_smooth[-1] = sigma[-1]
+    
+    for t in xrange(T-2, -1, -1):
+        L                   = sigma[t].dot(A.T).dot(np.linalg.inv(sigma_p[t]))
+        mu_p_canon          = canonicalize_obs(mu_smooth[t+1], mu_p[t])
+        mu_smooth[t]        = mu[t] + 0.8*(L.dot(mu_smooth[t+1] - mu_p_canon))
+        mu_smooth[t][6:9,:] = put_in_range(mu_smooth[t][6:9,:])
+    return (mu_smooth)

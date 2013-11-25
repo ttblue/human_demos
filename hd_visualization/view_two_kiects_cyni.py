@@ -40,8 +40,10 @@ try:
         #start = time.time()
         emitterControl = not emitterControl
         print emitterControl
-        ds1.setEmitterState(emitterControl)
-        ds2.setEmitterState(not emitterControl)
+        #emitterControl = not emitterControl
+        #print emitterControl
+        #ds1.setEmitterState(emitterControl)
+        #ds2.setEmitterState(not emitterControl)
         depth1 = ds1.readFrame()
         depth2 = ds2.readFrame()
         #print depth.data
@@ -53,7 +55,7 @@ try:
         cv2.imshow("d1", cmap[np.fmin((depth1.data*.064).astype('int'), 255)])
         cv2.imshow("d2", cmap[np.fmin((depth2.data*.064).astype('int'), 255)])
         #cv2.imshow("depth", depth.data)
-        time.sleep(1)
+        #time.sleep(1)
         #depthStream.setEmitterState(False)
         cv2.waitKey(30)
         #depthStream.setEmitterState(False)

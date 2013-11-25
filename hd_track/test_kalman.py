@@ -15,7 +15,7 @@ def rotation_matrix(axis,theta):
                      [2*(b*d-a*c), 2*(c*d+a*b), a*a+d*d-b*b-c*c]])
 
 
-def add_noise(Ts, rotn = 5, xn = 0.005):
+def add_noise(Ts, rotn = 5, xn = 0.0):
     """
     Adds noise to each transform in the list of transforms.
     rotn : standard dev of roll,pitch,yaw noise
@@ -34,23 +34,23 @@ def add_noise(Ts, rotn = 5, xn = 0.005):
 
 def gen_tfms(n=100, f=30):
     dt = 1./f
-    
+
     rax  = np.array((1,0,0))
-    v_rx  = np.deg2rad(60)
-    
+    v_rx  = np.deg2rad(180)
+
     v_x   = 1
     xax = np.array((1,1,0)) 
 
     ts = dt*np.arange(n)
     Ts = []
-    
+
     x_init = np.zeros(3)
     r_init = np.zeros(3)
     
     for t in ts:
         x = x_init  + t*v_x*xax
         r = r_init  + t*v_rx*rax
-        
+
         T = tfms.euler_matrix(r[0], r[1], r[2])
         T[0:3,3] = x
         Ts.append(T)
@@ -110,8 +110,3 @@ if __name__ == '__main__':
         true2est.append(np.c_[t_true[i+1][0:3,3], kf_Ts[i][0:3,3]].T)
     lreq = gen_custom_request('lines', true2est, color=(0,1,1), line_width=3)
     plotter.request(lreq)
-    
-
-
-
-

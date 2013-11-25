@@ -17,7 +17,7 @@ def get_ar_transform_id (depth, rgb, idm=None):
     """
     In order to run this, ar_marker_service needs to be running.
     """
-    req.pc = ru.xyzrgb2pc(clouds.depth_to_xyz(depth, asus_xtion_pro_f), rgb, '/camera_link')    
+    req.pc = ru.xyzrgb2pc(clouds.depth_to_xyz(depth, asus_xtion_pro_f), rgb, '/camera_depth_optical_frame')    
     res = getMarkers(req)
     
     marker_tfm = {marker.id:conversions.pose_to_hmat(marker.pose.pose) for marker in res.markers.markers}
