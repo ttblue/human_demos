@@ -368,7 +368,7 @@ def main_plot():
 
 
 def main_filter():
-    demo_num = 7
+    demo_num = 6
     freq     = 30.
     use_spline = True
 
@@ -393,7 +393,6 @@ def main_filter():
     X_kf_cams = np.array(F_means_cams)
     X_kf_cams = np.reshape(X_kf_cams, (X_kf_cams.shape[0], X_kf_cams.shape[1])).T
 
-    
     ## run the KF and smoother on everything:
     nsteps, tmin, F_means, S,A,R = run_kalman_filter('demo'+str(demo_num)+'.data', freq, use_spline, use_hydra=True)
     S_means = smoother(A, R, F_means, S)
