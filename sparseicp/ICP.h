@@ -18,6 +18,7 @@
 #define ICP_H
 #include <nanoflann.hpp>
 #include <Eigen/Dense>
+#include <iostream>
 ///////////////////////////////////////////////////////////////////////////////
 namespace nanoflann {
     /// KD-tree adaptor for working with data directly stored in an Eigen Matrix, without duplicating the data storage.
@@ -328,6 +329,7 @@ namespace SICP {
         Eigen::Matrix3Xd Xo2 = X;
         /// ICP
         for(int icp=0; icp<par.max_icp; ++icp) {
+	  std::cout <<"iter :"<<icp<<std::endl;
             /// Find closest point
             #pragma omp parallel for
             for(int i=0; i<X.cols(); ++i) {

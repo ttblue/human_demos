@@ -89,11 +89,14 @@ NormalCloud::Ptr get_normals(ColorCloud::Ptr cloud) {
 }
 
 void do_sparseicp(ColorCloud::Ptr c1, ColorCloud::Ptr c2) {
-	MatrixXf c1e = pcl_to_eigen(c1);
+        MatrixXf c1e = pcl_to_eigen(c1);
 	MatrixXf c2e = pcl_to_eigen(c2);
-
 	c1e.transposeInPlace();
 	c2e.transposeInPlace();
+
+	Vector3f dd(0,0,.01);
+	c2e.colwise() += dd;
+
 	MatrixXd tmp = float_to_double(c1e);	
 	Matrix3Xd c1ed = tmp;
 	tmp = float_to_double(c2e);
@@ -101,7 +104,7 @@ void do_sparseicp(ColorCloud::Ptr c1, ColorCloud::Ptr c2) {
 
 	// get cloud normals:
 	NormalCloud::Ptr	cloud_normals = get_normals(c1);
-  MatrixXf eig_norm = cloud_normals->getMatrixXfMap(3,8,0);
+        MatrixXf eig_norm = cloud_normals->getMatrixXfMap(3,8,0);
 	eig_norm.transposeInPlace();
 	tmp = float_to_double(eig_norm);
 	Matrix3Xd c1ed_normals = tmp;
@@ -109,8 +112,16 @@ void do_sparseicp(ColorCloud::Ptr c1, ColorCloud::Ptr c2) {
 	// do sparse icp
 	cout <<"doing sparse icp"<<endl;
 	SICP::Parameters params = SICP::Parameters();
+	params.use_penalty = false;
 	params.p = 0.5;
-	SICP::point_to_plane(c2ed, c1ed, c1ed_normals, params);
+	params.stop = 1e-4;
+	params.max_icp = 100;
+	params.max_inner = 10;
+	params.max_outer = 100;
+
+	//SICP::point_to_plane(c2ed, c1ed, c1ed_normals, params);
+	SICP::point_to_point(c2ed, c1ed, params);
+	
 	cout <<"sparse icp done"<<endl;
 
 	// convert to float and transpose
@@ -157,7 +168,7 @@ int main (int argc, char** argv) {
 	cloud2 = downsampleCloud(cloud2, 0.01);
 	cout << "c1 num points : "<<cloud1->points.size()<<endl;
 	cout << "c2 num points : "<<cloud2->points.size()<<endl;
-	do_sparseicp(cloud1, cloud2);
+	do_sparseicp(cloud1, cloud1);
 	return 0;
 }
 
