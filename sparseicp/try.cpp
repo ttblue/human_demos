@@ -153,8 +153,8 @@ int main (int argc, char** argv) {
   ColorCloud::Ptr cloud1(new ColorCloud), cloud2(new ColorCloud);
   pcl::io::loadPCDFile<ColorPoint> ("cloud1_filtered.pcd", *cloud1);
 	pcl::io::loadPCDFile<ColorPoint> ("cloud2_filtered.pcd", *cloud2);
-	cloud1 = downsampleCloud(cloud1, 0.01);
-	cloud2 = downsampleCloud(cloud2, 0.01);
+	cloud1 = downsampleCloud(cloud1, 0.02);
+	cloud2 = downsampleCloud(cloud2, 0.02);
 	cout << "c1 num points : "<<cloud1->points.size()<<endl;
 	cout << "c2 num points : "<<cloud2->points.size()<<endl;
 	do_sparseicp(cloud1, cloud2);
