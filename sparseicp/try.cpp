@@ -12,11 +12,15 @@
 #include <math.h>
 #include "ICP.h"
 #include <pcl/filters/voxel_grid.h>
+#include <pcl/features/normal_3d.h>
+
 
 typedef pcl::PointXYZRGB ColorPoint;
 typedef pcl::PointCloud<ColorPoint> ColorCloud;
 typedef pcl::visualization::PCLVisualizer CloudViz;
 typedef boost::shared_ptr<CloudViz> CloudVizPtr;
+typedef  pcl::PointCloud<pcl::Normal> NormalCloud;
+
 
 using namespace std;
 using namespace Eigen;
@@ -28,7 +32,7 @@ CloudVizPtr create_viewer() {
   cviewer->initCameraParameters ();
   return (cviewer);
 }
-CloudVizPtr viewer;// = create_viewer();
+CloudVizPtr viewer = create_viewer();
 
 void add_point_cloud(ColorCloud::Ptr cloud, std::string cname){
 	pcl::visualization::PointCloudColorHandlerRGBField<ColorPoint> rgb(cloud);
@@ -70,6 +74,20 @@ MatrixXf double_to_float(MatrixXd & mat) {
 	return mat.cast<float>();
 }
 
+NormalCloud::Ptr get_normals(ColorCloud::Ptr cloud) {
+  pcl::NormalEstimation<ColorPoint, pcl::Normal> ne;
+  ne.setInputCloud (cloud);
+
+  pcl::search::KdTree<ColorPoint>::Ptr tree (new pcl::search::KdTree<ColorPoint> ());
+  ne.setSearchMethod(tree);
+
+  NormalCloud::Ptr cloud_normals (new NormalCloud);
+  ne.setRadiusSearch (0.03);
+  ne.compute (*cloud_normals);
+
+	return cloud_normals;
+}
+
 void do_sparseicp(ColorCloud::Ptr c1, ColorCloud::Ptr c2) {
 	MatrixXf c1e = pcl_to_eigen(c1);
 	MatrixXf c2e = pcl_to_eigen(c2);
@@ -81,10 +99,20 @@ void do_sparseicp(ColorCloud::Ptr c1, ColorCloud::Ptr c2) {
 	tmp = float_to_double(c2e);
 	Matrix3Xd c2ed = tmp;
 
+	// get cloud normals:
+	NormalCloud::Ptr	cloud_normals = get_normals(c1);
+  MatrixXf eig_norm = cloud_normals->getMatrixXfMap(3,8,0);
+	eig_norm.transposeInPlace();
+	tmp = float_to_double(eig_norm);
+	Matrix3Xd c1ed_normals = tmp;
+
 	// do sparse icp
 	cout <<"doing sparse icp"<<endl;
-	SICP::point_to_point( c1ed, c2ed);
+	SICP::Parameters params = SICP::Parameters();
+	params.p = 0.5;
+	SICP::point_to_plane(c2ed, c1ed, c1ed_normals, params);
 	cout <<"sparse icp done"<<endl;
+
 	// convert to float and transpose
 	MatrixXd tmpf;
 	tmpf = c1ed.transpose();
@@ -105,10 +133,11 @@ void do_sparseicp(ColorCloud::Ptr c1, ColorCloud::Ptr c2) {
     c2new->points[i].g = c2->points[i].g;
     c2new->points[i].b = c2->points[i].b;
   }
-	//add_point_cloud(c1new, "c1");
-	//add_point_cloud(c2new, "c2");
-	//spin_viewer();
+	add_point_cloud(c1new, "c1");
+	add_point_cloud(c2new, "c2");
+	spin_viewer();
 }
+
 ColorCloud::Ptr downsampleCloud(const ColorCloud::Ptr in, float sz) {
   pcl::PointCloud<ColorPoint>::Ptr out(new pcl::PointCloud<ColorPoint>());
   pcl::VoxelGrid<ColorPoint> vg;
@@ -118,14 +147,17 @@ ColorCloud::Ptr downsampleCloud(const ColorCloud::Ptr in, float sz) {
   return out;
 }
 
+
+
 int main (int argc, char** argv) {
   ColorCloud::Ptr cloud1(new ColorCloud), cloud2(new ColorCloud);
   pcl::io::loadPCDFile<ColorPoint> ("cloud1_filtered.pcd", *cloud1);
 	pcl::io::loadPCDFile<ColorPoint> ("cloud2_filtered.pcd", *cloud2);
-	cloud1 = downsampleCloud(cloud1, 0.02);
-	cloud2 = downsampleCloud(cloud2, 0.02);
-	cout << "c1 points : "<<cloud1->points.size()<<endl;
-	cout << "c2 points : "<<cloud2->points.size()<<endl;
+	cloud1 = downsampleCloud(cloud1, 0.01);
+	cloud2 = downsampleCloud(cloud2, 0.01);
+	cout << "c1 num points : "<<cloud1->points.size()<<endl;
+	cout << "c2 num points : "<<cloud2->points.size()<<endl;
 	do_sparseicp(cloud1, cloud2);
 	return 0;
 }
+
