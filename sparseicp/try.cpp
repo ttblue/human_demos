@@ -112,15 +112,15 @@ void do_sparseicp(ColorCloud::Ptr c1, ColorCloud::Ptr c2) {
 	// do sparse icp
 	cout <<"doing sparse icp"<<endl;
 	SICP::Parameters params = SICP::Parameters();
-	params.use_penalty = false;
+	params.use_penalty = true;
 	params.p = 0.5;
-	params.stop = 1e-4;
-	params.max_icp = 100;
-	params.max_inner = 10;
-	params.max_outer = 100;
+	params.stop = 1e-2;
+	params.max_icp = 10;
+	params.max_inner = 1;
+	params.max_outer = 10;
 
-	//SICP::point_to_plane(c2ed, c1ed, c1ed_normals, params);
-	SICP::point_to_point(c2ed, c1ed, params);
+	SICP::point_to_plane(c2ed, c1ed, c1ed_normals, params);
+	//SICP::point_to_point(c2ed, c1ed, params);
 	
 	cout <<"sparse icp done"<<endl;
 
@@ -162,13 +162,26 @@ ColorCloud::Ptr downsampleCloud(const ColorCloud::Ptr in, float sz) {
 
 int main (int argc, char** argv) {
   ColorCloud::Ptr cloud1(new ColorCloud), cloud2(new ColorCloud);
-  pcl::io::loadPCDFile<ColorPoint> ("cloud1_filtered.pcd", *cloud1);
-	pcl::io::loadPCDFile<ColorPoint> ("cloud2_filtered.pcd", *cloud2);
-	cloud1 = downsampleCloud(cloud1, 0.02);
-	cloud2 = downsampleCloud(cloud2, 0.02);
-	cout << "c1 num points : "<<cloud1->points.size()<<endl;
-	cout << "c2 num points : "<<cloud2->points.size()<<endl;
-	do_sparseicp(cloud1, cloud1);
-	return 0;
+  
+  // Get input object and scene
+  if (argc != 3)  {
+    pcl::console::print_error ("Syntax is: %s object.pcd scene.pcd\n", argv[0]);
+    return (1);
+  }
+   // Load object and scene
+
+  if (pcl::io::loadPCDFile<ColorPoint>(argv[1], *cloud1) < 0 ||
+      pcl::io::loadPCDFile<ColorPoint>(argv[2], *cloud2) < 0) {
+    
+    pcl::console::print_error ("Error loading object/scene file!\n");
+    return (1);
+    }
+  
+  //cloud1 = downsampleCloud(cloud1, 0.01);
+  //cloud2 = downsampleCloud(cloud2, 0.01);
+  cout << "c1 num points : "<<cloud1->points.size()<<endl;
+  cout << "c2 num points : "<<cloud2->points.size()<<endl;
+  do_sparseicp(cloud1, cloud2);
+  return 0;
 }
 

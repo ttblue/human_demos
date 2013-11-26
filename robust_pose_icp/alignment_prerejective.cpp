@@ -21,6 +21,7 @@ typedef pcl::FPFHEstimationOMP<PointNT,PointNT,FeatureT> FeatureEstimationT;
 typedef pcl::PointCloud<FeatureT> FeatureCloudT;
 typedef pcl::visualization::PointCloudColorHandlerCustom<PointNT> ColorHandlerT;
 
+
 // Align a rigid object to a scene with clutter and occlusions
 int
 main (int argc, char **argv)
@@ -33,12 +34,11 @@ main (int argc, char **argv)
   FeatureCloudT::Ptr scene_features (new FeatureCloudT);
   
   // Get input object and scene
-  if (argc != 3)
-  {
+  if (argc != 3) {
     pcl::console::print_error ("Syntax is: %s object.pcd scene.pcd\n", argv[0]);
     return (1);
   }
-  
+ 
   // Load object and scene
   pcl::console::print_highlight ("Loading point clouds...\n");
   if (pcl::io::loadPCDFile<PointNT> (argv[1], *object) < 0 ||
@@ -49,9 +49,9 @@ main (int argc, char **argv)
   }
   
   // Downsample
+  const float leaf = 0.005f;
   pcl::console::print_highlight ("Downsampling...\n");
   pcl::VoxelGrid<PointNT> grid;
-  const float leaf = 0.005f;
   grid.setLeafSize (leaf, leaf, leaf);
   grid.setInputCloud (object);
   grid.filter (*object);
@@ -61,14 +61,21 @@ main (int argc, char **argv)
   // Estimate normals for scene
   pcl::console::print_highlight ("Estimating scene normals...\n");
   pcl::NormalEstimationOMP<PointNT,PointNT> nest;
-  nest.setRadiusSearch (0.01);
+  nest.setRadiusSearch (0.02);
   nest.setInputCloud (scene);
   nest.compute (*scene);
+
+  // Estimate normals for object
+  pcl::console::print_highlight ("Estimating object normals...\n");
+  pcl::NormalEstimationOMP<PointNT,PointNT> nest1;
+  nest1.setRadiusSearch (0.02);
+  nest1.setInputCloud (object);
+  nest1.compute (*object);
   
   // Estimate features
   pcl::console::print_highlight ("Estimating features...\n");
   FeatureEstimationT fest;
-  fest.setRadiusSearch (0.025);
+  fest.setRadiusSearch (0.05);
   fest.setInputCloud (object);
   fest.setInputNormals (object);
   fest.compute (*object_features);
@@ -84,14 +91,12 @@ main (int argc, char **argv)
   align.setInputTarget (scene);
   align.setTargetFeatures (scene_features);
   align.setNumberOfSamples (3); // Number of points to sample for generating/prerejecting a pose
-  align.setCorrespondenceRandomness (2); // Number of nearest features to use
+  align.setCorrespondenceRandomness (4); // Number of nearest features to use
   align.setSimilarityThreshold (0.6f); // Polygonal edge length similarity threshold
   align.setMaxCorrespondenceDistance (1.5f * leaf); // Set inlier threshold
-  align.setInlierFraction (0.25f); // Set required inlier fraction
+  align.setInlierFraction (0.5f); // Set required inlier fraction
   align.align (*object_aligned);
   
-  if (align.hasConverged ())
-  {
     // Print results
     Eigen::Matrix4f transformation = align.getFinalTransformation ();
     pcl::console::print_info ("    | %6.3f %6.3f %6.3f | \n", transformation (0,0), transformation (0,1), transformation (0,2));
@@ -101,18 +106,21 @@ main (int argc, char **argv)
     pcl::console::print_info ("t = < %0.3f, %0.3f, %0.3f >\n", transformation (0,3), transformation (1,3), transformation (2,3));
     pcl::console::print_info ("\n");
     pcl::console::print_info ("Inliers: %i/%i\n", align.getInliers ().size (), object->size ());
-    
+
+    if (not align.hasConverged())
+      pcl::console::print_error ("Alignment failed!\n");
+   
     // Show alignment
     pcl::visualization::PCLVisualizer visu("Alignment");
-    visu.addPointCloud (scene, ColorHandlerT (scene, 0.0, 255.0, 0.0), "scene");
-    visu.addPointCloud (object_aligned, ColorHandlerT (object_aligned, 0.0, 0.0, 255.0), "object_aligned");
+
+    
+    pcl::visualization::PointCloudColorHandlerRGBField<PointNT> scene_rgb(scene);
+    visu.addPointCloud (scene, scene_rgb, "scene");
+
+    pcl::visualization::PointCloudColorHandlerRGBField<PointNT> scene_rgb(object);
+    visu.addPointCloud (object, object_rgb, "object");
     visu.spin ();
-  }
-  else
-  {
-    pcl::console::print_error ("Alignment failed!\n");
-    return (1);
-  }
+
   
   return (0);
 }

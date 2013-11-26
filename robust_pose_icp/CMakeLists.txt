@@ -10,3 +10,10 @@ add_definitions(${PCL_DEFINITIONS})
 
 add_executable (alignment_prerejective alignment_prerejective.cpp)
 target_link_libraries (alignment_prerejective ${PCL_LIBRARIES})
+
+add_executable (discard_plane discard_plane_points.cpp)
+target_link_libraries (discard_plane ${PCL_LIBRARIES})
+
+
+add_executable (icp simple_icp.cpp)
+target_link_libraries (icp ${PCL_LIBRARIES})
