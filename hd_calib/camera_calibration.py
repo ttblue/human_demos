@@ -3,7 +3,7 @@ import numpy as np, numpy.linalg as nlg
 import cv2, cv
 import time
 
-from hd_utils import ros_utils as ru, clouds, conversions, utils
+from hd_utils import ros_utils as ru, clouds, conversions, utils, chessboard_utils as cu
 from hd_utils.colorize import *
 from hd_utils.defaults import tfm_link_rof
 
@@ -15,6 +15,10 @@ from icp_service.srv import ICPTransform, ICPTransformRequest, ICPTransformRespo
 
 asus_xtion_pro_f = 544.260779961
 WIN_NAME = 'cv_test'
+cb_rows = 3
+cb_cols = 4
+# inches
+cb_size = 0.108
 """
 Calibrates based on AR markers.
 TODO: if three kinects work together, maybe do graph optimization.
@@ -34,7 +38,7 @@ def find_rigid_tfm (points1, points2, homogeneous=True):
         yellowprint("Not the same number of points", False)
         return
     elif points1.shape[0] < 3:
-        yellowprint("Not enough points", False)
+        yellowprint("Not enough points: %i"%points1.shape[0], False)
         return
     
     center1 = points1.sum(axis=0)/float(points1.shape[0])
@@ -63,77 +67,6 @@ def find_rigid_tfm (points1, points2, homogeneous=True):
         return R,t
     
 
-cb_rows = 8
-cb_cols = 6
-
-
-def get_corners_rgb(rgb,rows=None,cols=None):
-    cv_rgb = cv.fromarray(rgb)
-    
-    if not rows: rows = cb_rows
-    if not cols: cols = cb_cols
-    
-    rtn, corners = cv.FindChessboardCorners(cv_rgb, (cb_rows, cb_cols))
-    return rtn, corners
-
-def get_xyz_from_corners (corners, xyz):
-    points = []
-    for j,i in corners:
-        x = i - np.floor(i)
-        y = j - np.floor(j)
-        p1 = xyz[np.floor(i),np.floor(j)]
-        p2 = xyz[np.floor(i),np.ceil(j)]
-        p3 = xyz[np.ceil(i),np.ceil(j)]
-        p4 = xyz[np.ceil(i),np.floor(j)]        
-        p = p1*(1-x)*(1-y) + p2*(1-x)*y + p3*x*y + p4*x*(1-y)
-        if np.isnan(p).any(): print p
-        points.append(p)
-
-    return np.asarray(points)
-
-def get_corners_from_pc(pc,rows=None,cols=None):
-    xyz, rgb = ru.pc2xyzrgb(pc)
-    rgb = np.copy(rgb)
-    rtn, corners = get_corners_rgb(rgb, rows, cols)
-    if len(corners) == 0:
-        return 0, None
-    points = get_xyz_from_corners(corners, xyz)
-    return rtn, points
-    
-def get_corresponding_points(points1, points2, guess_tfm, rows=None, cols=None):
-    """
-    Returns two lists of points such that the transform explains the relation between
-    pointsets the most. Also, returns the norm of the difference between point sets.
-    tfm is from cam1 -> cam2
-    """
-    if not rows: rows = cb_rows
-    if not cols: cols = cb_cols
-
-    
-    points1 = np.asarray(points1)
-    points2 = np.asarray(points2)
-    
-    p12 = np.c_[points1,points2]
-    p12 = p12[np.bitwise_not(np.isnan(p12).any(axis=1)),:]
-    p1 = p12[:,0:3]
-    p2 = p12[:,3:6]
-    est = np.c_[p2,np.ones((p2.shape[0],1))].dot(guess_tfm.T)[:,0:3]
-    dist = nlg.norm(p1-est,ord=np.inf)
-    
-    corr = range(rows*cols-1,-1,-1)
-    p12r = np.c_[points1,points2[corr,:]]
-    p12r = p12r[np.bitwise_not(np.isnan(p12r).any(axis=1)),:]
-    p1r = p12r[:,0:3]
-    p2r = p12r[:,3:6]
-    est = np.c_[p2r,np.ones((p2r.shape[0],1))].dot(guess_tfm.T)[:,0:3]
-    dist_new = nlg.norm(p1r-est, ord=np.inf)
-    if dist_new < dist:
-        points1, points2, dist = p1, p2, dist_new
-    else:
-        points1, points2 = p1, p2
-
-    return points1, points2, dist
-
    
 def common_ar_markers (ar_pos1, ar_pos2):
     """
@@ -160,9 +93,9 @@ def convert_hmats_to_points (hmats):
         x,y,z,p = hmat[0:3].T
         
         points.append(p)
-        #points.append(p+dist*x)
-        #points.append(p+dist*y)
-        #points.append(p+dist*z)
+        points.append(p+dist*x)
+        points.append(p+dist*y)
+        points.append(p+dist*z)
         
     return points
 
@@ -240,6 +173,7 @@ class CameraCalibrator:
             
         self.point_list[(c1,c2)][c1].extend(convert_hmats_to_points(ar1.values()))
         self.point_list[(c1,c2)][c2].extend(convert_hmats_to_points(ar2.values()))
+        
         greenprint("Extended pointsets by %i"%(len(ar1)*4))
         
         return True
@@ -249,9 +183,9 @@ class CameraCalibrator:
         if (c1,c2) not in self.point_list:
             self.point_list[(c1,c2)] = {c1:[],c2:[]}
         
-        p1,p2,dist = get_corresponding_points(self.observed_cb_points[c1], 
-                                              self.observed_cb_points[c2],
-                                              self.est_tfms[c1,c2])
+        p1,p2,dist = cu.get_corresponding_points(self.observed_cb_points[c1], 
+                                                 self.observed_cb_points[c2],
+                                                 self.est_tfms[c1,c2])
         print "Distance difference between camera %i and camera %i points:", dist
         
         self.point_list[(c1,c2)][c1].extend(p1)
@@ -259,10 +193,13 @@ class CameraCalibrator:
         greenprint("Extended pointsets by %i"%(p1.shape[0]))
 
         
-    def initialize_calibration(self, use_ar):
-        self.point_list = {}
+    def initialize_calibration(self, method):
+        if method == 'pycb':
+            self.image_list = {i:[] for i in range(self.num_cameras)}
+        else:
+            self.point_list = {}
         
-        if not use_ar:
+        if method == 'cb':
             ready = False
             sleeper = rospy.Rate(10)
             while not ready:
@@ -353,7 +290,7 @@ class CameraCalibrator:
             while tries > 0:
                 
                 pc = self.cameras.get_pointcloud(j)
-                rtn, points = get_corners_from_pc(pc)
+                rtn, points = cu.get_corners_from_pc(pc)
                 if rtn == 0:
                     yellowprint("Could not find all the points on the checkerboard for camera%i"%(j+1))
                     tries -= 1
@@ -368,6 +305,71 @@ class CameraCalibrator:
             self.extend_camera_pointsets_cb(0, i)
         
         return True
+
+    def process_observation_pycb(self):
+        """
+        Get an observation and update transform list.
+        """
+        sleeper = rospy.Rate(10)
+        for j in xrange(self.num_cameras):
+            pc = self.cameras.get_pointcloud(j)
+            xyz, rgb = ru.pc2xyzrgb(pc)
+            rgb = np.copy(rgb)
+            _, corners = cu.get_corners_rgb(rgb,method='cv', rows=cb_rows, cols=cb_cols)
+            if len(corners) < cb_cols*cb_rows*1.0/3.0:
+                redprint ("Found too few corners: %i"%len(corners)) 
+                return False
+            self.image_list[j].append(rgb)
+
+        return True
+    
+    def finish_calibration_pycb(self, avg=False):
+        
+        cb_transforms = {i:[] for i in range(self.num_cameras)}
+        I = np.eye(4)
+        
+        for i in self.image_list:
+            yellowprint("Getting transform data for camera %i."%(i+1))
+            ind = 1
+            for img in self.image_list[i]:
+                blueprint("... Observation %i."%ind)
+                ind += 1
+
+                tfm = cu.get_checkerboard_transform(img, cb_size=cb_size)
+                if tfm is None: return False
+                cb_transforms[i].append(tfm)
+        
+        rel_tfms = {i:[] for i in range(1,self.num_cameras)}
+        for i in range(1,self.num_cameras):
+            cam_transform= {}
+            cam_transform['parent'] = 'camera1_link'
+            cam_transform['child'] = 'camera%d_link'%(i+1)
+            for j in range(len(cb_transforms[i])):
+                rtfm = cb_transforms[0][j].dot(nlg.inv(cb_transforms[i][j]))
+                rel_tfms[i].append(rtfm)
+            if avg:
+                tfm = utils.avg_transform(rel_tfms[i])
+                # convert from in to cm
+                tfm[0:3,3] *= 1.0#0.0254
+                cam_transform['tfm'] = tfm_link_rof.dot(tfm).dot(np.linalg.inv(tfm_link_rof))
+
+            else:
+                scores = []
+                for j,rtfm in enumerate(rel_tfms[i]):
+                    scores.append(0)
+                    rtfm = rel_tfms[i][j]
+                    for k,rtfm2 in enumerate(rel_tfms[i]):
+                        if j == k:
+                            continue
+                        scores[j] += nlg.norm(rtfm.dot(nlg.inv(rtfm2))-I)
+                print "Scores:", scores
+                tfm = rel_tfms[i][np.argmin(scores)]
+                # convert from in to m
+                tfm[0:3,3] *= 1.0#0.0254
+                cam_transform['tfm'] = tfm_link_rof.dot(tfm).dot(np.linalg.inv(tfm_link_rof))
+            self.camera_transforms[0,i] = cam_transform
+        return True
+            
 
     def finish_calibration(self, use_icp):
         """
@@ -428,25 +430,31 @@ class CameraCalibrator:
         self.cameras.store_calibrated_transforms(self.camera_transforms)
         return True
     
-    def calibrate (self, use_ar=False, use_icp=True, n_obs=10, n_avg=5):
+    def calibrate (self, method='ar', use_icp=False, n_obs=10, n_avg=5):
         if self.num_cameras == 1:
             redprint ("Only one camera. You don't need to calibrate.", True)
             self.calibrated = True
             self.cameras.calibrated = True
             return
         
-        self.initialize_calibration(use_ar)
+        self.initialize_calibration(method)
         i = 0
         while i < n_obs:
             yellowprint("Please hold still for a few seconds. Make sure the transforms look good on rviz.")
-            raw_input(colorize("Observation %d from %d. Press return when ready."%(i,n_obs),'green',True))
-            if use_ar:
+            raw_input(colorize("Observation %d from %d. Press return when ready."%(i+1,n_obs),'green',True))
+            if method=='ar':
                 got_something =  self.process_observation_ar(n_avg)
-            else:
+            elif method=='cb':
                 got_something =  self.process_observation_cb()
+            else:
+                got_something =  self.process_observation_pycb()
             if got_something: i += 1
 
-        self.calibrated = self.finish_calibration(use_icp)
+        if method=='pycb':
+            self.calibrated = self.finish_calibration_pycb()
+        else:
+            self.calibrated = self.finish_calibration(use_icp)
+            
         self.cameras.calibrated  = self.calibrated
         
     def get_transforms(self):

@@ -92,10 +92,12 @@ class HydraCalibrator:
             print colorize('\tGetting averaging transform : %d of %d ...'%(j,n_avg-1), "blue", True)
 
             calib_tfm = self.calib_func()
+            print calib_tfm
             hydra_tfm = self.get_hydra_transform()
             if calib_tfm is None or hydra_tfm is None:
                 if calib_tfm is None:
                     yellowprint('Could not find all required AR transforms.')
+                    print hydra_tfm
                 else:
                     yellowprint('Could not find all required hydra transforms.')
                 thresh -= 1

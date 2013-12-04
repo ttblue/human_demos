@@ -60,7 +60,7 @@ class ARMarkersRos:
     def get_frequency (self):
         return self.freq 
         
-    def get_marker_transforms(self, markers=None, time_thresh=0.6, get_time=False):
+    def get_marker_transforms(self, markers=None, time_thresh=1.0, get_time=False):
         """
         Threshold represents the tolerance for stale transforms.
         """
@@ -87,7 +87,7 @@ class ARMarkersRos:
             return marker_transforms, self.latest_time
 
 
-class CameraPointClouds:
+class CameraData:
 
     def __init__(self, camera_frame):
         if camera_frame[0] == "/":
@@ -95,23 +95,37 @@ class CameraPointClouds:
             
         self.camera_name = camera_frame.split("_")[0]
         self.pc_topic = '/'+self.camera_name+'/depth_registered/points'
+        self.image_topic = '/'+self.camera_name+'/rgb/image_color'
+        self.image = None
         self.pc = None
-        self.latest_time = 0
+        self.latest_time_pc = 0
+        self.latest_time_img = 0
         
         if rospy.get_name() == '/unnamed':
             rospy.init_node('point_clouds_'+self.camera_name)
         
-        self.pc_sub = rospy.Subscriber(self.pc_topic, PointCloud2, callback = self.store_last_callback, tcp_nodelay=True)
+        self.pc_sub = rospy.Subscriber(self.pc_topic, PointCloud2, callback = self.store_last_callback_pc, tcp_nodelay=True)
+        #self.image_sub = rospy.Subscriber(self.image_topic, Image, callback = self.store_last_callback_image, tcp_nodelay=True)
         
-    def store_last_callback (self, data):
+    def store_last_callback_pc (self, data):
         self.pc = data
-        self.latest_time = data.header.stamp.to_sec()
+        self.latest_time_pc = data.header.stamp.to_sec()
+
+    def store_last_callback_image (self, data):
+        self.image = data
+        self.latest_time_img = data.header.stamp.to_sec()
         
     def get_latest_pointcloud(self):
         if self.pc is None:
             redprint("No point clouds has been received yet on topic",self.pc_topic)
         else:
             return self.pc
+
+    def get_latest_image(self):
+        if self.image is None:
+            redprint("No image has been received yet on topic",self.image_topic)
+        else:
+            return self.image
 
 class RosCameras:
     """
@@ -144,7 +158,7 @@ class RosCameras:
         for i in xrange(self.num_cameras):
             self.camera_frames[i] = camera_frame%(i+1)
             self.camera_markers[i] = ARMarkersRos(camera_frame%(i+1))
-            self.camera_pointclouds[i] = CameraPointClouds(camera_frame%(i+1))
+            self.camera_pointclouds[i] = CameraData(camera_frame%(i+1))
                 
         self.parent_frame = 'camera1_rgb_optical_frame'
     

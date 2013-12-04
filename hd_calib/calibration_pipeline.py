@@ -266,8 +266,8 @@ def calibrate_potentiometer ():
 cameras = None
 tfm_pub = None
 
-CAM_N_OBS = 5
-CAM_N_AVG = 10
+CAM_N_OBS = 2
+CAM_N_AVG = 30
 
 
 def calibrate_cameras ():
@@ -423,6 +423,6 @@ def run_calibration_sequence (spin=False):
     while True and spin:
         # stall
         time.sleep(0.1)
- 
+  
 # if __name__=='__main__':
-#     run_calibration_sequence()
+#      run_calibration_sequence()
