@@ -8,14 +8,14 @@ from scipy import spatial
 
 
 dirname = './build/'
-c1name = 'c1_icped.pcd'
+c1name = 'c1_out.pcd'
 c2name = 'c2_out.pcd'
 
 c1name = osp.join(dirname, c1name)
 c2name = osp.join(dirname, c2name)
 
-pc1 = np.loadtxt(c1name, skiprows=11)[::5,:3]
-pc2 = np.loadtxt(c2name, skiprows=11)[::5,:3]
+pc1 = np.loadtxt(c1name, skiprows=11)[::7,:3]
+pc2 = np.loadtxt(c2name, skiprows=11)[::7,:3]
 
 plotter = PlotterInit()
 
@@ -29,23 +29,27 @@ def calc_T(xyz, rod):
     Tt[:3,3] = xyz
     return Tt
 
+i = 0
+
 def plot_point(x):
     """
     display intermediate result : in a callback
     """
-    Tg   = calc_T(*vec2args(x))
-    pc2t = (np.c_[pc2, np.ones((pc2.shape[0],1))].dot(Tg.T))[:,:3]
+    return
+    global i
+    if i%5==0:
+        Tg   = calc_T(*vec2args(x))
+        pc2t = (np.c_[pc2, np.ones((pc2.shape[0],1))].dot(Tg.T))[:,:3]
 
-    clearreq = gen_mlab_request(mlab.clf)
-    plotter.request(clearreq)
+        clearreq = gen_mlab_request(mlab.clf)
+        plotter.request(clearreq)
 
-    c1req   =  gen_mlab_request(mlab.points3d, pc1[:,0], pc1[:,1], pc1[:,2], color=(1,0,0), scale_factor=0.001)
-    c2req   =  gen_mlab_request(mlab.points3d, pc2t[:,0], pc2t[:,1], pc2t[:,2], color=(0,1,0), scale_factor=0.001)
-    plotter.request(c1req)
-    plotter.request(c2req)
+        c1req   =  gen_mlab_request(mlab.points3d, pc1[:,0], pc1[:,1], pc1[:,2], color=(1,0,0), scale_factor=0.001)
+        c2req   =  gen_mlab_request(mlab.points3d, pc2t[:,0], pc2t[:,1], pc2t[:,2], color=(0,1,0), scale_factor=0.001)
+        plotter.request(c1req)
+        plotter.request(c2req)
 
 
-i = 0
 def calc_error(xyz, rod):
     global i
     print "\t %d : calc.."%i
@@ -53,7 +57,8 @@ def calc_error(xyz, rod):
     Tg   = calc_T(xyz, rod)
     pc2t = (np.c_[pc2, np.ones((pc2.shape[0],1))].dot(Tg.T))[:,:3]
     d,i_nn   = pc1tree.query(pc2t)
-    d = d[d<0.1]
+    d0 = max(0.5-0.4*i/30,0.05)
+    d = d[d<d0]
     return np.sum(d)
 
 def calc_error_wrapper(x):
@@ -82,8 +87,8 @@ print "T_h_k:", T_best
 ## final display:
 pc2 = (np.c_[pc2, np.ones((pc2.shape[0],1))].dot(T_best.T))[:,:3]
 clearreq = gen_mlab_request(mlab.clf)
-plotter.req(clearreq)
+plotter.request(clearreq)
 c1req   =  gen_mlab_request(mlab.points3d, pc1[:,0], pc1[:,1], pc1[:,2], color=(1,0,0), scale_factor=0.001)
-c2req   =  gen_mlab_request(mlab.points3d, pc2t[:,0], pc2t[:,1], pc2t[:,2], color=(0,1,0), scale_factor=0.001)
+c2req   =  gen_mlab_request(mlab.points3d, pc2[:,0], pc2[:,1], pc2[:,2], color=(0,1,0), scale_factor=0.001)
 plotter.request(c1req)
 plotter.request(c2req)

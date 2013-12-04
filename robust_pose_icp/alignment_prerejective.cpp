@@ -14,7 +14,7 @@
 #include <pcl/visualization/pcl_visualizer.h>
 
 // Types
-typedef pcl::PointNormal PointNT;
+typedef pcl::PointXYZRGBNormal PointNT;
 typedef pcl::PointCloud<PointNT> PointCloudT;
 typedef pcl::FPFHSignature33 FeatureT;
 typedef pcl::FPFHEstimationOMP<PointNT,PointNT,FeatureT> FeatureEstimationT;
@@ -113,11 +113,10 @@ main (int argc, char **argv)
     // Show alignment
     pcl::visualization::PCLVisualizer visu("Alignment");
 
-    
     pcl::visualization::PointCloudColorHandlerRGBField<PointNT> scene_rgb(scene);
     visu.addPointCloud (scene, scene_rgb, "scene");
 
-    pcl::visualization::PointCloudColorHandlerRGBField<PointNT> scene_rgb(object);
+    pcl::visualization::PointCloudColorHandlerRGBField<PointNT> object_rgb(object);
     visu.addPointCloud (object, object_rgb, "object");
     visu.spin ();
 
