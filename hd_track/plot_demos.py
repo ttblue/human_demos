@@ -30,9 +30,10 @@ from hd_visualization.ros_vis import draw_trajectory
 import hd_utils.transformations as tfms
 
 hd_path = os.getenv('HD_DIR')
-if hd_path is None:
-    hd_path = '/home/henrylu/henry_sandbox/human_demos'
 
+global freq
+global demo_fname
+global calib_fname
 
 def load_covariances():
     """
@@ -50,7 +51,7 @@ def load_covariances():
     return (motion_covar, ar_covar, hydra_covar)
 
 
-def load_data(fname = 'demo1.data'):
+def load_data(fname):
     """
     return cam1, cam2, hydra transform data.
     """
@@ -231,11 +232,18 @@ def run_kalman_filter(fname, freq=30., use_spline=False, use_hydra=True):
     return nsteps, tmin, mu, S, A, R
 
 def get_cam_transform():
-    calib_file = osp.join(hd_path,'hd_data/calib/calib_cam1')
-    dat = cp.load(open(calib_file))
-    T_l1l2 = dat['transforms'][0]['tfm']
-
-    return np.linalg.inv(tfm_link_rof).dot(T_l1l2.dot(tfm_link_rof)) 
+    #calib_file = osp.join(hd_path,'hd_data/calib/calib_cam1')
+    #calib_file = osp.join(hd_path, 'hd_data/calib/cc_two_camera_calib')
+    calib_file_fullname = osp.join(hd_path, 'hd_data/calib/' + calib_fname)
+    dat = cp.load(open(calib_file_fullname))
+    
+    camera_tf = None;
+    for tf in dat['transforms']:
+        if tf['parent'] == 'camera1_link' and tf['child'] == 'camera2_link':
+            camera_tf = tf['tfm']
+            
+    T_l1l2 = camera_tf
+    return np.linalg.inv(tfm_link_rof).dot(T_l1l2.dot(tfm_link_rof))
 
 def publish_static_tfm(parent_frame, child_frame, tfm):
     import thread
@@ -288,16 +296,13 @@ def correlation_shift(xa,xb):
 
 
 def main_plot():
-    demo_num = 6
-    freq     = 30.
     use_spline = True
 
     data_dir = os.getenv('HD_DATA_DIR') 
-    #bag = rosbag.Bag(osp.join(data_dir,'demos/recorded/demo'+str(demo_num)+'.bag'))
-    _, _, _, ar1_strm, ar2_strm, hy_strm = relative_time_streams('demo'+str(demo_num)+'.data', freq)
+    _, _, _, ar1_strm, ar2_strm, hy_strm = relative_time_streams(demo_fname +'.data', freq)
 
     ## run the kalman filter:
-    nsteps, tmin, F_means,S,A,R = run_kalman_filter('demo'+str(demo_num)+'.data', freq, use_spline)
+    nsteps, tmin, F_means,S,A,R = run_kalman_filter(demo_fname +'.data', freq, use_spline)
     S_means = smoother(A, R, F_means, S)
     X_kf = np.array(F_means)
     X_kf = np.reshape(X_kf, (X_kf.shape[0], X_kf.shape[1])).T
@@ -314,7 +319,7 @@ def main_plot():
     T_filt = state_to_hmat(S_means)
     
     ## load the potentiometer-angle stream:
-    pot_data = cp.load(open(osp.join(data_dir, 'demos/obs_data/demo' +str(demo_num)+'.data')))['pot_angles']
+    pot_data = cp.load(open(osp.join(data_dir, 'demos/obs_data/' + demo_fname +'.data')))['pot_angles']
     ang_ts   = np.array([tt[1] for tt in pot_data])  ## time-stamps
     ang_vals = [open_frac(tt[0]) for tt in pot_data]  ## angles
     ang_strm = streamize(ang_vals, ang_ts, freq, lambda x : x[-1], tmin)
@@ -368,15 +373,10 @@ def main_plot():
 
 
 def main_filter():
-    demo_num = 6
-    freq     = 30.
     use_spline = True
 
     data_dir = os.getenv('HD_DATA_DIR') 
-    #if data_dir is None:
-    bag = rosbag.Bag(hd_path + '/hd_data/demos/recorded/demo'+str(demo_num)+'.bag')
-    #else:
-    #	bag = rosbag.Bag(osp.join(data_dir,'demos/recorded/demo'+str(demo_num)+'.bag'))
+    bag = rosbag.Bag(hd_path + '/hd_data/demos/recorded/' + demo_fname +'.bag')
     pub = rospy.Publisher('/point_cloud1', PointCloud2)
     pub2= rospy.Publisher('/point_cloud2', PointCloud2)
     
@@ -384,19 +384,23 @@ def main_filter():
     c1_tfm_pub    = rospy.Publisher('/ar1_estimate', PoseStamped)
     c2_tfm_pub    = rospy.Publisher('/ar2_estimate', PoseStamped)
     hydra_tfm_pub = rospy.Publisher('/hydra_estimate', PoseStamped)
-    _, _, _, ar1_strm, ar2_strm, hy_strm = relative_time_streams('demo'+str(demo_num)+'.data', freq)
+    _, _, _, ar1_strm, ar2_strm, hy_strm = relative_time_streams(demo_fname + '.data', freq)
 
     #=====================================================
     
     ## run the KF with the Cameras only:
-    _, _, F_means_cams, _,_,_ = run_kalman_filter('demo'+str(demo_num)+'.data', freq, use_spline=False, use_hydra=False)
+    _, _, F_means_cams, _,_,_ = run_kalman_filter(demo_fname + '.data', freq, use_spline=False, use_hydra=False)
     X_kf_cams = np.array(F_means_cams)
     X_kf_cams = np.reshape(X_kf_cams, (X_kf_cams.shape[0], X_kf_cams.shape[1])).T
 
     ## run the KF and smoother on everything:
-    nsteps, tmin, F_means, S,A,R = run_kalman_filter('demo'+str(demo_num)+'.data', freq, use_spline, use_hydra=True)
-    S_means = smoother(A, R, F_means, S)
-    X_ks = np.array(S_means)
+    nsteps, tmin, F_means, S,A,R = run_kalman_filter(demo_fname + '.data', freq, use_spline, use_hydra=True)
+    
+    #S_means = smoother(A, R, F_means, S)
+    #X_ks = np.array(S_means)
+    #X_ks = np.reshape(X_ks, (X_ks.shape[0], X_ks.shape[1])).T
+    
+    X_ks = np.array(F_means)
     X_ks = np.reshape(X_ks, (X_ks.shape[0], X_ks.shape[1])).T
 
     
@@ -412,7 +416,7 @@ def main_filter():
   
     
     ## load the potentiometer-angle stream:
-    pot_data = cp.load(open(osp.join(data_dir, 'demos/obs_data/demo' +str(demo_num)+'.data')))['pot_angles']
+    pot_data = cp.load(open(osp.join(data_dir, 'demos/obs_data/' + demo_fname +'.data')))['pot_angles']
     ang_ts   = np.array([tt[1] for tt in pot_data])  ## time-stamps
     ang_vals = [open_frac(tt[0]) for tt in pot_data]  ## angles
     ang_strm = streamize(ang_vals, ang_ts, freq, lambda x : x[-1], tmin)
@@ -449,7 +453,7 @@ def main_filter():
         ## show the point-cloud:
         found_pc = False
         try:
-            pc              = pc1_strm.next()
+            pc = pc1_strm.next()
             if pc is not None:
                 print "pc1 ts:", pc.header.stamp.to_sec()
                 pc.header.stamp = rospy.Time.now()
@@ -463,7 +467,7 @@ def main_filter():
             pass
 
         try:
-            pc2              = pc2_strm.next()
+            pc2 = pc2_strm.next()
             if pc2 is not None:
                 #print "pc2 not none"
                 print "pc2 ts:", pc2.header.stamp.to_sec()
@@ -513,7 +517,14 @@ if __name__=="__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--plot', help="Plot the data", action="store_true", default=False)
     parser.add_argument('--rviz', help="Publish the data on topics for visualization on RVIZ", action="store_true", default=True)
+    parser.add_argument('-freq', help="frequency in filter", action='store', dest='freq', default=30., type=float)
+    parser.add_argument('-dname', help="name of demonstration file", action='store', dest='demo_fname', default='demo100', type=str)
+    parser.add_argument('-clib', help="name of calibration file", action='store', dest='calib_fname', default = 'cc_two_camera_calib', type=str)
     vals = parser.parse_args()
+    
+    freq = vals.freq
+    demo_fname = vals.demo_fname
+    calib_fname = vals.calib_fname
 
     if vals.plot:
         main_plot()

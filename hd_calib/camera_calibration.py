@@ -292,7 +292,7 @@ class CameraCalibrator:
                 pc = self.cameras.get_pointcloud(j)
                 rtn, points = cu.get_corners_from_pc(pc)
                 if rtn == 0:
-                    yellowprint("Could not find all the points on the checkerboard for camera%i"%(j+1))
+                    yellowprint("Could not find all the points on the chessboard for camera%i"%(j+1))
                     tries -= 1
                     sleeper.sleep()
                 else: break

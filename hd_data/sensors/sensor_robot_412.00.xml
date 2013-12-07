@@ -1,0 +1,21 @@
+<!-- Sensor robot of max_range 412.00-->
+<Robot name="sensor_robot_412.00">
+  <Kinbody>
+    <Body name="Base" type="dynamic">
+      <Translation>0.0 0.0 0.0</Translation>
+    </Body>
+  </Kinbody>
+  <AttachedSensor name="LIDAR">
+    <link>Base</link>
+    <translation>0.0 0.0 0.0</translation>
+    <rotationaxis>0 0 1 0</rotationaxis>
+    <sensor type="BaseFlashLidar3D">
+      <maxrange>412.00</maxrange>
+      <scantime>0.01</scantime>
+      <KK>32 24 32 24</KK>
+      <width>64</width>
+      <height>48</height>
+      <color>1 1 0</color>
+    </sensor>
+  </AttachedSensor>
+</Robot>

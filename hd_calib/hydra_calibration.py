@@ -55,6 +55,7 @@ class HydraCalibrator:
     def get_hydra_transform(self):
         tfms = gmt.get_hydra_transforms('hydra_base', [self.calib_hydra])
         if tfms is None: return None
+        print tfms
         return tfms[self.calib_hydra]
     
     def get_ar_transform (self):
@@ -101,7 +102,10 @@ class HydraCalibrator:
                 else:
                     yellowprint('Could not find all required hydra transforms.')
                 thresh -= 1
-                if thresh == 0: return False
+                if thresh == 0:
+                    redprint('Tried too many times but could not get enough transforms.')
+                    return False
+                
                 continue
                 
             calib_avg_tfm.append(calib_tfm)
@@ -145,10 +149,7 @@ class HydraCalibrator:
         i = 0
         while i < n_obs:
             yellowprint ("Transform %d out of %d."%(i,n_obs))
-            worked = self.process_observation(n_avg)
-            if not worked:
-                yellowprint("Something went wrong. Try again.")
-            else:
+            if self.process_observation(n_avg):
                 i += 1
         self.calibrated = self.finish_calibration(calib_type)
         

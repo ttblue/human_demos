@@ -151,6 +151,8 @@ class CalibratedTransformPublisher(Thread):
         theta = gmt.get_pot_angle()
         self.angle_pub.publish(theta)
         transforms = []
+        
+        
         for gr in self.grippers.values():
             transforms += gr.get_all_transforms(parent_frame, diff_cam=True)
             
@@ -160,7 +162,7 @@ class CalibratedTransformPublisher(Thread):
                                               rospy.Time.now(),
                                               transform['child'],
                                               transform['parent'])
-
+        
     def set_publish_grippers(self, val=None):
         """
         Toggles by default
@@ -211,14 +213,15 @@ class CalibratedTransformPublisher(Thread):
         
         file_name = osp.join('/home/sibi/sandbox/human_demos/hd_data/calib',file)
         with open(file_name,'r') as fh: calib_data = cPickle.load(fh)
+        
         for lr,graph in calib_data['grippers'].items():
             gr = gripper.Gripper(lr, graph, self.cameras)
             if 'tool_tip' in gr.mmarkers:
                 gr.tt_calculated = True 
             self.add_gripper(gr)
-            
+           
         self.publish_grippers = True
-
+        
     def save_calibration(self, file):
         """
         Save the transforms and the gripper data from this current calibration.
@@ -425,4 +428,7 @@ def run_calibration_sequence (spin=False):
         time.sleep(0.1)
   
 # if __name__=='__main__':
-#      run_calibration_sequence()
+#     initialize_calibration(1)
+#     tfm_pub.load_calibration('cc')
+#     tfm_pub.load_calibration('cam12HG_calib')
+#     

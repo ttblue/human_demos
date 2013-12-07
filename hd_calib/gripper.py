@@ -179,92 +179,93 @@ class Gripper:
     	if self.cameras is None:
     	    redprint("Cameras not initialized. Could not get transforms.")
     	    return
-            ar_tfms = self.cameras.get_ar_markers()
-    
-            if diff_cam:
-                ar_tfms_cam = {}
-                for i in range(self.cameras.num_cameras):
-                    ar_tfms_cam[i] = self.cameras.get_ar_markers(camera=i, parent_frame=True)
-     
-            hyd_tfms = gmt.get_hydra_transforms(self.parent_frame, None)
-            theta = gmt.get_pot_angle()
-            
-            marker_tfms= ar_tfms
-            marker_tfms.update(hyd_tfms)
-            
-            ret_tfms = []
-            
-            cor_avg_tfms = []
-            cor_hyd_avg = []
-            cor_ar_avg = []
-            ar_found = False
-            hyd_found = False
-            for m,tfm in marker_tfms.items():
-                if m in self.ar_markers:
-                    c_tfm = tfm.dot(self.get_rel_transform(m,'cor', theta)) 
-                    cor_ar_avg.append(c_tfm)
-                    cor_avg_tfms.append(c_tfm)
-                    ar_found = True
-                elif m in self.hydra_markers:
-                    c_tfm = tfm.dot(self.get_rel_transform(m,'cor', theta)) 
-                    cor_hyd_avg.append(c_tfm)
-                    cor_avg_tfms.append(c_tfm)
-                    hyd_found = True
-            
-            if diff_cam:
-                cor_ar_cams = {}
-                cam_found = {i:False for i in ar_tfms_cam}
-                for i in ar_tfms_cam:
-                    for m, tfm in ar_tfms_cam[i].items():
-                        if m in self.ar_markers:
-                            c_tfm = tfm.dot(self.get_rel_transform(m,'cor', theta))
-                            if i not in cor_ar_cams:
-                                cor_ar_cams[i] = []
-                                cam_found[i] = True 
-                            cor_ar_cams[i].append(c_tfm)
-                    if cam_found[i]:
-                        cor_ar_cams[i] = utils.avg_transform(cor_ar_cams[i])
-    
-    
-            if len(cor_avg_tfms) == 0: return ret_tfms
-            
-            cor_tfm = utils.avg_transform(cor_avg_tfms)
-            cor_h_tfm = utils.avg_transform(cor_hyd_avg)
-            cor_a_tfm = utils.avg_transform(cor_ar_avg)
-            
-            ret_tfms.append({'parent':parent_frame, 
-                             'child':'%sgripper_%s'%(self.lr, 'cor'),
-                             'tfm':cor_tfm})
-    
-            for m in self.allmarkers:
-                if m != 'cor' and m != 'tool_tip':
-                    tfm = self.get_rel_transform('cor', m, theta)
-                    ret_tfms.append({'parent':parent_frame, 
-                                     'child':'%sgripper_%s'%(self.lr, m),
-                                     'tfm':cor_tfm.dot(tfm)})
-    
-            if self.tt_calculated:
-                tfm = self.get_rel_transform('cor', 'tool_tip', theta)
+
+        ar_tfms = self.cameras.get_ar_markers()
+
+        if diff_cam:
+            ar_tfms_cam = {}
+            for i in range(self.cameras.num_cameras):
+                ar_tfms_cam[i] = self.cameras.get_ar_markers(camera=i, parent_frame=True)
+
+        hyd_tfms = gmt.get_hydra_transforms(self.parent_frame, None)
+        theta = gmt.get_pot_angle()
+
+        marker_tfms= ar_tfms
+        marker_tfms.update(hyd_tfms)
+        
+        ret_tfms = []
+        
+        cor_avg_tfms = []
+        cor_hyd_avg = []
+        cor_ar_avg = []
+        ar_found = False
+        hyd_found = False
+        for m,tfm in marker_tfms.items():
+            if m in self.ar_markers:
+                c_tfm = tfm.dot(self.get_rel_transform(m,'cor', theta)) 
+                cor_ar_avg.append(c_tfm)
+                cor_avg_tfms.append(c_tfm)
+                ar_found = True
+            elif m in self.hydra_markers:
+                c_tfm = tfm.dot(self.get_rel_transform(m,'cor', theta)) 
+                cor_hyd_avg.append(c_tfm)
+                cor_avg_tfms.append(c_tfm)
+                hyd_found = True
+        
+        if diff_cam:
+            cor_ar_cams = {}
+            cam_found = {i:False for i in ar_tfms_cam}
+            for i in ar_tfms_cam:
+                for m, tfm in ar_tfms_cam[i].items():
+                    if m in self.ar_markers:
+                        c_tfm = tfm.dot(self.get_rel_transform(m,'cor', theta))
+                        if i not in cor_ar_cams:
+                            cor_ar_cams[i] = []
+                            cam_found[i] = True 
+                        cor_ar_cams[i].append(c_tfm)
+                if cam_found[i]:
+                    cor_ar_cams[i] = utils.avg_transform(cor_ar_cams[i])
+
+
+        if len(cor_avg_tfms) == 0: return ret_tfms
+        
+        cor_tfm = utils.avg_transform(cor_avg_tfms)
+        cor_h_tfm = utils.avg_transform(cor_hyd_avg)
+        cor_a_tfm = utils.avg_transform(cor_ar_avg)
+        
+        ret_tfms.append({'parent':parent_frame, 
+                         'child':'%sgripper_%s'%(self.lr, 'cor'),
+                         'tfm':cor_tfm})
+
+        for m in self.allmarkers:
+            if m != 'cor' and m != 'tool_tip':
+                tfm = self.get_rel_transform('cor', m, theta)
                 ret_tfms.append({'parent':parent_frame, 
-                                 'child':'%sgripper_tooltip'%self.lr,
+                                 'child':'%sgripper_%s'%(self.lr, m),
                                  'tfm':cor_tfm.dot(tfm)})
-                if hyd_found:
+
+        if self.tt_calculated:
+            tfm = self.get_rel_transform('cor', 'tool_tip', theta)
+            ret_tfms.append({'parent':parent_frame, 
+                             'child':'%sgripper_tooltip'%self.lr,
+                             'tfm':cor_tfm.dot(tfm)})
+            if hyd_found:
+                ret_tfms.append({'parent':parent_frame, 
+                                 'child':'%sgripper_tooltip_hydra'%self.lr,
+                                 'tfm':cor_h_tfm.dot(tfm)})
+            if ar_found:
+                ret_tfms.append({'parent':parent_frame, 
+                                 'child':'%sgripper_tooltip_ar'%self.lr,
+                                 'tfm':cor_a_tfm.dot(tfm)})
+            
+            if diff_cam:
+                for i,cor_tfm in cor_ar_cams.items():
                     ret_tfms.append({'parent':parent_frame, 
-                                     'child':'%sgripper_tooltip_hydra'%self.lr,
-                                     'tfm':cor_h_tfm.dot(tfm)})
-                if ar_found:
-                    ret_tfms.append({'parent':parent_frame, 
-                                     'child':'%sgripper_tooltip_ar'%self.lr,
-                                     'tfm':cor_a_tfm.dot(tfm)})
-                
-                if diff_cam:
-                    for i,cor_tfm in cor_ar_cams.items():
-                        ret_tfms.append({'parent':parent_frame, 
-                                         'child':'%sgripper_tooltip_camera%i'%(self.lr,i+1),
-                                         'tfm':cor_tfm.dot(tfm)})
-    
-    
-            return ret_tfms
+                                     'child':'%sgripper_tooltip_camera%i'%(self.lr,i+1),
+                                     'tfm':cor_tfm.dot(tfm)})
+                    
+        
+        return ret_tfms
     
     
     def get_specific_tool_tip_tfm (self, m_type='AR'):

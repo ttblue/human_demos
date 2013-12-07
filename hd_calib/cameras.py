@@ -234,7 +234,8 @@ class RosCameras:
         """
         if self.calibrated is False:
             raise Exception('Cameras not calibrated.')
-
+        if self.num_cameras == 1:
+            return np.eye(4)
         if c1==c2:
             return np.eye(4)
         if self.camera_transforms.get((c1,c2)) is None and self.camera_transforms.get((c2,c1)) is None:
