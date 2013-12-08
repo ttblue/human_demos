@@ -65,3 +65,6 @@ nosetests.xml
 
 # todo things:
 *todo/*
+
+#time stamps
+*stamps.txt
