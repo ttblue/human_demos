@@ -58,8 +58,10 @@ nosetests.xml
 *~*
 *.swp*
 
-# bag files -- very huge
+# data files -- very huge
 *.bag
+*.jpg
+*.png
 
 # todo things:
 *todo/*

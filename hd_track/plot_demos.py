@@ -409,8 +409,8 @@ def main_filter():
     print "SHIFT:  ", shift
     X_ks = np.roll(X_ks,shift,axis=1)
     X_ks[:,:shift]  = X_ks[:,shift][:,None]
-    T_filt = state_to_hmat(list(X_ks.T))
-    #T_filt = state_to_hmat(F_means)   
+    #T_filt = state_to_hmat(list(X_ks.T))
+    T_filt = state_to_hmat(F_means)   
     
     #======================================================
   

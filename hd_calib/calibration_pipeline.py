@@ -20,7 +20,7 @@ from cameras import RosCameras
 from camera_calibration import CameraCalibrator
 from hydra_calibration import HydraCalibrator
 from gripper_calibration import GripperCalibrator
-import gripper
+import gripper, gripper_lite
 import get_marker_transforms as gmt
 
 import read_arduino
@@ -65,10 +65,12 @@ class CalibratedTransformPublisher(Thread):
         self.rate = 30.0
         self.tf_broadcaster = tf.TransformBroadcaster()
         
-        self.angle_pub = rospy.Publisher('pot_angle', Float32)
+        self.langle_pub = rospy.Publisher('l_pot_angle', Float32)
+        self.rangle_pub = rospy.Publisher('r_pot_angle', Float32)
         
         self.cameras = cameras
         self.publish_grippers = False
+        self.gripper_lite = True
         self.grippers = {}
 
     def run (self):
@@ -86,21 +88,6 @@ class CalibratedTransformPublisher(Thread):
                     self.publish_gripper_tfms()
             time.sleep(1/self.rate)
 
-    
-    def fake_initialize (self):
-        
-        for c in xrange(1,self.cameras.num_cameras):
-            tfm = np.eye(4)
-            tfm[0:3,3] = np.array([0.1,0.1,0.1])*c
-            trans , rot = conversions.hmat_to_trans_rot(tfm)
-            self.transforms['camera1_rgb_optical_frame','camera%i_rgb_optical_frame'%c] = (trans, rot)
-        
-        tfm = np.eye(4)
-        tfm[0:3,3] = np.array([0.1,0.1,0.1])*-1
-        trans , rot = conversions.hmat_to_trans_rot(tfm)
-        self.transforms['camera1_rgb_optical_frame','hydra_base'] = (trans, rot)
-        
-        self.ready = True
 
     def add_transforms(self, transforms):
         """
@@ -146,15 +133,17 @@ class CalibratedTransformPublisher(Thread):
 
     def publish_gripper_tfms (self):
         marker_tfms = self.cameras.get_ar_markers()
-        parent_frame = self.cameras.parent_frame
 
-        theta = gmt.get_pot_angle()
-        self.angle_pub.publish(theta)
+        self.langle_pub.publish(gmt.get_pot_angle('l'))
+        #self.rangle_pub.publish(gmt.get_pot_angle('r'))
+        
         transforms = []
-        
-        
         for gr in self.grippers.values():
-            transforms += gr.get_all_transforms(parent_frame, diff_cam=True)
+            if self.gripper_lite:
+                transforms += gr.get_all_transforms(diff_cam=True)
+            else:
+                parent_frame = self.cameras.parent_frame
+                transforms += gr.get_all_transforms(parent_frame, diff_cam=True)
             
         for transform in transforms:
             trans, rot = conversions.hmat_to_trans_rot(transform['tfm'])
@@ -191,11 +180,17 @@ class CalibratedTransformPublisher(Thread):
         
         file_name = osp.join('/home/sibi/sandbox/human_demos/hd_data/calib',file)
         with open(file_name,'r') as fh: calib_data = cPickle.load(fh)
-        for lr,graph in calib_data['grippers'].items():
-            gr = gripper.Gripper(lr, graph, self.cameras)
-            if 'tool_tip' in gr.mmarkers:
-                gr.tt_calculated = True 
-            self.add_gripper(gr)
+        if self.gripper_lite:
+            for lr,data in calib_data['grippers'].items():
+                gr = gripper_lite.GripperLite(lr,data['ar'],cameras=self.cameras)
+                gr.reset_gripper(lr, data[tfms], data['ar'], data['hydra'])
+                self.add_gripper(gr)
+        else:
+            for lr,graph in calib_data['grippers'].items():
+                gr = gripper.Gripper(lr, graph, self.cameras)
+                if 'tool_tip' in gr.mmarkers:
+                    gr.tt_calculated = True 
+                self.add_gripper(gr)
         self.add_transforms(calib_data['transforms'])
         
         if self.grippers: self.publish_grippers = True
@@ -214,11 +209,17 @@ class CalibratedTransformPublisher(Thread):
         file_name = osp.join('/home/sibi/sandbox/human_demos/hd_data/calib',file)
         with open(file_name,'r') as fh: calib_data = cPickle.load(fh)
         
-        for lr,graph in calib_data['grippers'].items():
-            gr = gripper.Gripper(lr, graph, self.cameras)
-            if 'tool_tip' in gr.mmarkers:
-                gr.tt_calculated = True 
-            self.add_gripper(gr)
+        if self.gripper_lite:
+            for lr,data in calib_data['grippers'].items():
+                gr = gripper_lite.GripperLite(lr,data['ar'],cameras=self.cameras)
+                gr.reset_gripper(lr, data[tfms], data['ar'], data['hydra'])
+                self.add_gripper(gr)
+        else:
+            for lr,graph in calib_data['grippers'].items():
+                gr = gripper.Gripper(lr, graph, self.cameras)
+                if 'tool_tip' in gr.mmarkers:
+                    gr.tt_calculated = True 
+                self.add_gripper(gr)
            
         self.publish_grippers = True
         
@@ -231,8 +232,15 @@ class CalibratedTransformPublisher(Thread):
         calib_data = {}
 
         gripper_data = {}
-        for lr,gr in self.grippers.items():
-            gripper_data[lr] = gr.transform_graph
+        if self.gripper_lite:
+            for lr,gr in self.grippers.items():
+                gripper_data[lr] = {'ar':gr.get_ar_marker(),
+                                    'hydra':gr.get_hydra_marker(),
+                                    'tfms':gr.get_saveable_transforms()}
+        else:
+            for lr,gr in self.grippers.items():
+                gripper_data[lr] = gr.transform_graph
+
         calib_data['grippers'] = gripper_data
 
         calib_transforms = []
@@ -249,7 +257,7 @@ class CalibratedTransformPublisher(Thread):
         with open(file_name, 'w') as fh: cPickle.dump(calib_data, fh)
 
 
-def calibrate_potentiometer ():
+def calibrate_potentiometer (lr='l'):
     if not gmt.pot_initialized:
         gmt.arduino = read_arduino.Arduino()
         pot_initialized = True
@@ -257,10 +265,10 @@ def calibrate_potentiometer ():
         
     yellowprint("Calibrating potentiometer:")
     raw_input(colorize("Close gripper all the way to 0 degrees.", 'yellow', True))
-    gmt.b = gmt.arduino.get_reading()
+    gmt.b[lr] = gmt.arduino.get_reading()
     
     raw_input(colorize("Now, open gripper all the way.", 'yellow', True))
-    gmt.a = (gmt.arduino.get_reading() - gmt.b)/30.0
+    gmt.a[lr] = (gmt.arduino.get_reading() - gmt.b[lr])/30.0
     
     greenprint("Potentiometer calibrated!")
     
@@ -400,6 +408,35 @@ def calibrate_grippers ():
 #     
 #     tfm_pub.add_gripper(r_gripper_calib.get_gripper())
 #                         
+#     greenprint("Done with r gripper calibration.")
+
+def calibrate_gripper_lite():
+    global cameras, tfm_pub
+
+    greenprint("Step 3. Calibrating relative transforms of markers on gripper.")
+
+    greenprint("Step 3.1 Calibrate l gripper.")
+    
+    lg_xyz = [0.10398, -0.00756, -0.03999]
+    lgr = gripper_lite.GripperLite(lr='l',marker=1,cameras=cameras,
+                                   x=lg_xyz[0], y=lg_xyz[1], z=lg_xyz[2])
+    
+    tfm_pub.add_gripper(lgr)
+    tfm_pub.set_publish_grippers(True)
+
+    if yes_or_no(colorize("Do you want to add hydra to lgripper?",'yellow')):
+        lgr.add_hydra(hydra_marker='left', tfm=None, ntfm=50, navg=30)
+    
+#     greenprint("Step 3.2 Calibrate r gripper.")
+#     
+#     rgr = gripper_lite.GripperLite(lr='r',marker=4,cameras=cameras)
+#     
+#     tfm_pub.add_gripper(rgr)
+#     tfm_pub.set_publish_grippers(True)
+# 
+#     if yes_or_no(colorize("Do you want to add hydra to lgripper?",'yellow')):
+#         rgr.add_hydra(hydra_marker='right', tfm=None, ntfm=50, navg=30)
+# 
 #     greenprint("Done with r gripper calibration.")
 
 

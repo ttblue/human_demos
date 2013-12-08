@@ -367,7 +367,7 @@ def main_filter():
 
     
     # Shifting
-    shift = correlation_shift(X_kf_cams,X_ks)
+    shift = 10#correlation_shift(X_kf_cams,X_ks)
     print "SHIFT:  ", shift
     X_ks = np.roll(X_ks,shift,axis=1)
     X_ks[:,:shift]  = X_ks[:,shift][:,None]
