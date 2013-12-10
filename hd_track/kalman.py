@@ -301,37 +301,41 @@ class kalman:
         if T_ar1 != None: # observe the ar from camera 1
             pos, rpy     = self.canonicalize_obs(T_ar1)
             c_ar1, q_ar1 = self.get_ar1_mats()
-            z_obs = np.c_['0,2', z_obs, pos, rpy]
-            C     = c_ar1
-            Q     = q_ar1
+            z_obs = np.c_['0,2', z_obs, pos]#, rpy]
+            C     = c_ar1[0:3,:]
+            Q     = q_ar1[0:3,0:3]
             reading = True
 
         if T_ar2 != None: # observe the ar from camera 2
             pos, rpy     = self.canonicalize_obs(T_ar2)
             c_ar2, q_ar2 = self.get_ar2_mats()
-            z_obs = np.c_['0,2', z_obs, pos, rpy]
+            z_obs = np.c_['0,2', z_obs, pos]#, rpy]
             if not reading:
-                C = c_ar2
-                Q = q_ar2
+                C = c_ar2[0:3,:]
+                Q = q_ar2[0:3,0:3]
                 reading = True
             else:
-                C = np.r_[C, c_ar2]
-                Q = scl.block_diag(Q, q_ar2)
-                reading = True
+                C = np.r_[C, c_ar2[0:3,:]]
+                Q = scl.block_diag(Q, q_ar2[0:3,0:3])
 
-        if T_hy != None: # observe the hydra
+        if T_hy != None:# observe the hydra
             pos, rpy = self.canonicalize_obs(T_hy)
-            if self.hydra_prev != None:
-                c_hy, q_hy = self.get_hydra_vmats()
+            c_hy, q_hy = self.get_hydra_vmats()
+            z_obs = np.c_['0,2', z_obs, rpy]
+            if not reading:
+                C = c_hy[3:6,:]
+                Q = q_hy[3:6,3:6]
+                reading = True
+            else:
+                C = np.r_[C, c_hy[3:6,:]]
+                Q = scl.block_diag(Q, q_hy[3:6,3:6])
+
+            if self.hydra_prev != None: #T_ar1 is None and T_ar2 is None and self.hydra_prev != None:
                 vpos = (pos - self.hydra_prev) / dt
-                z_obs = np.c_['0,2', z_obs, vpos, rpy]
-                if not reading:
-                    C = c_hy
-                    Q = q_hy
-                    reading = True
-                else:
-                    C = np.r_[C, c_hy]
-                    Q = scl.block_diag(Q, q_hy)
+                z_obs = np.c_['0,2', z_obs, vpos]
+                C = np.r_[C, c_hy[0:3,:]]
+                Q = scl.block_diag(Q, q_hy[0:3,0:3])            
+                
             self.hydra_prev = pos
         else:
             self.hydra_prev = None
@@ -389,6 +393,6 @@ def smoother(A, R, mu, sigma):
     for t in xrange(T-2, -1, -1):
         L                   = sigma[t].dot(A.T).dot(np.linalg.inv(sigma_p[t]))
         mu_p_canon          = canonicalize_obs(mu_smooth[t+1], mu_p[t])
-        mu_smooth[t]        = mu[t] + 0.8*(L.dot(mu_smooth[t+1] - mu_p_canon))
+        mu_smooth[t]        = mu[t] + 0.9*(L.dot(mu_smooth[t+1] - mu_p_canon))
         mu_smooth[t][6:9,:] = put_in_range(mu_smooth[t][6:9,:])
     return (mu_smooth)

@@ -2,6 +2,7 @@ import numpy as np, numpy.linalg as nlg
 import rospy
 import os, os.path as osp
 import cPickle
+import cv2
 
 import rosbag
 import roslib
@@ -13,7 +14,7 @@ from hd_utils.defaults import tfm_link_rof, asus_xtion_pro_f
 from hd_utils.colorize import *
 from hd_utils import ros_utils as ru, clouds, conversions, extraction_utils as eu
 
-from hd_calib import gripper_calibration, gripper
+from hd_calib import gripper_calibration, gripper, gripper_lite
 
 getMarkers = None
 req = MarkerPositionsRequest()
@@ -163,14 +164,21 @@ def save_observations (bag, calib_file, save_file=None):
                 hyd_count += 1
 
 
-    for (_, msg, ts) in bag.read_messages(topics=['/pot_angle']):
-
-	angle = msg.data
-	stamp = ts.to_sec()
-	pot_angles.append((angle, stamp))
-	blueprint("Got a potentiometer angle of %f at time %f"%(angle, stamp))
-	pot_count += 1
-
+    for (_, msg, ts) in bag.read_messages(topics=['/l_pot_angle']):
+        angle = msg.data
+        stamp = ts.to_sec()
+        pot_angles.append((angle, stamp))
+        blueprint("Got a potentiometer angle of %f at time %f"%(angle, stamp))
+        pot_count += 1
+        
+    if pot_count == 0:
+        for (_, msg, ts) in bag.read_messages(topics=['/pot_angle']):
+            angle = msg.data
+            stamp = ts.to_sec()
+            pot_angles.append((angle, stamp))
+            blueprint("Got a potentiometer angle of %f at time %f"%(angle, stamp))
+            pot_count += 1
+                
 
     yellowprint("Found %i transforms out of %i point clouds from camera1"%(ar1_count, cam1_count))
     yellowprint("Found %i transforms out of %i point clouds from camera2"%(ar2_count, cam2_count))
@@ -286,12 +294,20 @@ def save_observations_one_camera (bag, calib_file, save_file=None):
                 hyd_count += 1
 
 
-    for (_, msg, ts) in bag.read_messages(topics=['/pot_angle']):
+    for (_, msg, ts) in bag.read_messages(topics=['/l_pot_angle']):
         angle = msg.data
         stamp = ts.to_sec()
         pot_angles.append((angle, stamp))
         blueprint("Got a potentiometer angle of %f at time %f"%(angle, stamp))
         pot_count += 1
+        
+    if pot_count == 0:
+        for (_, msg, ts) in bag.read_messages(topics=['/pot_angle']):
+            angle = msg.data
+            stamp = ts.to_sec()
+            pot_angles.append((angle, stamp))
+            blueprint("Got a potentiometer angle of %f at time %f"%(angle, stamp))
+            pot_count += 1
 
 
     yellowprint("Found %i transforms out of %i point clouds from camera1"%(ar1_count, cam1_count))
@@ -315,9 +331,9 @@ def save_observations_rgbd(demo_name, calib_file, save_file=None):
     demo_dir = osp.join('/home/sibi/sandbox/human_demos/hd_data/demos',demo_name)
     calib_file_path = osp.join('/home/sibi/sandbox/human_demos/hd_data/calib',calib_file)
     
-    bag_file = osp.join(demo_dir, demo_name+'.bag')
-    rgbd1_dir = osp.join(demo_dir, demo_name+"#1")
-    rgbd2_dir = osp.join(demo_dir, demo_name+"#2")
+    bag_file = osp.join(demo_dir, 'demo.bag')
+    rgbd1_dir = osp.join(demo_dir, 'camera_#1')
+    rgbd2_dir = osp.join(demo_dir, 'camera_#2')
 
     c1_frame = 'camera1_link'
     c2_frame = 'camera2_link'
@@ -325,7 +341,7 @@ def save_observations_rgbd(demo_name, calib_file, save_file=None):
     tfm_c1_c2 = None
     tfm_c1_h = None
 
-    with open(calib_file_path,'r') as fh: calib_data = cPickle.load(file)
+    with open(calib_file_path,'r') as fh: calib_data = cPickle.load(fh)
     bag = rosbag.Bag(bag_file)
     
     for tfm in calib_data['transforms']:
@@ -345,14 +361,14 @@ def save_observations_rgbd(demo_name, calib_file, save_file=None):
 
     grippers = {}
     data = {}
-    for lr,data in calib_data['grippers'].items():
-        gr = gripper_lite.GripperLite(lr,data['ar'],cameras=self.cameras)
-        gr.reset_gripper(lr, data[tfms], data['ar'], data['hydra'])
+    for lr,gdata in calib_data['grippers'].items():
+        gr = gripper_lite.GripperLite(lr,gdata['ar'])
+        gr.reset_gripper(lr, gdata['tfms'], gdata['ar'], gdata['hydra'])
         grippers[lr] = gr
-        data[lr] ={'ar1':[],
-                   'ar2':[],
-                   'hyd':[],
-                   'pot':[]}
+        data[lr] ={'camera1':[],
+                   'camera2':[],
+                   'hydra':[],
+                   'pot_angles':[]}
     
     yellowprint('Camera1')
     rgbs1fnames, depths1fnames, stamps1 = eu.get_rgbd_names_times(rgbd1_dir)
@@ -364,15 +380,15 @@ def save_observations_rgbd(demo_name, calib_file, save_file=None):
         assert depth is not None
 
         xyz = clouds.depth_to_xyz(depth, asus_xtion_pro_f)
-        pc = ru.xyzrgb2pc(xyz, bgr, '')
+        pc = ru.xyzrgb2pc(xyz, rgb, frame_id='', use_time_now=False)
         ar_tfms = get_ar_marker_poses(pc)
         if ar_tfms:
-            blueprint("Got markers " + str(ar_tfms.keys()) + " at time %f"%stamp)
+            blueprint("Got markers " + str(ar_tfms.keys()) + " at time %f"%stamps1[ind])
         for lr,gr in grippers.items():
             ar = gr.get_ar_marker() 
             if ar in ar_tfms:
-                tt_tfm = gr.get_tooltip_transform(ar, ar_tfms[ar])
-                data[lr]['ar1'].append((tt_tfm,stamps1[ind]))
+                tt_tfm = gr.get_tooltip_transform(ar, np.asarray(ar_tfms[ar]))
+                data[lr]['camera1'].append((tt_tfm,stamps1[ind]))
         
     yellowprint('Camera2')
     rgbs2fnames, depths2fnames, stamps2 = eu.get_rgbd_names_times(rgbd2_dir)
@@ -384,15 +400,15 @@ def save_observations_rgbd(demo_name, calib_file, save_file=None):
         assert depth is not None
 
         xyz = clouds.depth_to_xyz(depth, asus_xtion_pro_f)
-        pc = ru.xyzrgb2pc(xyz, bgr, '')
+        pc = ru.xyzrgb2pc(xyz, rgb, frame_id='', use_time_now=False)
         ar_tfms = get_ar_marker_poses(pc)
         if ar_tfms:
-            blueprint("Got markers " + str(ar_tfms.keys()) + " at time %f"%stamp)
+            blueprint("Got markers " + str(ar_tfms.keys()) + " at time %f"%stamps2[ind])
         for lr,gr in grippers.items():
             ar = gr.get_ar_marker()
             if ar in ar_tfms:
-                tt_tfm = gr.get_tooltip_transform(ar, ar_tfms[ar])
-                data[lr]['ar2'].append((tfm_c1_c2.dot(tt_tfm),stamps1[ind]))
+                tt_tfm = gr.get_tooltip_transform(ar, np.asarray(ar_tfms[ar]))
+                data[lr]['camera2'].append((tfm_c1_c2.dot(tt_tfm),stamps2[ind]))
 
 
     yellowprint('Hydra')
@@ -412,7 +428,7 @@ def save_observations_rgbd(demo_name, calib_file, save_file=None):
                     rot = (r.x, r.y, r.z, r.w)
                     hyd_tfm = tfm_c1_h.dot(conversions.trans_rot_to_hmat(trans, rot))
                     stamp = tfm.header.stamp.to_sec()
-                    data[lr]['hyd'].append((tfm_c1_h.dot(hyd_tfm),stamp))
+                    data[lr]['hydra'].append((tfm_c1_h.dot(hyd_tfm),stamp))
                     found += lr
         if found:
             blueprint("Got hydra readings %s at time %f"%(found,stamp))
@@ -422,18 +438,18 @@ def save_observations_rgbd(demo_name, calib_file, save_file=None):
         for (_, msg, ts) in bag.read_messages(topics=['/%s_pot_angle'%lr]):
             angle = msg.data
             stamp = ts.to_sec()
-            data[lr]['pot'].append((angle, stamp))
+            data[lr]['pot_angles'].append((angle, stamp))
             blueprint("Got a %s potentiometer angle of %f at time %f"%(lr,angle, stamp))
 
     for lr in data:
         yellowprint("Gripper %s:"%lr)
-        yellowprint("Found %i transforms out of %i point clouds from camera1"%(len(data[lr]['ar1']), cam1_count))
-        yellowprint("Found %i transforms out of %i point clouds from camera2"%(len(data[lr]['ar2']), cam2_count))
-        yellowprint("Found %i transforms from hydra"%len(data[lr]['hyd']))
-        yellowprint("Found %i potentiometer readings"%len(data[lr]['pot']))
+        yellowprint("Found %i transforms out of %i point clouds from camera1"%(len(data[lr]['camera1']), cam1_count))
+        yellowprint("Found %i transforms out of %i point clouds from camera2"%(len(data[lr]['camera2']), cam2_count))
+        yellowprint("Found %i transforms from hydra"%len(data[lr]['hydra']))
+        yellowprint("Found %i potentiometer readings"%len(data[lr]['pot_angles']))
 
     if save_file is None:
-        save_file = demo_name+".data"
+        save_file = "demo.data"
     save_filename = osp.join(demo_dir, save_file)
 
     with open(save_filename, 'w') as sfh: cPickle.dump(data, sfh)

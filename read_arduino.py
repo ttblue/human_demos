@@ -56,17 +56,16 @@ class Arduino:
                 buffer = lines[-1]
 
 
-    def get_reading(self):
+    def get_reading(self, idx=1):
         """
         return the latest reading read from the arduino.
         """
         while True:
-            try:
-                val =  int(self.reading)
-                return val
+	    try:
+	    	return int(self.reading.split()[idx-1])
             except:
-                pass
-
+		pass
+            
 
 @once
 def get_arduino ():

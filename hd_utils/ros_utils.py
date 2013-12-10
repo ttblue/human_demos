@@ -40,11 +40,11 @@ def pc2xyz(pc):
     xyz = arr[:,:,0:3]
     return xyz
 
-def xyz2pc(xyz,frame_id):
+def xyz2pc(xyz,frame_id,use_time_now=True):
     bgr = np.zeros_like(xyz)
-    return xyzrgb2pc(xyz,bgr,frame_id)
+    return xyzrgb2pc(xyz,bgr,frame_id,use_time_now)
 
-def xyzrgb2pc(xyz,bgr,frame_id):
+def xyzrgb2pc(xyz,bgr,frame_id,use_time_now=True):
     xyz = np.asarray(xyz)
     bgr = np.asarray(bgr)
     
@@ -72,7 +72,9 @@ def xyzrgb2pc(xyz,bgr,frame_id):
     msg.is_dense = False
     msg.width=width
     msg.height=height
-    msg.header.stamp = rospy.Time.now()
+    if use_time_now:
+        msg.header.stamp = rospy.Time.now()
+
     msg.point_step = 32
     msg.row_step = 32 * width
     msg.is_bigendian = False

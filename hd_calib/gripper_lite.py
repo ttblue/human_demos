@@ -5,13 +5,14 @@ import rospy
 
 from hd_utils.colorize import *
 from hd_utils.utils import avg_transform
+import networkx as nx, networkx.algorithms as nxa
 
 import get_marker_transforms as gmt
 
 class GripperLite ():
     """
-    Since gripper has only only one marker, working with lighter version.
-    Assumes gripper has only three markers and the calibration of ar to
+    Since gripper has only one marker, working with lighter version.
+    Assumes gripper has only one markers and the calibration of ar to
     tool tip is known before hand.
     """
     
@@ -27,7 +28,7 @@ class GripperLite ():
     hydra_marker = None
     
     def __init__(self, lr, marker, x=0.07783, y=0.0, z=-0.04416, cameras=None):
-        self.transform_graph = nx.Digraph()
+        self.transform_graph = nx.DiGraph()
         
         self.lr = lr
         self.ar_marker = marker
@@ -54,13 +55,13 @@ class GripperLite ():
     def set_cameras (self, cameras):
         self.cameras = cameras
         
-    def get_rel_transform (m1, m2):
+    def get_rel_transform (self, m1, m2):
         return self.transform_graph.edge[m1][m2]
     
     def get_tooltip_transform (self, m, tfm):
         return tfm.dot(self.get_rel_transform(m, 'tool_tip'))
     
-    def reset_gripper (self, lr, transforms, ar,hydra=None):
+    def reset_gripper (self, lr, transforms, ar, hydra=None):
         """
         Resets gripper with new lr value and a list of transforms
         to populate transform graph.
@@ -73,8 +74,8 @@ class GripperLite ():
         self.transform_graph = nx.DiGraph()
         for tfm in transforms:
             self.transform_graph.add_edge(tfm['parent'], tfm['child'])
-            self.transform_graph.edge[tfm['parent']][tfm_parent['child']] = tfm['tfm']
-            self.transform_graph.edge[tfm['child']][tfm_parent['parent']] = nlg.inv(tfm['tfm'])
+            self.transform_graph.edge[tfm['parent']][tfm['child']] = tfm['tfm']
+            self.transform_graph.edge[tfm['child']][tfm['parent']] = nlg.inv(tfm['tfm'])
 
         
         for i,j in itertools.combinations(sorted(self.transform_graph.nodes()), 2):
@@ -106,60 +107,64 @@ class GripperLite ():
         return transforms
 
         
-    def get_tfm_from_obs(self, marker, n_tfm = 10, n_avg=10):
+    def get_tfm_from_obs(self, hydra_marker, n_tfm=15, n_avg=30):
         """
-        Stores a bunch of AR readings.
+        Stores a bunch of readings from sensors.
         """
         all_tfms = []
         
-        i = 0
-        thresh = n_avg*2
+        
         if rospy.get_name == '/unnamed':
             rospy.init_node('gripper_calib')
         sleeper = rospy.Rate(30)
-        
+    
+        i = 0
+        n_attempts_max = n_avg*2
         while i < n_tfm:
             raw_input(colorize("Getting transform %i out of %i. Hit return when ready."%(i,n_tfm), 'yellow', True))
 
             j = 0
-            j_th = 0
-            found = True
-            htfms = []
-            artfms = []
-            while j < n_avg:
-                blueprint("Averaging transform %i out of %i."%(j,n_avg))
-                ar_tfms = self.cameras.get_ar_markers(markers=[self.ar_marker]);
-                hyd_tfms = gmt.get_hydra_transforms(parent_frame=self.parent_frame, hydras=[marker]);
-                
-                if not ar_tfms and not hyd_tfms:
-                    yellowprint("Could not find any transform.")
-                    j_th += 1
-                    if j_th < thresh:
-                        continue
-                    else:
-                        found = False
-                        break
-                                
-                artfms.append(ar_tfms[1])
-                htfms.append(hyd_tfms[marker])
 
+            n_attempts_effective = 0;
+            hyd_tfms = []
+            ar_tfms = []
+            while j < n_attempts_max:
                 j += 1
+                ar_tfms_j = self.cameras.get_ar_markers(markers=[self.ar_marker]);
+                hyd_tfms_j = gmt.get_hydra_transforms(parent_frame=self.parent_frame, hydras=[hydra_marker]);
+                
+                if not ar_tfms_j or not hyd_tfms_j:
+                    if not ar_tfms_j:
+                        yellowprint("Could not find required ar markers from " + str(self.ar_marker))
+                    else:
+                        yellowprint("Could not find required hydra transforms from " + str(hydra_marker))
+                    continue
+                                
+                ar_tfms.append(ar_tfms_j[self.ar_marker])
+                hyd_tfms.append(hyd_tfms_j[hydra_marker])
+                
+                blueprint('\tGetting averaging transform : %d of %d ...'%(n_attempts_effective, n_avg-1))
+                n_attempts_effective += 1 
+                
+                if n_attempts_effective == n_avg:
+                    break
+                
                 sleeper.sleep()
             
-            if found is False:
-                yellowprint("Something went wrong; try again.")
+            if n_attempts_effective < n_avg:
+                yellowprint("Not enough transforms were collected; try again")
                 continue
 
-            artfm = avg_transform(artfms)
-            htfm = avg_transform(htfms)
-            
-            all_tfms.append(nlg.inv(artfm).dot(htfm))
+            ar_tfm = avg_transform(ar_tfms)
+            hyd_tfm = avg_transform(hyd_tfms)
+
+            all_tfms.append(nlg.inv(ar_tfm).dot(hyd_tfm))
             i += 1
             
         return avg_transform(all_tfms)
             
 
-    def add_hydra(self, hydra_marker, tfm=None, ntfm=10,navg=20):
+    def add_hydra(self, hydra_marker, tfm=None, ntfm=15,navg=30):
         """
         Assumes that this is to the AR marker on the gripper.
         """
@@ -211,17 +216,20 @@ class GripperLite ():
             for i,tfm in ar_tfms.items():
                 transforms.append({'parent':self.parent_frame,
                                    'child':'%sgripper_camera%i_tooltip'%(self.lr, i),
-                                   'tfm':self.get_tooltip_transform(self.ar_marker, tfm)})
+                                   'tfm':self.get_tooltip_transform(self.ar_marker, tfm)
+                                  })
         elif ar_tfms:
             transforms.append({'parent':self.parent_frame,
-                                'child':'%sgripper_ar_tooltip'%self.lr,
-                                'tfm':self.get_tooltip_transform(self.ar_marker, ar_tfms[self.ar_marker])})
+                               'child':'%sgripper_ar_tooltip'%self.lr,
+                               'tfm':self.get_tooltip_transform(self.ar_marker, ar_tfms[self.ar_marker])
+                              })
         if self.hydra_marker is not None:
             hyd_tfms = gmt.get_hydra_transforms(self.parent_frame, hydras=[self.hydra_marker])
             if hyd_tfms:
                 tfm = hyd_tfms[self.hydra_marker]
                 transforms.append({'parent':self.parent_frame,
                                    'child':'%sgripper_hydra_tooltip'%self.lr,
-                                   'tfm':self.get_tooltip_transform(self.hydra_marker, tfm)})
+                                   'tfm':self.get_tooltip_transform(self.hydra_marker, tfm)
+                                  })
 
         return transforms

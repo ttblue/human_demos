@@ -87,15 +87,15 @@ def convert_hmats_to_points (hmats):
     Could be readily changed for something similar.
     """
     
-    dist = 0.05
+    dist = 0.03
     points = []
     for hmat in hmats:
         x,y,z,p = hmat[0:3].T
         
         points.append(p)
-        points.append(p+dist*x)
-        points.append(p+dist*y)
-        points.append(p+dist*z)
+#         points.append(p+dist*x)
+#         points.append(p+dist*y)
+#         points.append(p+dist*z)
         
     return points
 
@@ -174,7 +174,7 @@ class CameraCalibrator:
         self.point_list[(c1,c2)][c1].extend(convert_hmats_to_points(ar1.values()))
         self.point_list[(c1,c2)][c2].extend(convert_hmats_to_points(ar2.values()))
         
-        greenprint("Extended pointsets by %i"%(len(ar1)*4))
+        greenprint("Extended pointsets by %i"%(len(ar1)))
         
         return True
                 
@@ -214,15 +214,16 @@ class CameraCalibrator:
         self.observed_ar_transforms = {i:{} for i in xrange(self.num_cameras)}
         
         sleeper = rospy.Rate(30)
-        for i in xrange(n_avg):
-            greenprint("Averaging %d out of %d"%(i+1,n_avg), False)
-            for j in xrange(self.num_cameras):
+        for j in xrange(self.num_cameras):
+            raw_input("Hit enter when ready for camera %i"%(j+1))
+            for i in xrange(n_avg):
+                greenprint("Averaging %d out of %d for camera %i"%(i+1,n_avg, j+1), False)
                 tfms = self.cameras.get_ar_markers(camera=j)
                 for marker in tfms: 
                     if marker not in self.observed_ar_transforms[j]:
                         self.observed_ar_transforms[j][marker] = []
                     self.observed_ar_transforms[j][marker].append(tfms[marker])
-            sleeper.sleep()
+                sleeper.sleep()
 
         #print self.observed_ar_transforms
         for i in self.observed_ar_transforms:

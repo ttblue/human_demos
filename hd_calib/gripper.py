@@ -7,6 +7,9 @@ from hd_utils.colorize import *
 from hd_utils import utils  
 
 class Gripper:
+    """
+    Old version of gripper, assumes gripper has more than one markers (in fact three markers?)
+    """
     
     # Change if need be
     parent_frame = 'camera1_rgb_optical_frame'

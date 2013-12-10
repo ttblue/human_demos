@@ -183,7 +183,7 @@ class CalibratedTransformPublisher(Thread):
         if self.gripper_lite:
             for lr,data in calib_data['grippers'].items():
                 gr = gripper_lite.GripperLite(lr,data['ar'],cameras=self.cameras)
-                gr.reset_gripper(lr, data[tfms], data['ar'], data['hydra'])
+                gr.reset_gripper(lr, data['tfms'], data['ar'], data['hydra'])
                 self.add_gripper(gr)
         else:
             for lr,graph in calib_data['grippers'].items():
@@ -211,8 +211,10 @@ class CalibratedTransformPublisher(Thread):
         
         if self.gripper_lite:
             for lr,data in calib_data['grippers'].items():
+                print lr
+                print data
                 gr = gripper_lite.GripperLite(lr,data['ar'],cameras=self.cameras)
-                gr.reset_gripper(lr, data[tfms], data['ar'], data['hydra'])
+                gr.reset_gripper(lr, data['tfms'], data['ar'], data['hydra'])
                 self.add_gripper(gr)
         else:
             for lr,graph in calib_data['grippers'].items():
@@ -335,7 +337,6 @@ def calibrate_hydras ():
 
 
 GRIPPER_MIN_OBS = 4
-GRIPPER_N_AVG = 20
 l_gripper_calib = None
 
 def calibrate_grippers ():

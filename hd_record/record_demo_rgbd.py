@@ -1,5 +1,9 @@
 #!/usr/bin/env python
 
+'''
+Script to record rgbd data
+'''
+
 import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument("master_file", type=str)
@@ -37,14 +41,15 @@ cpipe.initialize_calibration(args.num_cameras)
 cpipe.tfm_pub.load_calibration(calib_file)
 
 demo_dir = osp.join(data_dir, 'demos', args.demo_name)
-rgbd_dir = osp.join(data_dir, 'rgdb', args.demo_name)
-
 
 raw_input("Hit enter when ready to record demo.")
 yellowprint("Recording demonstration now...")
 
 try:
-    bag_cmd = "rosbag record -O %s /pot_angle /tf"%(demo_dir)
+    if not osp.exists(demo_dir):
+        os.mkdir(demo_dir)
+    
+    bag_cmd = "rosbag record -O %s /l_pot_angle /r_pot_angle /tf"%(demo_dir+"/demo.bag")
     greenprint(bag_cmd)
     bag_handle = subprocess.Popen(bag_cmd, shell=True)
     time.sleep(1)
@@ -55,11 +60,11 @@ try:
         raise Exception("problem starting bag recording")
     else: started_bag = True
     
-    
-    video_cmd1 = "record_rgbd_video --out=%s --downsample=%i"%(demo_dir+"1", args.downsample)
+  
+    video_cmd1 = "record_rgbd_video --out=%s --downsample=%i"%(demo_dir+"/camera_", args.downsample)
     greenprint(video_cmd1)
     if args.num_cameras == 2:
-        video_cmd2 = "record_rgbd_video --out=%s --downsample=%i --device_id=#2"%(demo_dir+"2", args.downsample)
+        video_cmd2 = "record_rgbd_video --out=%s --downsample=%i --device_id=#2"%(demo_dir+"/camera_", args.downsample)
         greenprint(video_cmd2)
 
     started_video2 = False
@@ -93,21 +98,23 @@ finally:
         video_handle2.wait()
 
 
-# bagfilename = demo_dir+".bag"
-# if yes_or_no("save demo?"):
-#     with open(args.master_file,"w") as fh:
-#         fh.write("\n"
-#             "- bag_file: %(bagfilename)s\n"
-#             "  video_dir: %(videodir)s\n"
-#             "  demo_name: %(demoname)s"%dict(bagfilename=bagfilename, videodir=demo_dir, demoname=demo_dir))
-# else:
-#     if osp.exists(demo_dir):
-#         print "Removing demo dir" 
-#         shutil.rmtree(demo_dir)
-#         print "Done"
-#     if osp.exists(bagfilename):
-#         print "Removing bag file"
-#         os.unlink(bagfilename)
-#         print "Done"
+bag_filename = demo_dir+"/demo.bag"
+video1_dirname = demo_dir+"/camera_#1"
+video2_dirname = demo_dir+"/camera_#2"
+annotation_filename = demo_dir+"/ann.yaml"
+
+if yes_or_no("save demo?"):
+    with open(demo_dir+"/"+args.master_file,"w") as fh:
+        fh.write("\n"
+            "- bag_file: %(bagfilename)s\n"
+            "  video_dir1: %(video1dir)s\n"
+            "  video_dir2: %(video2dir)s\n"
+            "  annot_dir: %(annofilename)s\n"
+            "  demo_name: %(demoname)s"%dict(bagfilename=bag_filename, video1dir=video1_dirname, video2dir=video2_dirname, annofilename=annotation_filename, demoname=demo_dir))
+else:
+    if osp.exists(demo_dir):
+        print "Removing demo dir" 
+        shutil.rmtree(demo_dir)
+        print "Done"
 
 #exit()

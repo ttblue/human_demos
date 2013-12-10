@@ -624,13 +624,15 @@ class GripperCalibrator:
         raw_input(colorize("Iteration %d: Press return when ready to capture transforms."%self.iterations, "red", True))
         
         sleeper = rospy.Rate(30)
+        
         avg_tfms = {}
-        j = 0
-        thresh = n_avg*2
         pot_avg = 0.0
-        while j < n_avg:
-            blueprint('\tGetting averaging transform : %d of %d ...'%(j,n_avg-1))    
-
+        
+        j = 0
+        n_attempts_max = n_avg*2
+        n_attempts_effective = 0;
+        while j < n_attempts_max:
+            j += 1
             tfms = {}
             # Fuck the frames bullshit
             ar_tfm = self.cameras.get_ar_markers(markers=self.ar_markers, camera=1)
@@ -642,26 +644,29 @@ class GripperCalibrator:
                     yellowprint('Could not find required ar markers from '+str(self.ar_markers))
                 else:
                     yellowprint('Could not find required hydra transforms from '+str(self.hydras))
-                thresh -= 1
-                if thresh == 0: return False
                 continue
-            
-            
+
             pot_avg += pot_angle
-            
-            j += 1
             tfms.update(ar_tfm)
             tfms.update(hyd_tfm)
+            
+            
+            blueprint('\tGetting averaging transform: %d of %d ...'%(n_attempts_effective, n_avg-1))
+            n_attempts_effective += 1
 
-            # The angle relevant for each finger is only half the angle.
-
-                        
+            # The angle relevant for each finger is only half the angle.                        
             for marker in tfms:
                 if marker not in avg_tfms:
                     avg_tfms[marker] = []
                 avg_tfms[marker].append(tfms[marker])
                 
+            if n_attempts_effective == n_avg:
+                break
+            
             sleeper.sleep()
+            
+        if n_attempts_effective < n_avg:
+            return False;
             
         pot_avg /= n_avg
         
@@ -670,8 +675,9 @@ class GripperCalibrator:
         for marker in avg_tfms:
             avg_tfms[marker] = utils.avg_transform(avg_tfms[marker])
         
-        if len(avg_tfms) == 1:
-            yellowprint('Found %i marker only. Not enough to update.'%avg_tfms.keys()[0])
+        ## only one marker on gripper now
+        #if len(avg_tfms) == 1:
+        #    yellowprint('Found %i marker only. Not enough to update.'%avg_tfms.keys()[0])
 
         update_groups_from_observations(self.masterGraph, avg_tfms, pot_angle)
         return True

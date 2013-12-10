@@ -24,8 +24,10 @@ from hd_track.kalman import kalman, closer_angle
 from hd_track.kalman import smoother
 from hd_track.kalman_tuning import state_from_tfms_no_velocity
 from hd_track.streamer import streamize
-from hd_track.stream_pc import streamize_pc
+from hd_track.stream_pc import streamize_pc, streamize_rgbd_pc
 from hd_visualization.ros_vis import draw_trajectory 
+from hd_utils import ros_utils as ru, clouds, conversions, extraction_utils as eu
+
 
 import hd_utils.transformations as tfms
 
@@ -56,7 +58,7 @@ def load_data(fname):
     return cam1, cam2, hydra transform data.
     """
     fname = osp.join(hd_path + '/hd_data/demos/obs_data', fname)
-    dat   = cp.load(open(fname))
+    dat   = cp.load(open(fname))['l']
     
     cam1_ts  = np.array([tt[1] for tt in dat['camera1']])  ## time-stamps
     cam1_tfs = [tt[0] for tt in dat['camera1']]  ## transforms
@@ -299,90 +301,16 @@ def correlation_shift(xa,xb):
     return  int(np.max(shifts))
 
 
-def demo_processing():
-    use_spline = True
-
-    data_dir = os.getenv('HD_DATA_DIR') 
-    _, _, _, ar1_strm, ar2_strm, hy_strm = relative_time_streams(demo_fname +'.data', freq)
-
-    ## run the kalman filter:
-    nsteps, tmin, F_means,S,A,R = run_kalman_filter(demo_fname +'.data', freq, use_spline)
-    S_means = smoother(A, R, F_means, S)
-    X_kf = np.array(F_means)
-    X_kf = np.reshape(X_kf, (X_kf.shape[0], X_kf.shape[1])).T
-
-    X_ks = np.array(S_means)
-    X_ks = np.reshape(X_ks, (X_ks.shape[0], X_ks.shape[1])).T
-    
-
-    # Shifting
-    shift = 10#correlation_shift(X_kf,X_ks)
-    X_ks = np.roll(X_ks,shift,axis=1)
-    X_ks[:,:shift]  = X_ks[:,shift][:,None]
-    T_filt = state_to_hmat(list(X_ks.T))
-    #T_filt = state_to_hmat(S_means)
-    
-    ## load the potentiometer-angle stream:
-    pot_data = cp.load(open(osp.join(data_dir, 'demos/obs_data/' + demo_fname +'.data')))['pot_angles']
-    ang_ts   = np.array([tt[1] for tt in pot_data])  ## time-stamps
-    ang_vals = [open_frac(tt[0]) for tt in pot_data]  ## angles
-    ang_strm = streamize(ang_vals, ang_ts, freq, lambda x : x[-1], tmin)
-
-    cam1_frame_id = '/camera1_rgb_optical_frame'
-    cam2_frame_id = '/camera2_rgb_optical_frame'
-
-    ## get the relative-transforms between the cameras:
-    cam_tfm  = get_cam_transform()
-    publish_static_tfm(cam1_frame_id, cam2_frame_id, cam_tfm)
-
-  
-    ## frame of the filter estimate:
-    sleeper = rospy.Rate(freq)
-    
-    vs_ar1 = []
-    vs_ar2 = []
-    vs_hy = []
-
-    Ts_ar1 = []
-    Ts_ar2 = []
-    Ts_hy = []
-
-    if use_spline:
-        smooth_hy = (t for t in fit_spline_to_stream(hy_strm, nsteps))
-    else:
-        smooth_hy = hy_strm
-
-    for i in xrange(nsteps):
-        ar1_est = soft_next(ar1_strm)
-        ar2_est = soft_next(ar2_strm)
-        hy_est = soft_next(smooth_hy)
-
-        if ar1_est != None:
-            Ts_ar1.append(ar1_est)
-            vs_ar1.append(i)
-        if ar2_est != None:
-            Ts_ar2.append(ar2_est)
-            vs_ar2.append(i)
-        if hy_est != None:
-            Ts_hy.append(hy_est)
-            vs_hy.append(i)
-
-    X_ar1 = state_from_tfms_no_velocity(Ts_ar1).T
-    X_ar2 = state_from_tfms_no_velocity(Ts_ar2).T
-    X_hy  = state_from_tfms_no_velocity(Ts_hy).T
-
-    plot_kalman(X_kf[:,1:], X_ks[:,1:], X_ar1, vs_ar1, X_ar2, vs_ar2, X_hy, vs_hy, 's12fh')
-    plt.show()
-
-
 def main_plot():
     use_spline = True
 
-    data_dir = os.getenv('HD_DATA_DIR') 
-    _, _, _, ar1_strm, ar2_strm, hy_strm = relative_time_streams(demo_fname +'.data', freq)
+    demo_dir = hd_path + '/hd_data/demos/' + demo_fname;    
+    data_file = osp.join(demo_dir, 'demo.data')
+
+    _, _, _, ar1_strm, ar2_strm, hy_strm = relative_time_streams(data_file, freq)
 
     ## run the kalman filter:
-    nsteps, tmin, F_means,S,A,R = run_kalman_filter(demo_fname +'.data', freq, use_spline)
+    nsteps, tmin, F_means,S,A,R = run_kalman_filter(data_file, freq, use_spline)
     S_means = smoother(A, R, F_means, S)
     X_kf = np.array(F_means)
     X_kf = np.reshape(X_kf, (X_kf.shape[0], X_kf.shape[1])).T
@@ -399,7 +327,7 @@ def main_plot():
     #T_filt = state_to_hmat(S_means)
     
     ## load the potentiometer-angle stream:
-    pot_data = cp.load(open(osp.join(data_dir, 'demos/obs_data/' + demo_fname +'.data')))['pot_angles']
+    pot_data = cp.load(open(data_file))['l']['pot_angles']
     ang_ts   = np.array([tt[1] for tt in pot_data])  ## time-stamps
     ang_vals = [open_frac(tt[0]) for tt in pot_data]  ## angles
     ang_strm = streamize(ang_vals, ang_ts, freq, lambda x : x[-1], tmin)
@@ -455,8 +383,14 @@ def main_plot():
 def main_filter():
     use_spline = True
 
-    data_dir = os.getenv('HD_DATA_DIR') 
-    bag = rosbag.Bag(hd_path + '/hd_data/demos/recorded/' + demo_fname +'.bag')
+    demo_dir = hd_path + '/hd_data/demos/' + demo_fname;
+    
+    bag_file = osp.join(demo_dir, 'demo.bag')
+    rgbd1_dir = osp.join(demo_dir, 'camera_#1')
+    rgbd2_dir = osp.join(demo_dir, 'camera_#2')
+    data_file = osp.join(demo_dir, 'demo.data')
+    bag = rosbag.Bag(bag_file)
+     
     pub = rospy.Publisher('/point_cloud1', PointCloud2)
     pub2= rospy.Publisher('/point_cloud2', PointCloud2)
     
@@ -464,17 +398,17 @@ def main_filter():
     c1_tfm_pub    = rospy.Publisher('/ar1_estimate', PoseStamped)
     c2_tfm_pub    = rospy.Publisher('/ar2_estimate', PoseStamped)
     hydra_tfm_pub = rospy.Publisher('/hydra_estimate', PoseStamped)
-    _, _, _, ar1_strm, ar2_strm, hy_strm = relative_time_streams(demo_fname + '.data', freq)
+    _, _, _, ar1_strm, ar2_strm, hy_strm = relative_time_streams(data_file, freq)
 
     #=====================================================
     
     ## run the KF with the Cameras only:
-    _, _, F_means_cams, _,_,_ = run_kalman_filter(demo_fname + '.data', freq, use_spline=False, use_hydra=False)
+    _, _, F_means_cams, _,_,_ = run_kalman_filter(data_file, freq, use_spline=False, use_hydra=False)
     X_kf_cams = np.array(F_means_cams)
     X_kf_cams = np.reshape(X_kf_cams, (X_kf_cams.shape[0], X_kf_cams.shape[1])).T
 
     ## run the KF and smoother on everything:
-    nsteps, tmin, F_means, S,A,R = run_kalman_filter(demo_fname + '.data', freq, use_spline, use_hydra=True)
+    nsteps, tmin, F_means, S,A,R = run_kalman_filter(data_file, freq, use_spline, use_hydra=True)
     
     #S_means = smoother(A, R, F_means, S)
     #X_ks = np.array(S_means)
@@ -496,17 +430,20 @@ def main_filter():
   
     
     ## load the potentiometer-angle stream:
-    pot_data = cp.load(open(osp.join(data_dir, 'demos/obs_data/' + demo_fname +'.data')))['pot_angles']
+    pot_data = cp.load(open(data_file))['l']['pot_angles']
     ang_ts   = np.array([tt[1] for tt in pot_data])  ## time-stamps
     ang_vals = [open_frac(tt[0]) for tt in pot_data]  ## angles
     ang_strm = streamize(ang_vals, ang_ts, freq, lambda x : x[-1], tmin)
 
     ## get the point-cloud stream
-    pc1_strm = streamize_pc(bag, '/camera1/depth_registered/points', freq, tmin)
-    pc2_strm = streamize_pc(bag, '/camera2/depth_registered/points', freq, tmin)
-
     cam1_frame_id = '/camera1_rgb_optical_frame'
     cam2_frame_id = '/camera2_rgb_optical_frame'
+    
+    pc1_strm = streamize_rgbd_pc(rgbd1_dir, cam1_frame_id, freq, tmin)
+    pc2_strm = streamize_rgbd_pc(rgbd2_dir, cam2_frame_id, freq, tmin)
+
+
+
 
     ## get the relative-transforms between the cameras:
     cam_tfm  = get_cam_transform()
