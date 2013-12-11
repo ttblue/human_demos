@@ -76,9 +76,14 @@ def relative_time_streams(fname, freq):
     c1_ts, c1_tfs, c2_ts, c2_tfs, hy_ts, hy_tfs = load_data(fname)
     dt =1./freq
     
+    # need to handle the case when c1_ts, c2_ts or hy_ts is empty, 
     tmin = min(np.min(c1_ts), np.min(c2_ts), np.min(hy_ts))
     tmax = max(np.max(c1_ts), np.max(c2_ts), np.max(hy_ts))
-
+    
+    #print [np.min(c1_ts), np.min(c2_ts), np.min(hy_ts)]
+    #print [np.max(c1_ts), np.max(c2_ts), np.max(hy_ts)]
+    
+    
     ## calculate the number of time-steps for the kalman filter.    
     nsteps = int(math.ceil((tmax-tmin)/dt))
     
@@ -86,11 +91,12 @@ def relative_time_streams(fname, freq):
     c1_ts -= tmin
     c2_ts -= tmin
     hy_ts -= tmin
+
     
-    ar1_strm = streamize(c1_tfs, c1_ts, freq, avg_transform)
-    ar2_strm = streamize(c2_tfs, c2_ts, freq, avg_transform)
-    hy_strm  = streamize(hy_tfs, hy_ts, freq, avg_transform)
-    
+    ar1_strm = streamize(c1_tfs, c1_ts, freq, avg_transform)    
+    ar2_strm =  streamize(c2_tfs, c2_ts, freq, avg_transform)
+    hy_strm = streamize(hy_tfs, hy_ts, freq, avg_transform)
+        
     return tmin, tmax, nsteps, ar1_strm, ar2_strm, hy_strm
 
 
@@ -134,6 +140,11 @@ def setup_kalman(fname, freq=30.):
     
     tmin = min(np.min(c1_ts), np.min(c2_ts), np.min(hy_ts))
     tmax = max(np.max(c1_ts), np.max(c2_ts), np.max(hy_ts))
+    
+    #print [np.min(c1_ts), np.min(c2_ts), np.min(hy_ts)]
+    #print [np.max(c1_ts), np.max(c2_ts), np.max(hy_ts)]
+    
+    
 
     ## calculate the number of time-steps for the kalman filter.    
     nsteps = int(math.ceil((tmax-tmin)/dt))
@@ -302,13 +313,13 @@ def correlation_shift(xa,xb):
 
 
 def main_plot():
-    use_spline = True
+    use_spline = False
 
     demo_dir = hd_path + '/hd_data/demos/' + demo_fname;    
     data_file = osp.join(demo_dir, 'demo.data')
 
-    _, _, _, ar1_strm, ar2_strm, hy_strm = relative_time_streams(data_file, freq)
-
+    _, _, _, ar1_strm, ar2_strm, hy_strm = relative_time_streams(data_file, freq)    
+    
     ## run the kalman filter:
     nsteps, tmin, F_means,S,A,R = run_kalman_filter(data_file, freq, use_spline)
     S_means = smoother(A, R, F_means, S)
@@ -320,7 +331,7 @@ def main_plot():
     
 
     # Shifting
-    shift = 10#correlation_shift(X_kf,X_ks)
+    shift = 0#correlation_shift(X_kf,X_ks)
     X_ks = np.roll(X_ks,shift,axis=1)
     X_ks[:,:shift]  = X_ks[:,shift][:,None]
     T_filt = state_to_hmat(list(X_ks.T))
@@ -360,7 +371,7 @@ def main_plot():
         ar1_est = soft_next(ar1_strm)
         ar2_est = soft_next(ar2_strm)
         hy_est = soft_next(smooth_hy)
-
+        
         if ar1_est != None:
             Ts_ar1.append(ar1_est)
             vs_ar1.append(i)
@@ -462,7 +473,6 @@ def main_filter():
         smooth_hy = hy_strm
 
     prev_ang = 0
-    print nsteps
     for i in xrange(nsteps):
         #raw_input("Hit next when ready.")
         print "Kalman ts: ", tmin+(0.0+i)/freq

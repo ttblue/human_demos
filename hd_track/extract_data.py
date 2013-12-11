@@ -354,7 +354,7 @@ def save_observations_rgbd(demo_name, calib_file, save_file=None):
     if tfm_c1_c2 is None or tfm_c1_h is None:
         redprint("Calibration does not have required transforms")
         return
-    
+
     if not calib_data.get('grippers'):
         redprint("Gripper not found.")
         return
@@ -369,16 +369,18 @@ def save_observations_rgbd(demo_name, calib_file, save_file=None):
                    'camera2':[],
                    'hydra':[],
                    'pot_angles':[]}
-    
+        
+    winname = 'abcd'
     yellowprint('Camera1')
     rgbs1fnames, depths1fnames, stamps1 = eu.get_rgbd_names_times(rgbd1_dir)
     cam1_count = len(stamps1)
     for ind in rgbs1fnames:
         rgb = cv2.imread(rgbs1fnames[ind])
+        cv2.imshow(winname, rgb)
+        cv2.waitKey(1)
         assert rgb is not None
         depth = cv2.imread(depths1fnames[ind],2)
         assert depth is not None
-
         xyz = clouds.depth_to_xyz(depth, asus_xtion_pro_f)
         pc = ru.xyzrgb2pc(xyz, rgb, frame_id='', use_time_now=False)
         ar_tfms = get_ar_marker_poses(pc)
@@ -387,7 +389,7 @@ def save_observations_rgbd(demo_name, calib_file, save_file=None):
         for lr,gr in grippers.items():
             ar = gr.get_ar_marker() 
             if ar in ar_tfms:
-                tt_tfm = gr.get_tooltip_transform(ar, np.asarray(ar_tfms[ar]))
+                tt_tfm = gr.get_tool_tip_transform(ar, np.asarray(ar_tfms[ar]))
                 data[lr]['camera1'].append((tt_tfm,stamps1[ind]))
         
     yellowprint('Camera2')
@@ -395,6 +397,8 @@ def save_observations_rgbd(demo_name, calib_file, save_file=None):
     cam2_count = len(stamps2)
     for ind in rgbs2fnames:
         rgb = cv2.imread(rgbs2fnames[ind])
+        cv2.imshow(winname, rgb)
+        cv2.waitKey(1)
         assert rgb is not None
         depth = cv2.imread(depths2fnames[ind],2)
         assert depth is not None
@@ -407,7 +411,7 @@ def save_observations_rgbd(demo_name, calib_file, save_file=None):
         for lr,gr in grippers.items():
             ar = gr.get_ar_marker()
             if ar in ar_tfms:
-                tt_tfm = gr.get_tooltip_transform(ar, np.asarray(ar_tfms[ar]))
+                tt_tfm = gr.get_tool_tip_transform(ar, np.asarray(ar_tfms[ar]))
                 data[lr]['camera2'].append((tfm_c1_c2.dot(tt_tfm),stamps2[ind]))
 
 
@@ -428,7 +432,8 @@ def save_observations_rgbd(demo_name, calib_file, save_file=None):
                     rot = (r.x, r.y, r.z, r.w)
                     hyd_tfm = tfm_c1_h.dot(conversions.trans_rot_to_hmat(trans, rot))
                     stamp = tfm.header.stamp.to_sec()
-                    data[lr]['hydra'].append((tfm_c1_h.dot(hyd_tfm),stamp))
+                    tt_tfm = grippers[lr].get_tool_tip_transform(lr_long[lr], hyd_tfm)
+                    data[lr]['hydra'].append((tt_tfm, stamp))
                     found += lr
         if found:
             blueprint("Got hydra readings %s at time %f"%(found,stamp))

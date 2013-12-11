@@ -58,7 +58,9 @@ class GripperLite ():
     def get_rel_transform (self, m1, m2):
         return self.transform_graph.edge[m1][m2]
     
-    def get_tooltip_transform (self, m, tfm):
+    '''
+    '''
+    def get_tool_tip_transform (self, m, tfm):
         return tfm.dot(self.get_rel_transform(m, 'tool_tip'))
     
     def reset_gripper (self, lr, transforms, ar, hydra=None):
@@ -216,12 +218,12 @@ class GripperLite ():
             for i,tfm in ar_tfms.items():
                 transforms.append({'parent':self.parent_frame,
                                    'child':'%sgripper_camera%i_tooltip'%(self.lr, i),
-                                   'tfm':self.get_tooltip_transform(self.ar_marker, tfm)
+                                   'tfm':self.get_tool_tip_transform(self.ar_marker, tfm)
                                   })
         elif ar_tfms:
             transforms.append({'parent':self.parent_frame,
                                'child':'%sgripper_ar_tooltip'%self.lr,
-                               'tfm':self.get_tooltip_transform(self.ar_marker, ar_tfms[self.ar_marker])
+                               'tfm':self.get_tool_tip_transform(self.ar_marker, ar_tfms[self.ar_marker])
                               })
         if self.hydra_marker is not None:
             hyd_tfms = gmt.get_hydra_transforms(self.parent_frame, hydras=[self.hydra_marker])
@@ -229,7 +231,7 @@ class GripperLite ():
                 tfm = hyd_tfms[self.hydra_marker]
                 transforms.append({'parent':self.parent_frame,
                                    'child':'%sgripper_hydra_tooltip'%self.lr,
-                                   'tfm':self.get_tooltip_transform(self.hydra_marker, tfm)
+                                   'tfm':self.get_tool_tip_transform(self.hydra_marker, tfm)
                                   })
 
         return transforms

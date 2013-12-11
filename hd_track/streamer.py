@@ -54,9 +54,7 @@ class streamize():
             return self.favg(cands) if cands else None
         
     def get_data(self):
-        return (self.objs, self.ts)
-
-            
+        return (self.objs, self.ts)            
             
 if __name__ == '__main__':
     a  = [1,2,3,4,5,6]
