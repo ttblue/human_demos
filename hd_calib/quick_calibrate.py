@@ -13,7 +13,6 @@ def find_transform (tfms1, tfms2):
     """
     Finds transform between cameras from latest stored observation.
     """
-
     ar1, ar2 = cc.common_ar_markers(tfms1, tfms2)
     if not ar1 or not ar2:
         return None

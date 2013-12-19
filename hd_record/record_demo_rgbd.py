@@ -49,7 +49,7 @@ try:
     if not osp.exists(demo_dir):
         os.mkdir(demo_dir)
     
-    bag_cmd = "rosbag record -O %s /l_pot_angle /r_pot_angle /tf"%(demo_dir+"/demo.bag")
+    bag_cmd = "rosbag record -O %s /l_pot_angle /r_pot_angle /segment /tf"%(demo_dir+"/demo.bag")
     greenprint(bag_cmd)
     bag_handle = subprocess.Popen(bag_cmd, shell=True)
     time.sleep(1)

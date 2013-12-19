@@ -17,7 +17,7 @@ class Gripper:
     cameras = None
     
     transform_graph = None
-    tt_calculated = False
+    tooltip_calculated = False
     lr = None
     mmarkers = []
     lmarkers = []
@@ -25,7 +25,7 @@ class Gripper:
     allmarkers = []
     
     ar_markers = []
-    hydra_markers= []
+    hydra_markers = []
     
     def __init__ (self, lr, transform_graph, cameras=None):
         self.transform_graph = transform_graph
@@ -46,13 +46,16 @@ class Gripper:
     def set_cameras (self, cameras):
         self.cameras = cameras
         
+    def get_ar_markers(self):
+        return self.ar_markers
     
-    def calculate_tool_tip_transform (self, m1, m2):
+    def calculate_tooltip_transform (self, m1, m2):
         """
+        Not used in any places
         Assuming that the gripper has "master", "l" and "r"
         m1 and m2 are markers on the tool tip. 
         """
-        if self.tt_calculated:
+        if self.tooltip_calculated:
             yellowpring("Tool tip already calculated.")
             return
         if m1 in self.rmarkers:
@@ -64,31 +67,31 @@ class Gripper:
 
         # Assume that the origin of the tool tip transform is the avg
         # point of fingers when they're at an angle of 0
-        ltfm = self.transform_graph.edge['master']['l']['tfm_func'].get_tfm('cor', m1,0)
-        rtfm = self.transform_graph.edge['master']['r']['tfm_func'].get_tfm('cor', m2,0)
+        ltfm = self.transform_graph.edge['master']['l']['tfm_func'].get_tfm('cor', m1, 0)
+        rtfm = self.transform_graph.edge['master']['r']['tfm_func'].get_tfm('cor', m2, 0)
         
-        lorg = ltfm[0:3,3]
-        rorg = ltfm[0:3,3]
-        tt_org = (lorg+rorg)/2.0
+        lorg = ltfm[0:3, 3]
+        rorg = ltfm[0:3, 3]
+        tt_org = (lorg + rorg) / 2.0
 
         master = self.transform_graph.node['master']['graph']
         
         # Old "correct" code.
         # z axis is the same as cor
-        #tt_z = np.array([0,0,1])
+        # tt_z = np.array([0,0,1])
         # x axis (pointing axis) is the projection of vector from cor to tt_org on the xy plane.
         # Since we're in the 'cor' frame, it's just the projection of direction vector tt_org on xy plane.
-        #tt_org_vec = tt_org/nlg.norm(tt_org)
-        #tt_x = tt_org_vec - tt_org_vec.dot(tt_z)*tt_z
-        #tt_x = tt_x/nlg.norm(tt_x)
-        #tt_y = np.cross(tt_z, tt_x)
-        #tt_tfm =  np.r_[np.c_[tt_x, tt_y, tt_z, tt_org], np.array([[0,0,0,1]])]
+        # tt_org_vec = tt_org/nlg.norm(tt_org)
+        # tt_x = tt_org_vec - tt_org_vec.dot(tt_z)*tt_z
+        # tt_x = tt_x/nlg.norm(tt_x)
+        # tt_y = np.cross(tt_z, tt_x)
+        # tt_tfm =  np.r_[np.c_[tt_x, tt_y, tt_z, tt_org], np.array([[0,0,0,1]])]
         
 
         # New hacky code:
         master_marker = self.transform_graph.node['master']['master_marker']
         master_tfm = master.edge['cor'][master_marker]['tfm']
-        tt_tfm =  np.r_[np.c_[master_tfm[0:3,0:3], tt_org], np.array([[0,0,0,1]])]
+        tt_tfm = np.r_[np.c_[master_tfm[0:3, 0:3], tt_org], np.array([[0, 0, 0, 1]])]
         
         
         master.add_node('tool_tip')
@@ -110,17 +113,17 @@ class Gripper:
         
         self.mmarkers.append('tool_tip')
         self.allmarkers.append('tool_tip')
-        self.tt_calculated = True
+        self.tooltip_calculated = True
 
         
-    def get_tool_tip_transform(self, marker_tfms, theta):
+    def get_tooltip_transform(self, marker_tfms, theta):
         """
-        Get tool tip transfrom from dict of relevant markers to transforms
+        Get tool tip transform from dict of relevant markers to transforms
         Also provide the angle of gripper.
         Don't need it if only master transform is visible.
         m has to be on one of the 'master,'l' or 'r' groups
         """
-        if self.tt_calculated is False:
+        if self.tooltip_calculated is False:
             redprint ("Tool tip transform not calibrated.")
             return
 
@@ -132,11 +135,11 @@ class Gripper:
             if m in self.mmarkers:
                 tt_tfm = masterg.edge[m]['tool_tip']['tfm']
             elif m in self.lmarkers:
-                tt_tfm = self.transform_graph.edge['l']['master']['tfm_func'].get_tfm(m,'tool_tip', theta)
+                tt_tfm = self.transform_graph.edge['l']['master']['tfm_func'].get_tfm(m, 'tool_tip', theta)
             elif m in self.rmarkers:
-                tt_tfm = self.transform_graph.edge['r']['master']['tfm_func'].get_tfm(m,'tool_tip', theta)
+                tt_tfm = self.transform_graph.edge['r']['master']['tfm_func'].get_tfm(m, 'tool_tip', theta)
             else:
-                redprint('Marker %s not on gripper.'%m)
+                redprint('Marker %s not on gripper.' % m)
                 continue
             avg_tfms.append(marker_tfms[m].dot(tt_tfm))
             
@@ -148,18 +151,18 @@ class Gripper:
     
     def get_rel_transform(self, m1, m2, theta):
         """
-        Return relative transform between any two markers on gripper.
+        Return relative transform between any two markers on gripper (from m2 to m1)
         """
         masterg = self.transform_graph.node['master']['graph']
 
         if m1 in self.mmarkers:
             tfm1 = masterg.edge[m1]['cor']['tfm']
         elif m1 in self.lmarkers:
-            tfm1 = self.transform_graph.edge['l']['master']['tfm_func'].get_tfm(m1,'cor', theta)
+            tfm1 = self.transform_graph.edge['l']['master']['tfm_func'].get_tfm(m1, 'cor', theta)
         elif m1 in self.rmarkers:
-            tfm1 = self.transform_graph.edge['r']['master']['tfm_func'].get_tfm(m1,'cor', theta)
+            tfm1 = self.transform_graph.edge['r']['master']['tfm_func'].get_tfm(m1, 'cor', theta)
         else:
-            redprint('Marker %s not on gripper.'%m1)
+            redprint('Marker %s not on gripper.' % m1)
             return
 
         if m2 in self.mmarkers:
@@ -169,7 +172,7 @@ class Gripper:
         elif m2 in self.rmarkers:
             tfm2 = self.transform_graph.edge['master']['r']['tfm_func'].get_tfm('cor', m2, theta)
         else:
-            redprint('Marker %s not on gripper.'%m2)
+            redprint('Marker %s not on gripper.' % m2)
             return
         
         return tfm1.dot(tfm2)
@@ -191,9 +194,9 @@ class Gripper:
                 ar_tfms_cam[i] = self.cameras.get_ar_markers(camera=i, parent_frame=True)
 
         hyd_tfms = gmt.get_hydra_transforms(self.parent_frame, None)
-        theta = gmt.get_pot_angle()
+        theta = gmt.get_pot_angle(self.lr)
 
-        marker_tfms= ar_tfms
+        marker_tfms = ar_tfms
         marker_tfms.update(hyd_tfms)
         
         ret_tfms = []
@@ -203,14 +206,14 @@ class Gripper:
         cor_ar_avg = []
         ar_found = False
         hyd_found = False
-        for m,tfm in marker_tfms.items():
+        for m, tfm in marker_tfms.items():
             if m in self.ar_markers:
-                c_tfm = tfm.dot(self.get_rel_transform(m,'cor', theta)) 
+                c_tfm = tfm.dot(self.get_rel_transform(m, 'cor', theta)) 
                 cor_ar_avg.append(c_tfm)
                 cor_avg_tfms.append(c_tfm)
                 ar_found = True
             elif m in self.hydra_markers:
-                c_tfm = tfm.dot(self.get_rel_transform(m,'cor', theta)) 
+                c_tfm = tfm.dot(self.get_rel_transform(m, 'cor', theta)) 
                 cor_hyd_avg.append(c_tfm)
                 cor_avg_tfms.append(c_tfm)
                 hyd_found = True
@@ -221,7 +224,7 @@ class Gripper:
             for i in ar_tfms_cam:
                 for m, tfm in ar_tfms_cam[i].items():
                     if m in self.ar_markers:
-                        c_tfm = tfm.dot(self.get_rel_transform(m,'cor', theta))
+                        c_tfm = tfm.dot(self.get_rel_transform(m, 'cor', theta))
                         if i not in cor_ar_cams:
                             cor_ar_cams[i] = []
                             cam_found[i] = True 
@@ -236,47 +239,48 @@ class Gripper:
         cor_h_tfm = utils.avg_transform(cor_hyd_avg)
         cor_a_tfm = utils.avg_transform(cor_ar_avg)
         
-        ret_tfms.append({'parent':parent_frame, 
-                         'child':'%sgripper_%s'%(self.lr, 'cor'),
+        ret_tfms.append({'parent':parent_frame,
+                         'child':'%sgripper_%s' % (self.lr, 'cor'),
                          'tfm':cor_tfm})
 
         for m in self.allmarkers:
             if m != 'cor' and m != 'tool_tip':
                 tfm = self.get_rel_transform('cor', m, theta)
-                ret_tfms.append({'parent':parent_frame, 
-                                 'child':'%sgripper_%s'%(self.lr, m),
+                ret_tfms.append({'parent':parent_frame,
+                                 'child':'%sgripper_%s' % (self.lr, m),
                                  'tfm':cor_tfm.dot(tfm)})
 
-        if self.tt_calculated:
+        if self.tooltip_calculated:
             tfm = self.get_rel_transform('cor', 'tool_tip', theta)
-            ret_tfms.append({'parent':parent_frame, 
-                             'child':'%sgripper_tooltip'%self.lr,
+            ret_tfms.append({'parent':parent_frame,
+                             'child':'%sgripper_tooltip' % self.lr,
                              'tfm':cor_tfm.dot(tfm)})
             if hyd_found:
-                ret_tfms.append({'parent':parent_frame, 
-                                 'child':'%sgripper_tooltip_hydra'%self.lr,
+                ret_tfms.append({'parent':parent_frame,
+                                 'child':'%sgripper_tooltip_hydra' % self.lr,
                                  'tfm':cor_h_tfm.dot(tfm)})
             if ar_found:
-                ret_tfms.append({'parent':parent_frame, 
-                                 'child':'%sgripper_tooltip_ar'%self.lr,
+                ret_tfms.append({'parent':parent_frame,
+                                 'child':'%sgripper_tooltip_ar' % self.lr,
                                  'tfm':cor_a_tfm.dot(tfm)})
             
             if diff_cam:
-                for i,cor_tfm in cor_ar_cams.items():
-                    ret_tfms.append({'parent':parent_frame, 
-                                     'child':'%sgripper_tooltip_camera%i'%(self.lr,i+1),
+                for i, cor_tfm in cor_ar_cams.items():
+                    ret_tfms.append({'parent':parent_frame,
+                                     'child':'%sgripper_tooltip_camera%i' % (self.lr, i + 1),
                                      'tfm':cor_tfm.dot(tfm)})
                     
         
         return ret_tfms
     
     
-    def get_specific_tool_tip_tfm (self, m_type='AR'):
+    def get_specific_tooltip_tfm (self, m_type='AR'):
         """
+        Not used in any places
         Get the estimate of the tool tip from either ar_markers or hydras.
         """
         if m_type not in ['AR', 'hydra']:
-            redprint('Not sure what estimate %s gives.'%m_type)
+            redprint('Not sure what estimate %s gives.' % m_type)
             return
         
         if m_type == 'AR':
@@ -290,8 +294,8 @@ class Gripper:
                 return
             marker_tfms = gmt.get_hydra_transforms(self.parent_frame, self.hydra_markers)
         
-        theta = gmt.get_pot_angle()
-        return self.get_tool_tip_transform(marker_tfms, theta)
+        theta = gmt.get_pot_angle(self.lr)
+        return self.get_tooltip_transform(marker_tfms, theta)
         
     
     def get_markers_transform (self, markers, marker_tfms, theta):
@@ -305,9 +309,9 @@ class Gripper:
         
         rtn_tfms = {}
         cor_avg_tfms = []
-        for m,tfm in marker_tfms.items():
+        for m, tfm in marker_tfms.items():
             if m in self.allmarkers:
-                cor_avg_tfms.append(tfm.dot(self.get_rel_transform(m,'cor', theta)))
+                cor_avg_tfms.append(tfm.dot(self.get_rel_transform(m, 'cor', theta)))
         
         cor_tfm = utils.avg_transform(cor_avg_tfms)
 
@@ -324,7 +328,7 @@ class Gripper:
 
         
     
-    def get_obs_new_marker(self, marker, n_tfm = 10, n_avg=10):
+    def get_obs_new_marker(self, marker, n_tfm=10, n_avg=10):
         """
         Store a bunch of readings seen for new marker being added.
         Returns a list of dicts each of which has marker transforms found
@@ -334,11 +338,11 @@ class Gripper:
         all_obs = []
         
         i = 0
-        thresh = n_avg*2
+        thresh = n_avg * 2
         sleeper = rospy.Rate(30)
         
         while i < n_tfm:
-            raw_input(colorize("Getting transform %i out of %i. Hit return when ready."%(i,n_tfm), 'yellow', True))
+            raw_input(colorize("Getting transform %i out of %i. Hit return when ready." % (i, n_tfm), 'yellow', True))
             
             j = 0
             j_th = 0
@@ -346,10 +350,10 @@ class Gripper:
             found = True
             avg_tfms = []
             while j < n_avg:
-                blueprint("Averaging transform %i out of %i."%(j,n_avg))
+                blueprint("Averaging transform %i out of %i." % (j, n_avg))
                 ar_tfms = self.cameras.get_ar_markers();
                 hyd_tfms = gmt.get_hydra_transforms(parent_frame=self.parent_frame, hydras=None);
-                curr_angle = gmt.get_pot_angle()
+                curr_angle = gmt.get_pot_angle(self.lr)
                 
                 if not ar_tfms and not hyd_tfms:
                     yellowprint("Could not find any transform.")
@@ -385,7 +389,7 @@ class Gripper:
             
             for m in tfms_found:
                 tfms_found[m] = utils.avg_transform(tfms_found[m])
-            pot_angle = pot_angle/n_avg
+            pot_angle = pot_angle / n_avg
             
             all_obs.append({'tfms':tfms_found, 'pot_angle':pot_angle})
             i += 1
@@ -403,7 +407,7 @@ class Gripper:
         @m_type: type of marker - 'AR' or 'hydra'
         @n_tfm,@n_avg - the usual 
         """
-        #Checks to see if data + situation is valid to add marker
+        # Checks to see if data + situation is valid to add marker
         if marker in self.allmarkers:
             greenprint("Marker already added.")
             return
@@ -412,12 +416,12 @@ class Gripper:
             redprint("Sorry, have no cameras to check.")
             return
         
-        if group not in ['master','l','r']:
-            redprint('Invalid group %s'%group)
+        if group not in ['master', 'l', 'r']:
+            redprint('Invalid group %s' % group)
             return
         
         if m_type not in ['AR', 'hydra']:
-            redprint('Invalid marker type %s'%m_type)
+            redprint('Invalid marker type %s' % m_type)
             return
 
         # Get observations 
@@ -442,16 +446,16 @@ class Gripper:
         self.transform_graph.node[group]['markers'].append(marker)
         self.allmarkers.append(marker)
         
-        if m_type=='AR':
+        if m_type == 'AR':
             self.transform_graph.node[group]['ar_markers'].append(marker)
             self.ar_markers.append(marker)
         else:
             self.transform_graph.node[group]['hydras'].append(marker)
             self.hydra_markers.append(marker)
             
-        if group=='master':
+        if group == 'master':
             self.mmarkers.append(marker)
-        elif group=='l':
+        elif group == 'l':
             self.lmarkers.append(marker)
         else:
             self.rmarkers.append(marker)

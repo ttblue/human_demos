@@ -14,34 +14,19 @@ from ar_track_service.srv import MarkerPositions, MarkerPositionsRequest, Marker
 import argparse
 import cPickle
 from hd_utils import ros_utils as ru, clouds, conversions
-primesense_carmine_f = 544.260779961
-
+from hd_utils.utils import avg_quaternions
+from hd_utils.defaults import asus_xtion_pro_f
 
 
 getMarkers = None
 req = MarkerPositionsRequest()
 
 
-def avg_quaternions(qs):
-    """
-    Returns the "average" quaternion of the quaternions in the list qs.
-    ref: http://www.acsu.buffalo.edu/~johnc/ave_quat07.pdf
-    """
-    M = np.zeros((4,4))
-    for q in qs:
-        q = q.reshape((4,1))
-        M = M + q.dot(q.T)
-
-    l, V = np.linalg.eig(M)
-    q_avg =  V[:, np.argmax(l)]
-    return q_avg/np.linalg.norm(q_avg)
-
-
 def get_ar_transform_id (depth, rgb, idm=None):
     """
     In order to run this, ar_marker_service needs to be running.
     """
-    req.pc = ru.xyzrgb2pc(clouds.depth_to_xyz(depth, primesense_carmine_f), rgb, '/camera_link')
+    req.pc = ru.xyzrgb2pc(clouds.depth_to_xyz(depth, asus_xtion_pro_f), rgb, '/camera_link')
     res = getMarkers(req)
     marker_tfm = {marker.id:conversions.pose_to_hmat(marker.pose.pose) for marker in res.markers.markers}
 

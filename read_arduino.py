@@ -17,7 +17,7 @@ class Arduino:
             raise RuntimeError(colorize( "Arduino not connected.", 'red', True))
         elif len(devices) >1:
             print colorize("Found more than one matching devices. Enter the number of the one which is arduino:", 'blue', True)
-            for n,d in enumerate(devices):
+            for n, d in enumerate(devices):
                 print "\t%d. %s"%(n,d)
                 while True:
                     try:

@@ -6,6 +6,7 @@ from threading import Thread
 import subprocess
 import rospy
 
+
 class threadClass (Thread):
     def run (self):
         publish_phasespace_markers_ros()

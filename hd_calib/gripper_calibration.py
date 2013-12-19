@@ -18,7 +18,7 @@ from hd_calib.gripper import Gripper
 
 np.set_printoptions(precision=5, suppress=True)
 
-VERBOSE = 1
+VERBOSE = True
 
 def update_graph_from_observations(G, tfms):
     """
@@ -41,7 +41,7 @@ def update_graph_from_observations(G, tfms):
             G.edge[i][j]['n'] = 0
         
         Tij = nlg.inv(tfms[i]).dot(tfms[j])
-        #print "From ", i," to ", j,":\n",Tij
+
         G.edge[i][j]['transform_list'].append(Tij)
         G.edge[i][j]['n'] += 1
 
@@ -564,6 +564,7 @@ class GripperCalibrator:
     
     lr = None
     
+    # is a Digraph
     masterGraph = None
     transform_graph = None
     ar_markers = []
@@ -575,7 +576,7 @@ class GripperCalibrator:
     cameras = None
     calibrated = False
     
-    tt_calculated = False
+    tooltip_calculated = False
     
     gripper = None
     
@@ -596,6 +597,7 @@ class GripperCalibrator:
 
         self.masterGraph = nx.DiGraph()
         
+        # currently three groups: master, l and r
         for group in self.calib_info:
             self.masterGraph.add_node(group)
             self.masterGraph.node[group]["graph"] = nx.Graph()
@@ -637,7 +639,7 @@ class GripperCalibrator:
             # Fuck the frames bullshit
             ar_tfm = self.cameras.get_ar_markers(markers=self.ar_markers, camera=1)
             hyd_tfm = gmt.get_hydra_transforms(parent_frame=self.parent_frame, hydras = self.hydras)
-            pot_angle = gmt.get_pot_angle()
+            pot_angle = gmt.get_pot_angle(self.lr)
             
             if not ar_tfm or (not hyd_tfm and self.hydras):
                 if not ar_tfm:

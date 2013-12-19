@@ -97,7 +97,7 @@ def get_corners_from_pc(pc,method='pycb', rows=None,cols=None):
             points.append(get_zyx_from_corners(cor, xyz))
         return rtn, points
     
-def get_checkerboard_transform (rgb, cb_size=0.024):
+def get_checkerboard_transform (rgb, chessboard_size=0.024):
     """
     Assuming only one checkerboard is found.
     """

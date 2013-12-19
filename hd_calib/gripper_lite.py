@@ -27,7 +27,10 @@ class GripperLite ():
     ar_marker = None
     hydra_marker = None
     
-    def __init__(self, lr, marker, x=0.07783, y=0.0, z=-0.04416, cameras=None):
+    def __init__(self, lr, marker, trans_marker_tooltip, cameras=None):
+        '''
+        Input: lr -- left or right; marker -- marker id, trans_marker_tooltip
+        '''
         self.transform_graph = nx.DiGraph()
         
         self.lr = lr
@@ -39,11 +42,11 @@ class GripperLite ():
         self.transform_graph.add_edge(marker, 'tool_tip')
         
         tfm = np.eye(4)
-        tfm[0:3,3] = np.array([x,y,z])
+        tfm[0:3,3] = np.array(trans_marker_tooltip)
         
-        self.transform_graph.edge[1]['tool_tip'] = tfm
-        self.transform_graph.edge['tool_tip'][1] = nlg.inv(tfm)
-        self.transform_graph.edge[1][1] = np.eye(4)
+        self.transform_graph.edge[marker]['tool_tip'] = tfm
+        self.transform_graph.edge['tool_tip'][marker] = nlg.inv(tfm)
+        self.transform_graph.edge[marker][marker] = np.eye(4)
         self.transform_graph.edge['tool_tip']['tool_tip'] = np.eye(4)
         
     def get_ar_marker(self):
@@ -58,16 +61,19 @@ class GripperLite ():
     def get_rel_transform (self, m1, m2):
         return self.transform_graph.edge[m1][m2]
     
-    '''
-    '''
-    def get_tool_tip_transform (self, m, tfm):
+    def get_tooltip_transform (self, m, tfm):
+        '''
+        tfm is T_reference_m
+        So this returns T_reference_tooltip
+        '''
         return tfm.dot(self.get_rel_transform(m, 'tool_tip'))
     
     def reset_gripper (self, lr, transforms, ar, hydra=None):
         """
         Resets gripper with new lr value and a list of transforms
-        to populate transform graph.
+        to populate transform graph. Input also contains ar marker and hydra
         Each transform in list is dict with 'parent', 'child' and 'tfm'
+        The resulting graph edges will contain transform between every pair of nodes in the same connected subgraph
         """
         self.lr = lr
         self.ar_marker = ar
@@ -97,6 +103,9 @@ class GripperLite ():
             self.transform_graph.edge[node][node] = np.eye(4)
 
     def get_saveable_transforms (self):
+        '''
+        Save all the transforms from gripper's ar_marker to tooltip, and from ar_marker to hydra_marker
+        '''
         transforms = []
         
         transforms.append({'parent':self.ar_marker, 'child':'tool_tip', 
@@ -115,7 +124,6 @@ class GripperLite ():
         """
         all_tfms = []
         
-        
         if rospy.get_name == '/unnamed':
             rospy.init_node('gripper_calib')
         sleeper = rospy.Rate(30)
@@ -123,10 +131,9 @@ class GripperLite ():
         i = 0
         n_attempts_max = n_avg*2
         while i < n_tfm:
-            raw_input(colorize("Getting transform %i out of %i. Hit return when ready."%(i,n_tfm), 'yellow', True))
+            raw_input(colorize("Getting transform %i out of %i. Hit return when ready."%(i, n_tfm-1), 'yellow', True))
 
             j = 0
-
             n_attempts_effective = 0;
             hyd_tfms = []
             ar_tfms = []
@@ -199,6 +206,8 @@ class GripperLite ():
         """
         From marker transforms given in parent_frame, get all transforms
         of all markers on gripper.
+        diff_cam: whether multiple cameras are used. 
+
         """
         if self.cameras is None:
             redprint("Cameras not initialized. Could not get transforms.")
@@ -207,31 +216,39 @@ class GripperLite ():
         if diff_cam:
             ar_tfms = {}
             for i in range(self.cameras.num_cameras):
+                # parent_frame=True, so tfms is the transform from parent_frame (camera1) to ar_marker
                 tfms = self.cameras.get_ar_markers(camera=i, parent_frame=True, markers=[self.ar_marker])
                 if tfms: ar_tfms[i] = tfms[self.ar_marker]
         else:
-            ar_tfms = self.cameras.get_ar_markers(markers=[self.ar_marker])
+            # default camera=0, so even parent_frame=False, ar_tfms still store the transform from camera1 to ar_marker
+            ar_tfms = self.cameras.get_ar_markers(markers=[self.ar_marker]) 
 
         transforms = []
         
+        # return T_camera_tooltip (if diff_cam, to different camera; otherwise to camera0)
         if diff_cam:
             for i,tfm in ar_tfms.items():
+                # each tfm is T_camera1_gripper_ar_marker
+                # get_tooltip_transform(self.ar_marker, tfm) returns T_camerai_tooltip
                 transforms.append({'parent':self.parent_frame,
-                                   'child':'%sgripper_camera%i_tooltip'%(self.lr, i),
-                                   'tfm':self.get_tool_tip_transform(self.ar_marker, tfm)
+                                   'child':'%sgripper_camera%i_tooltip'%(self.lr, i+1),
+                                   'tfm':self.get_tooltip_transform(self.ar_marker, tfm)
                                   })
         elif ar_tfms:
             transforms.append({'parent':self.parent_frame,
                                'child':'%sgripper_ar_tooltip'%self.lr,
-                               'tfm':self.get_tool_tip_transform(self.ar_marker, ar_tfms[self.ar_marker])
+                               'tfm':self.get_tooltip_transform(self.ar_marker, ar_tfms[self.ar_marker])
                               })
+        
+            
+        
         if self.hydra_marker is not None:
             hyd_tfms = gmt.get_hydra_transforms(self.parent_frame, hydras=[self.hydra_marker])
             if hyd_tfms:
                 tfm = hyd_tfms[self.hydra_marker]
                 transforms.append({'parent':self.parent_frame,
                                    'child':'%sgripper_hydra_tooltip'%self.lr,
-                                   'tfm':self.get_tool_tip_transform(self.hydra_marker, tfm)
+                                   'tfm':self.get_tooltip_transform(self.hydra_marker, tfm)
                                   })
 
         return transforms

@@ -14,12 +14,7 @@ from ar_track_service.srv import MarkerPositions, MarkerPositionsRequest, Marker
 import argparse
 import cPickle
 from hd_utils import ros_utils as ru, clouds, conversions
-primesense_carmine_f = 544.260779961
-
-T_h_k = np.array([[-0.02102462, -0.03347223,  0.99921848, -0.186996  ],
- [-0.99974787, -0.00717795, -0.02127621,  0.04361884],
- [ 0.0078845,  -0.99941387, -0.03331288,  0.22145804],
- [ 0.,          0.,          0.,          1.        ]])
+from hd_utils.defaults import asus_xtion_pro_f, tfm_head_kinect
 
 getMarkers = None
 req = MarkerPositionsRequest()
@@ -28,7 +23,7 @@ def get_ar_transform_id (depth, rgb, idm=None):
     """
     In order to run this, ar_marker_service needs to be running.
     """
-    req.pc = ru.xyzrgb2pc(clouds.depth_to_xyz(depth, primesense_carmine_f), rgb, '/camera_link')
+    req.pc = ru.xyzrgb2pc(clouds.depth_to_xyz(depth, asus_xtion_pro_f), rgb, '/camera_link')
     res = getMarkers(req)
     marker_tfm = {marker.id:conversions.pose_to_hmat(marker.pose.pose) for marker in res.markers.markers}
 
@@ -104,7 +99,7 @@ while(i < args.n_tfm):
 
 ar_in_base_tfms = []
 for i in xrange(len(ar_tfms)):
-    head_frame_ar = T_h_k.dot(ar_tfms[i])
+    head_frame_ar = tfm_head_kinect.dot(ar_tfms[i])
     base_frame_ar = head_tfms[i].dot(head_frame_ar)
     ar_in_base_tfms.append(base_frame_ar)
 

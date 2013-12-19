@@ -9,8 +9,8 @@ from ar_track_service.srv import MarkerPositions, MarkerPositionsRequest, Marker
 from sensor_msgs.msg import PointCloud2
 
 from hd_utils import conversions, ros_utils as ru, clouds
+from hd_utils.defaults import asus_xtion_pro_f
 
-asus_xtion_pro_f = 544.260779961
 
 getMarkers = None
 req = MarkerPositionsRequest()

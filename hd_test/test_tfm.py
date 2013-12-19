@@ -1,5 +1,6 @@
 import numpy as np, numpy.linalg as nlg
 import scipy as scp, scipy.optimize as sco
+from hd_utils import solve_sylvester as ss
 
 np.set_printoptions(precision=5, suppress=True)
 

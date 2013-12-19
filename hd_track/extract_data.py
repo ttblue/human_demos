@@ -10,16 +10,22 @@ roslib.load_manifest('ar_track_service')
 from ar_track_service.srv import MarkerPositions, MarkerPositionsRequest, MarkerPositionsResponse
 from ar_track_alvar.msg import AlvarMarkers
 
-from hd_utils.defaults import tfm_link_rof, asus_xtion_pro_f
+from hd_utils.defaults import tfm_link_rof, asus_xtion_pro_f, demo_files_dir
 from hd_utils.colorize import *
 from hd_utils import ros_utils as ru, clouds, conversions, extraction_utils as eu
 
 from hd_calib import gripper_calibration, gripper, gripper_lite
+from hd_utils.defaults import calib_files_dir, demo_files_dir
+from hd_calib.calibration_pipeline import gripper_marker_id, gripper_trans_marker_tooltip
 
 getMarkers = None
 req = MarkerPositionsRequest()
 
-def get_ar_marker_poses (pc):
+def get_ar_marker_poses (pc, ar_markers = None):
+    '''
+    get poses according to ar_markers
+    if ar_markers == None, then for all ar markers appeared in the point cloud
+    '''
     global getMarkers, req
     
     if rospy.get_name() == '/unnamed':
@@ -33,7 +39,11 @@ def get_ar_marker_poses (pc):
     marker_tfm = {}
     res = getMarkers(req)
     for marker in res.markers.markers:
-        marker_tfm[marker.id] = conversions.pose_to_hmat(marker.pose.pose).tolist()
+        if ar_markers == None:
+            marker_tfm[marker.id] = conversions.pose_to_hmat(marker.pose.pose).tolist()
+        else:
+            if marker.id in ar_markers:
+                marker_tfm[marker.id] = conversions.pose_to_hmat(marker.pose.pose).tolist()
     
     #print "Marker ids found: ", marker_tfm.keys()
     
@@ -47,7 +57,7 @@ def save_observations (bag, calib_file, save_file=None):
     Can add more later.
     """
     
-    file_name = osp.join('/home/sibi/sandbox/human_demos/hd_data/calib',calib_file)
+    file_name = osp.join(calib_files_dir,calib_file)
     with open(file_name,'r') as fh: calib_data = cPickle.load(fh)
     
     c1_frame = 'camera1_link'
@@ -55,28 +65,6 @@ def save_observations (bag, calib_file, save_file=None):
     hydra_frame = 'hydra_base'
     tfm_c1_c2 = None
     tfm_c1_h = None
-    
-#     for (topic, msg, _) in bag.read_messages(topics=['/tf']):
-#         for tfm in msg.transforms:
-#             if tfm.header.frame_id == '/' + c1_frame and tfm.child_frame_id == '/'+c2_frame:
-#                 if tfm_c1_c2 is not None:
-#                     t,r = tfm.transform.translation, tfm.transform.rotation
-#                     trans = (t.x,t.y,t.z)
-#                     rot = (r.x, r.y, r.z, r.w)
-#                     t_found = conversions.trans_rot_to_hmat(trans, rot)
-#                     tfm_c1_c2  = nlg.inv(tfm_link_rof).dot(t_found).dot(tfm_link_rof)
-#             
-#             elif tfm.header.frame_id == '/' + c1_frame and tfm.child_frame_id == '/'+hydra_frame:
-#                 if tfm_c1_h is not None:
-#                     t,r = tfm.transform.translation, tfm.transform.rotation
-#                     trans = (t.x,t.y,t.z)
-#                     rot = (r.x, r.y, r.z, r.w)
-#                     t_found = tfm_c1_h.dot(conversions.trans_rot_to_hmat(trans, rot))
-#                     tfm_c1_h  = nlg.inv(tfm_link_rof).dot(t_found)
-#         
-#         if tfm_c1_c2 is not None and tfm_c1_h is not None:
-#             break
-#         
     
     for tfm in calib_data['transforms']:
         if tfm['parent'] == c1_frame or tfm['parent'] == '/' + c1_frame:
@@ -92,98 +80,108 @@ def save_observations (bag, calib_file, save_file=None):
     if not calib_data.get('grippers'):
         redprint("Gripper not found.")
         return
-
-    lr,graph = calib_data['grippers'].items()[0]
-    gr = gripper.Gripper(lr, graph)
-    assert 'tool_tip' in gr.mmarkers
-    gr.tt_calculated = True
     
-    ar1_tfms = []
-    ar1_count = 0
-    cam1_count = 0
-    ar2_tfms = []
-    ar2_count = 0
-    cam2_count = 0
-    hyd_tfms = []
-    hyd_count = 0
-    pot_angles = []
-    pot_count = 0
+    lr_long = {'l':'left','r':'right'}
+    data = {}
+    for lr in calib_data['grippers']:
+        graph = calib_data['grippers'][lr]
+        gr = gripper.Gripper(lr, graph)
+        assert 'tool_tip' in gr.mmarkers
+        gr.tooltip_calculated = True
     
-    yellowprint('Camera1')
-    for (topic, msg, _) in bag.read_messages(topics=['/camera1/depth_registered/points','camera1/depth_registered/points']):
-        print topic
-        marker_poses = get_ar_marker_poses (msg)
-        cam1_count += 1
-        if marker_poses:
-            for m in marker_poses:
-                marker_poses[m] = np.array(marker_poses[m])
-            tt_tfm = gr.get_tool_tip_transform(marker_poses, None)
-            
-            if tt_tfm is not None:
-                stamp = msg.header.stamp.to_sec()
-                blueprint("Got markers " + str(marker_poses.keys()) + " at time %f"%stamp)
-                ar1_tfms.append((tt_tfm, stamp))
-                ar1_count += 1
+        ar_markers = gr.get_ar_markers()
+        
+        ar1_tfms = []
+        ar1_count = 0
+        cam1_count = 0
+        ar2_tfms = []
+        ar2_count = 0
+        cam2_count = 0
+        hyd_tfms = []
+        hyd_count = 0
+        pot_angles = []
+        pot_count = 0
+    
+        yellowprint('Camera1')
+        for (topic, msg, _) in bag.read_messages(topics=['/camera1/depth_registered/points','camera1/depth_registered/points']):
+            print topic
+            marker_poses = get_ar_marker_poses (msg, ar_markers) 
+            cam1_count += 1
+            if marker_poses:
+                for m in marker_poses:
+                    marker_poses[m] = np.array(marker_poses[m])
+                tt_tfm = gr.get_tooltip_transform(marker_poses, None)
                 
-        print cam1_count, ar1_count
-        
-    yellowprint('Camera2')
-    for (topic, msg, _) in bag.read_messages(topics=['/camera2/depth_registered/points','camera2/depth_registered/points']):
-        marker_poses = get_ar_marker_poses (msg)
-        cam2_count += 1
-        if marker_poses:
-            for m in marker_poses:
-                marker_poses[m] = tfm_c1_c2.dot(np.array(marker_poses[m]))
+                if tt_tfm is not None:
+                    stamp = msg.header.stamp.to_sec()
+                    blueprint("Got markers " + str(marker_poses.keys()) + " at time %f"%stamp)
+                    ar1_tfms.append((tt_tfm, stamp))
+                    ar1_count += 1
             
-            tt_tfm = gr.get_tool_tip_transform(marker_poses, None)
-            if tt_tfm is not None:
-                stamp = msg.header.stamp.to_sec()
-                blueprint("Got markers " + str(marker_poses.keys()) + " at time %f"%stamp)
-                ar2_tfms.append((tt_tfm, stamp))
-                ar2_count += 1
-
-    yellowprint('Hydra')
-    for (topic, msg, _) in bag.read_messages(topics=['/tf']):
-        
-        hyd_tfm = {}
-        for tfm in msg.transforms:
-            if tfm.header.frame_id == '/' + hydra_frame and tfm.child_frame_id == '/hydra_left':
-                t,r = tfm.transform.translation, tfm.transform.rotation
-                trans = (t.x,t.y,t.z)
-                rot = (r.x, r.y, r.z, r.w)
-                hyd_tfm['left'] = tfm_c1_h.dot(conversions.trans_rot_to_hmat(trans, rot))
-                stamp = tfm.header.stamp.to_sec()
-                break
-        
-        if hyd_tfm:
-            tt_tfm = gr.get_tool_tip_transform(hyd_tfm, None)
+        yellowprint('Camera2')
+        for (topic, msg, _) in bag.read_messages(topics=['/camera2/depth_registered/points','camera2/depth_registered/points']):
+            marker_poses = get_ar_marker_poses (msg, ar_markers)
+            cam2_count += 1
+            if marker_poses:
+                for m in marker_poses:
+                    marker_poses[m] = tfm_c1_c2.dot(np.array(marker_poses[m]))
+                
+                tt_tfm = gr.get_tooltip_transform(marker_poses, None)
+                if tt_tfm is not None:
+                    stamp = msg.header.stamp.to_sec()
+                    blueprint("Got markers " + str(marker_poses.keys()) + " at time %f"%stamp)
+                    ar2_tfms.append((tt_tfm, stamp))
+                    ar2_count += 1
+    
+        yellowprint('Hydra')
+        for (topic, msg, _) in bag.read_messages(topics=['/tf']):
             
-            if tt_tfm is not None:
-                blueprint("Got hydra_left at time %f"%stamp)  
-                hyd_tfms.append((tt_tfm, stamp))
-                hyd_count += 1
-
-
-    for (_, msg, ts) in bag.read_messages(topics=['/l_pot_angle']):
-        angle = msg.data
-        stamp = ts.to_sec()
-        pot_angles.append((angle, stamp))
-        blueprint("Got a potentiometer angle of %f at time %f"%(angle, stamp))
-        pot_count += 1
-        
-    if pot_count == 0:
-        for (_, msg, ts) in bag.read_messages(topics=['/pot_angle']):
+            hyd_tfm = {}
+            for tfm in msg.transforms:
+                if tfm.header.frame_id == '/' + hydra_frame and tfm.child_frame_id == '/hydra_' + lr_long[lr]:
+                    t,r = tfm.transform.translation, tfm.transform.rotation
+                    trans = (t.x,t.y,t.z)
+                    rot = (r.x, r.y, r.z, r.w)
+                    hyd_tfm[lr_long[lr]] = tfm_c1_h.dot(conversions.trans_rot_to_hmat(trans, rot))
+                    stamp = tfm.header.stamp.to_sec()
+                    break
+            
+            if hyd_tfm:
+                tt_tfm = gr.get_tooltip_transform(hyd_tfm, None)
+                
+                if tt_tfm is not None:
+                    blueprint("Got hydra_%s at time %f"%(lr_long[lr], stamp))  
+                    hyd_tfms.append((tt_tfm, stamp))
+                    hyd_count += 1
+    
+    
+        for (_, msg, ts) in bag.read_messages(topics=['/%s_pot_angle'%(lr)]):
             angle = msg.data
             stamp = ts.to_sec()
             pot_angles.append((angle, stamp))
             blueprint("Got a potentiometer angle of %f at time %f"%(angle, stamp))
             pot_count += 1
-                
-
-    yellowprint("Found %i transforms out of %i point clouds from camera1"%(ar1_count, cam1_count))
-    yellowprint("Found %i transforms out of %i point clouds from camera2"%(ar2_count, cam2_count))
-    yellowprint("Found %i transforms from hydra"%hyd_count)
-    yellowprint("Found %i potentiometer readings"%pot_count)
+            
+        if pot_count == 0:
+            for (_, msg, ts) in bag.read_messages(topics=['/pot_angle']):
+                angle = msg.data
+                stamp = ts.to_sec()
+                pot_angles.append((angle, stamp))
+                blueprint("Got a potentiometer angle of %f at time %f"%(angle, stamp))
+                pot_count += 1
+                    
+    
+        yellowprint("Found %i transforms out of %i point clouds from camera1"%(ar1_count, cam1_count))
+        yellowprint("Found %i transforms out of %i point clouds from camera2"%(ar2_count, cam2_count))
+        yellowprint("Found %i transforms from hydra"%hyd_count)
+        yellowprint("Found %i potentiometer readings"%pot_count)
+        
+        data[lr] = {'camera1': ar1_tfms,
+                    'camera2': ar2_tfms,    
+                    'hydra': hyd_tfms,
+                    'pot_angles': pot_angles}
+        
+        
     
     if save_file is None:
         bag_name = osp.basename(bag.filename)
@@ -191,10 +189,8 @@ def save_observations (bag, calib_file, save_file=None):
         for name in bag_name.split('.')[0:-1]:
             save_file += name + '.'
         save_file += 'data'
-    save_filename = osp.join('/home/sibi/sandbox/human_demos/hd_data/demos/obs_data', save_file)
+    save_filename = osp.join(demo_files_dir, 'obs_data', save_file)
     
-    data = {'camera1':ar1_tfms, 'camera2':ar2_tfms, 
-	    'hydra':hyd_tfms, 'pot_angles':pot_angles}
     with open(save_filename, 'w') as sfh: cPickle.dump(data, sfh)
 
 
@@ -205,33 +201,12 @@ def save_observations_one_camera (bag, calib_file, save_file=None):
     Can add more later.
     """
     
-    file_name = osp.join('/home/sibi/sandbox/human_demos/hd_data/calib',calib_file)
+    file_name = osp.join(calib_files_dir,calib_file)
     with open(file_name,'r') as fh: calib_data = cPickle.load(fh)
     
     c1_frame = 'camera1_link'
     hydra_frame = 'hydra_base'
     tfm_c1_h = None
-    
-#     for (topic, msg, _) in bag.read_messages(topics=['/tf']):
-#         for tfm in msg.transforms:
-#             if tfm.header.frame_id == '/' + c1_frame and tfm.child_frame_id == '/'+c2_frame:
-#                 if tfm_c1_c2 is not None:
-#                     t,r = tfm.transform.translation, tfm.transform.rotation
-#                     trans = (t.x,t.y,t.z)
-#                     rot = (r.x, r.y, r.z, r.w)
-#                     t_found = conversions.trans_rot_to_hmat(trans, rot)
-#                     tfm_c1_c2  = nlg.inv(tfm_link_rof).dot(t_found).dot(tfm_link_rof)
-#             
-#             elif tfm.header.frame_id == '/' + c1_frame and tfm.child_frame_id == '/'+hydra_frame:
-#                 if tfm_c1_h is not None:
-#                     t,r = tfm.transform.translation, tfm.transform.rotation
-#                     trans = (t.x,t.y,t.z)
-#                     rot = (r.x, r.y, r.z, r.w)
-#                     t_found = tfm_c1_h.dot(conversions.trans_rot_to_hmat(trans, rot))
-#                     tfm_c1_h  = nlg.inv(tfm_link_rof).dot(t_found)
-#         
-#         if tfm_c1_c2 is not None and tfm_c1_h is not None:
-#             break
 #         
     
     for tfm in calib_data['transforms']:
@@ -243,76 +218,85 @@ def save_observations_one_camera (bag, calib_file, save_file=None):
     if not calib_data.get('grippers'):
         redprint("Gripper not found.")
         return
-
-    lr,graph = calib_data['grippers'].items()[0]
-    gr = gripper.Gripper(lr, graph)
-    assert 'tool_tip' in gr.mmarkers
-    gr.tt_calculated = True
     
-    ar1_tfms = []
-    ar1_count = 0
-    cam1_count = 0
-    hyd_tfms = []
-    hyd_count = 0
-    pot_angles = []
-    pot_count = 0
+    lr_long = {'l':'left','r':'right'}
+    data = {}
+    for lr in calib_data['grippers']:
+        graph = calib_data['grippers'][lr]
+        gr = gripper.Gripper(lr, graph)
+        assert 'tool_tip' in gr.mmarkers
+        gr.tooltip_calculated = True
+        
+        ar_markers = gr.get_ar_markers()
+        
+        ar1_tfms = []
+        ar1_count = 0
+        cam1_count = 0
+        hyd_tfms = []
+        hyd_count = 0
+        pot_angles = []
+        pot_count = 0
+        
+        yellowprint('Camera1')
+        for (topic, msg, _) in bag.read_messages(topics=['/camera1/depth_registered/points','camera1/depth_registered/points']):
+            marker_poses = get_ar_marker_poses (msg, ar_markers)
+            cam1_count += 1
+            if marker_poses:
+                for m in marker_poses:
+                    marker_poses[m] = np.array(marker_poses[m])
+                tt_tfm = gr.get_tooltip_transform(marker_poses, None)
+                
+                if tt_tfm is not None:
+                    stamp = msg.header.stamp.to_sec()
+                    blueprint("Got markers " + str(marker_poses.keys()) + " at time %f"%stamp)
+                    ar1_tfms.append((tt_tfm, stamp))
+                    ar1_count += 1
+            
+        yellowprint('Hydra')
+        for (topic, msg, _) in bag.read_messages(topics=['/tf']):
+            
+            hyd_tfm = {}
+            for tfm in msg.transforms:
+                if tfm.header.frame_id == '/' + hydra_frame and tfm.child_frame_id == '/hydra_' + lr_long[lr]:
+                    t,r = tfm.transform.translation, tfm.transform.rotation
+                    trans = (t.x,t.y,t.z)
+                    rot = (r.x, r.y, r.z, r.w)
+                    hyd_tfm[lr_long[lr]] = tfm_c1_h.dot(conversions.trans_rot_to_hmat(trans, rot))
+                    stamp = tfm.header.stamp.to_sec()
+                    
+            
+            if hyd_tfm:
+                tt_tfm = gr.get_tooltip_transform(hyd_tfm, None)
+                
+                if tt_tfm is not None:
+                    blueprint("Got hydra_%s at time %f"%(lr_long[lr], stamp))  
+                    hyd_tfms.append((tt_tfm, stamp))
+                    hyd_count += 1
     
-    yellowprint('Camera1')
-    for (topic, msg, _) in bag.read_messages(topics=['/camera1/depth_registered/points','camera1/depth_registered/points']):
-        marker_poses = get_ar_marker_poses (msg)
-        cam1_count += 1
-        if marker_poses:
-            for m in marker_poses:
-                marker_poses[m] = np.array(marker_poses[m])
-            tt_tfm = gr.get_tool_tip_transform(marker_poses, None)
-            
-            if tt_tfm is not None:
-                stamp = msg.header.stamp.to_sec()
-                blueprint("Got markers " + str(marker_poses.keys()) + " at time %f"%stamp)
-                ar1_tfms.append((tt_tfm, stamp))
-                ar1_count += 1
-        
-    yellowprint('Hydra')
-    for (topic, msg, _) in bag.read_messages(topics=['/tf']):
-        
-        hyd_tfm = {}
-        for tfm in msg.transforms:
-            if tfm.header.frame_id == '/' + hydra_frame and tfm.child_frame_id == '/hydra_left':
-                t,r = tfm.transform.translation, tfm.transform.rotation
-                trans = (t.x,t.y,t.z)
-                rot = (r.x, r.y, r.z, r.w)
-                hyd_tfm['left'] = tfm_c1_h.dot(conversions.trans_rot_to_hmat(trans, rot))
-                stamp = tfm.header.stamp.to_sec()
-                break
-        
-        if hyd_tfm:
-            tt_tfm = gr.get_tool_tip_transform(hyd_tfm, None)
-            
-            if tt_tfm is not None:
-                blueprint("Got hydra_left at time %f"%stamp)  
-                hyd_tfms.append((tt_tfm, stamp))
-                hyd_count += 1
-
-
-    for (_, msg, ts) in bag.read_messages(topics=['/l_pot_angle']):
-        angle = msg.data
-        stamp = ts.to_sec()
-        pot_angles.append((angle, stamp))
-        blueprint("Got a potentiometer angle of %f at time %f"%(angle, stamp))
-        pot_count += 1
-        
-    if pot_count == 0:
-        for (_, msg, ts) in bag.read_messages(topics=['/pot_angle']):
+    
+        for (_, msg, ts) in bag.read_messages(topics=['/%s_pot_angle'%(lr)]):
             angle = msg.data
             stamp = ts.to_sec()
             pot_angles.append((angle, stamp))
             blueprint("Got a potentiometer angle of %f at time %f"%(angle, stamp))
             pot_count += 1
-
-
-    yellowprint("Found %i transforms out of %i point clouds from camera1"%(ar1_count, cam1_count))
-    yellowprint("Found %i transforms from hydra"%hyd_count)
-    yellowprint("Found %i potentiometer readings"%pot_count)
+            
+        if pot_count == 0:
+            for (_, msg, ts) in bag.read_messages(topics=['/pot_angle']):
+                angle = msg.data
+                stamp = ts.to_sec()
+                pot_angles.append((angle, stamp))
+                blueprint("Got a potentiometer angle of %f at time %f"%(angle, stamp))
+                pot_count += 1
+    
+    
+        yellowprint("Found %i transforms out of %i point clouds from camera1"%(ar1_count, cam1_count))
+        yellowprint("Found %i transforms from hydra"%hyd_count)
+        yellowprint("Found %i potentiometer readings"%pot_count)
+        
+        data[lr] = {'camera1': ar1_tfms,   
+                    'hydra': hyd_tfms,
+                    'pot_angles': pot_angles}
     
     if save_file is None:
         bag_name = osp.basename(bag.filename)
@@ -320,16 +304,15 @@ def save_observations_one_camera (bag, calib_file, save_file=None):
         for name in bag_name.split('.')[0:-1]:
             save_file += name + '.'
         save_file += 'data'
-    save_filename = osp.join('/home/sibi/sandbox/human_demos/hd_data/demos/obs_data', save_file)
+    save_filename = osp.join(demo_files_dir, 'obs_data', save_file)
     
-    data = {'camera1':ar1_tfms, 'hydra':hyd_tfms, 'pot_angles':pot_angles}
     with open(save_filename, 'w') as sfh: cPickle.dump(data, sfh)
     
 
 def save_observations_rgbd(demo_name, calib_file, save_file=None):
     
-    demo_dir = osp.join('/home/sibi/sandbox/human_demos/hd_data/demos',demo_name)
-    calib_file_path = osp.join('/home/sibi/sandbox/human_demos/hd_data/calib',calib_file)
+    demo_dir = osp.join(demo_files_dir, demo_name)
+    calib_file_path = osp.join(calib_files_dir, calib_file)
     
     bag_file = osp.join(demo_dir, 'demo.bag')
     rgbd1_dir = osp.join(demo_dir, 'camera_#1')
@@ -362,7 +345,7 @@ def save_observations_rgbd(demo_name, calib_file, save_file=None):
     grippers = {}
     data = {}
     for lr,gdata in calib_data['grippers'].items():
-        gr = gripper_lite.GripperLite(lr,gdata['ar'])
+        gr = gripper_lite.GripperLite(lr, gdata['ar'], trans_marker_tooltip=gripper_trans_marker_tooltip[lr])
         gr.reset_gripper(lr, gdata['tfms'], gdata['ar'], gdata['hydra'])
         grippers[lr] = gr
         data[lr] ={'camera1':[],
@@ -389,7 +372,7 @@ def save_observations_rgbd(demo_name, calib_file, save_file=None):
         for lr,gr in grippers.items():
             ar = gr.get_ar_marker() 
             if ar in ar_tfms:
-                tt_tfm = gr.get_tool_tip_transform(ar, np.asarray(ar_tfms[ar]))
+                tt_tfm = gr.get_tooltip_transform(ar, np.asarray(ar_tfms[ar]))
                 data[lr]['camera1'].append((tt_tfm,stamps1[ind]))
         
     yellowprint('Camera2')
@@ -411,7 +394,7 @@ def save_observations_rgbd(demo_name, calib_file, save_file=None):
         for lr,gr in grippers.items():
             ar = gr.get_ar_marker()
             if ar in ar_tfms:
-                tt_tfm = gr.get_tool_tip_transform(ar, np.asarray(ar_tfms[ar]))
+                tt_tfm = gr.get_tooltip_transform(ar, np.asarray(ar_tfms[ar]))
                 data[lr]['camera2'].append((tfm_c1_c2.dot(tt_tfm),stamps2[ind]))
 
 
@@ -432,7 +415,7 @@ def save_observations_rgbd(demo_name, calib_file, save_file=None):
                     rot = (r.x, r.y, r.z, r.w)
                     hyd_tfm = tfm_c1_h.dot(conversions.trans_rot_to_hmat(trans, rot))
                     stamp = tfm.header.stamp.to_sec()
-                    tt_tfm = grippers[lr].get_tool_tip_transform(lr_long[lr], hyd_tfm)
+                    tt_tfm = grippers[lr].get_tooltip_transform(lr_long[lr], hyd_tfm)
                     data[lr]['hydra'].append((tt_tfm, stamp))
                     found += lr
         if found:

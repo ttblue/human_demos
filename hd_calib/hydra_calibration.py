@@ -26,16 +26,16 @@ class HydraCalibrator:
     calib_camera = None
     calibrated = False
 
-    def __init__(self, cameras, ar_marker = 0, calib_hydra='left', calib_camera=None):
+    def __init__(self, cameras, ar_marker, calib_hydra, calib_camera=None):
         """
         calib_hydra is the hydra you want to calibrate with. Either left or right.
         """
         self.cameras = cameras
         # Parent frame to get obs for camera is camera_dof
         # But, will convert to camera_link
-        self.parent_frame = {'camera':'camera1_rgb_optical_frame',
-                             'pr2':'base_footprint'}
-        self.child_frame = {'pr2':'r_gripper_tool_tip'}
+        self.parent_frame = {'camera': 'camera1_rgb_optical_frame',
+                             'pr2': 'base_footprint'}
+        self.child_frame = {'pr2': 'r_gripper_tool_tip'}
         self.calib_hydra = calib_hydra
         self.ar_marker = ar_marker
         self.calib_camera = calib_camera

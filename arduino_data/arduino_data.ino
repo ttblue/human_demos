@@ -16,7 +16,7 @@ void setup() {
 void loop() {
   // read the input on analog pin 0:
   int sensorValue = analogRead(A0);
-  int sensorValue2 = analogRead(A0);
+  int sensorValue2 = analogRead(A2);
 
   Serial.print(sensorValue);
   Serial.print(" ");

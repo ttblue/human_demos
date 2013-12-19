@@ -12,14 +12,8 @@ import tf
 import argparse
 import cPickle
 from hd_utils import ros_utils as ru, clouds, conversions
+from hd_utils.defaults import tfm_head_kinect
 from hd_calib import cameras
-primesense_carmine_f = 544.260779961
-
-T_h_k = np.array([[-0.02102462, -0.03347223,  0.99921848, -0.186996  ],
- [-0.99974787, -0.00717795, -0.02127621,  0.04361884],
- [ 0.0078845,  -0.99941387, -0.03331288,  0.22145804],
- [ 0.,          0.,          0.,          1.        ]])
-
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--name', help="Name of log file", required = True, type = str)
@@ -96,7 +90,7 @@ for i in xrange(len(ar_tfms)):
     if ar_tfms[i] == None:
         ar_in_base_tfms.append(None)
     else:
-        head_frame_ar = T_h_k.dot(ar_tfms[i])
+        head_frame_ar = tfm_base_kinect.dot(ar_tfms[i])
         base_frame_ar = head_tfms[i].dot(head_frame_ar)
         ar_in_base_tfms.append(base_frame_ar)
 

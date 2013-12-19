@@ -20,17 +20,13 @@ import math
 from hd_utils.colorize import *
 from hd_utils.conversions import *
 from hd_utils.utils import *
-from hd_utils.defaults import tfm_link_rof
+from hd_utils.defaults import tfm_link_rof, hd_path
 from hd_track.kalman import kalman
 from hd_track.kalman import smoother
 from hd_track.kalman_tuning import state_from_tfms_no_velocity
 from hd_track.streamer import streamize
 from hd_track.stream_pc import streamize_pc
 from hd_visualization.ros_vis import draw_trajectory 
-
-hd_path = os.getenv('HD_DIR')
-if hd_path is None:
-    hd_path = '/home/sibi/sandbox/human_demos'
 
 
 def load_covariances():

@@ -8,6 +8,7 @@ import rospy, tf
 import time
 
 from hd_utils import clouds, ros_utils as ru, conversions, utils
+from hd_utils.defaults import asus_xtion_pro_f
 from cyni_cameras import cyni_cameras
 
 import read_arduino 
@@ -17,7 +18,7 @@ np.set_printoptions(precision=5, suppress=True)
 ar_lock = False
 getMarkers = None
 req = None
-tf_l = None
+tf_listener = None
 arduino = None
 
 ar_initialized = False
@@ -25,22 +26,17 @@ hydra_initialized = False
 tf_initialized = False
 pot_initialized = False
 
-
-asus_xtion_pro_f = 544.260779961
-
-def get_ar_marker_poses (rgb, depth, pc=None):
+def get_ar_marker_poses (rgb, depth, pc = None):
     """
     In order to run this, ar_marker_service needs to be running.
     """
     global getMarkers, req, ar_initialized, ar_lock
     
-    while(ar_lock):
+    while ar_lock:
         time.sleep(0.01)
         
     ar_lock = True
     if not ar_initialized:
-        #if rospy.get_name() == '/unnamed':
-        #    rospy.init_node('ar_tfm')
         getMarkers = rospy.ServiceProxy("getMarkers", MarkerPositions)
         req = MarkerPositionsRequest()
         ar_initialized = True
@@ -58,10 +54,11 @@ def get_ar_marker_poses (rgb, depth, pc=None):
         marker_tfm[marker.id] = conversions.pose_to_hmat(marker.pose.pose)
     
     ar_lock = False
+    
     return marker_tfm
 
 
-def get_ar_markers_from_cameras (cameras, parent_frame = None, cams = None, markers=None):
+def get_ar_markers_from_cameras (cameras, parent_frame = None, cams = None, markers = None):
     """
     The cameras here are cyni cameras.
     Returns all the ar_markers in the frame of camera 0.
@@ -93,17 +90,15 @@ def get_ar_markers_from_cameras (cameras, parent_frame = None, cams = None, mark
         return {marker:ar_markers[marker] for marker in ar_markers if marker in markers}
 
 
-def get_hydra_transforms(parent_frame, hydras=None):
+def get_hydra_transforms(parent_frame, hydras = None):
     """
     Returns hydra transform in hydra base frame.
     hydras is a list which contains 'left', 'right' or both 
     """
-    global tf_l, hydra_initialized
+    global tf_listener, hydra_initialized
     if not hydra_initialized:
-        #if rospy.get_name() == '/unnamed':
-        #    rospy.init_node('hydra_tfm')
-        if tf_l is None:
-            tf_l = tf.TransformListener()
+        if tf_listener is None:
+            tf_listener = tf.TransformListener()
         hydra_initialized = True
         print "HYDRA INITIALIZED"
         
@@ -114,7 +109,7 @@ def get_hydra_transforms(parent_frame, hydras=None):
     for hydra in hydras:
         hydra_frame = 'hydra_%s'%hydra
         try:
-            trans, rot = tf_l.lookupTransform(parent_frame, hydra_frame, rospy.Time(0))
+            trans, rot = tf_listener.lookupTransform(parent_frame, hydra_frame, rospy.Time(0))
             hydra_transforms[hydra] = conversions.trans_rot_to_hmat(trans, rot)
         except (tf.LookupException, tf.ExtrapolationException, tf.ConnectivityException):
             continue
@@ -127,19 +122,18 @@ def get_transform_frames (parent_frame, child_frame):
     Gets transform between frames.
     """
     if tf_initialized is False:
-        #if rospy.get_name() == '/unnamed':
-        #    rospy.init_node('tf_finder')
-        if tf_l is None:
-            tf_l = tf.TransformListener()
+        if tf_listener is None:
+            tf_listener = tf.TransformListener()
         tf_initialized = True
         print "TF INITIALIZED"
         
-    trans, quat = tf_l.lookupTransform(parent_frame, child_frame, rospy.Time(0))
+    trans, quat = tf_listener.lookupTransform(parent_frame, child_frame, rospy.Time(0))
     return conversions.trans_rot_to_hmat(trans, quat)
 
 
-b={'l':0.0}
-a = {'l':(300.0-b['l'])/30.0}
+pot_param1 ={'l':0.0, 'r':0.0}
+pot_param2 = {'l':(300.0-pot_param1['l'])/30.0,
+              'r':(300.0-pot_param1['r'])/30.0}
 
 def get_pot_angle (lr='l'):
     """
@@ -151,7 +145,10 @@ def get_pot_angle (lr='l'):
         pot_initialized = True
         print "POT INITIALIZED"
         
-    # WE NEED TO CHANGE
-    pot_reading = arduino.get_reading()    
-    return (pot_reading-b[lr])/a[lr]
+    if lr == 'l':
+        pot_reading = arduino.get_reading(1)    
+    else:
+        pot_reading = arduino.get_reading(2)
+    
+    return (pot_reading-pot_param1[lr])/pot_param2[lr]
     

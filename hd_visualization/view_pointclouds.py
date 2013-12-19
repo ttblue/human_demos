@@ -6,8 +6,8 @@ from sensor_msgs.msg import PointCloud2
 import cloudprocpy as cpr
 
 from hd_utils import ros_utils as ru, clouds
+from hd_utils.defaults import asus_xtion_pro_f
 
-asus_xtion_pro_f = 544.260779961
 
 def visualize_pointcloud (camera_frame="camera_depth_optical_frame", device_id="#1"):
     """

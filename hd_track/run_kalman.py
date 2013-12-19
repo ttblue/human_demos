@@ -7,16 +7,13 @@ import numpy as np
 from hd_track.kalman import kalman
 from hd_track.kalman import smoother
 from hd_utils import transformations as tfms
+from hd_utils.defaults import hd_path
 import argparse
 import matplotlib.pylab as plt
-import os.path as osp
 from kalman_tuning import state_from_tfms, closer_angle, state_from_tfms_no_velocity
 import scipy.linalg as scl
 from l1 import l1
 import cvxopt as cvx
-
-hd_path = '/home/sibi/sandbox/human_demos'
-#hd_path = '/home/ankush/sandbox444/human_demos'
 
 def run_kalman_filter(T_hydra, T_ar, x_init, covar_init, ar_cov_scale, hydra_cov_scale, f=30.):
     """

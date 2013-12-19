@@ -27,6 +27,11 @@ class streamize_pc():
     """
     
     def __init__(self, bag, cloud_topics, freq, tstart=None, verbose=False):
+        
+        if cloud_topics == None:
+            self.done = True
+            return
+        
         self.bag = bag
         self.verbose = verbose
         

@@ -38,7 +38,7 @@ class cyni_cameras:
         
         if rospy.get_name() == '/unnamed':
             rospy.init_node('cam_calibrator')
-        self.tf_l = tf.TransformListener()
+        self.tf_listener = tf.TransformListener()
         
         cyni.initialize()
         self.allDevices = cyni.enumerateDevices()
@@ -145,7 +145,7 @@ class cyni_cameras:
         Stores transforms when found. Assumes offset does not change between frame and camera.
         """
         if frame not in self.stored_tfms:
-            trans, rot = self.tf_l.lookupTransform(frame, self.parent_frame, rospy.Time(0))
+            trans, rot = self.tf_listener.lookupTransform(frame, self.parent_frame, rospy.Time(0))
             self.stored_tfms[frame] = conversions.trans_rot_to_hmat(trans, rot)
         
         return self.stored_tfms[frame].dot(self.get_camera_transform(0, cam))

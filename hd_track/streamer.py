@@ -23,9 +23,12 @@ class streamize():
     def __init__(self, objs, ts, freq, favg, tstart=0):
         assert len(objs)==len(ts), "time-stamps and objects should have the same length"
         self.objs = objs
-        
-        self.ts   = np.array(ts)
-        self.tmax = self.ts[-1]
+        self.ts = np.array(ts)
+    
+        if len(ts) == 0:
+            self.tmax = 0
+        else:
+            self.tmax = self.ts[-1]
         
         self.favg = favg
         self.dt   = 1./freq

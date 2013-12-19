@@ -10,8 +10,8 @@ import cyni
 
 from hd_utils import clouds, ros_utils as ru, conversions
 from hd_utils.yes_or_no import yes_or_no
+from hd_utils.defaults import asus_xtion_pro_f
 
-asus_xtion_pro_f = 544.260779961
 
 getMarkers = None
 req = MarkerPositionsRequest()
