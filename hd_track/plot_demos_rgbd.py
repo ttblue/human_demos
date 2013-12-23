@@ -11,7 +11,7 @@ if __name__=="__main__":
     parser.add_argument('-dname', help="name of demonstration file", action='store', dest='demo_fname', default='demo100', type=str)
     parser.add_argument('-clib', help="name of calibration file", action='store', dest='calib_fname', default = 'cc_two_camera_calib', type=str)
     vals = parser.parse_args()
-    
+
     freq = vals.freq
     demo_fname = vals.demo_fname
     calib_fname = vals.calib_fname
