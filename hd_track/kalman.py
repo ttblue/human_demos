@@ -199,11 +199,11 @@ class kalman:
         self.t_filt = t
         self.x_filt = np.reshape(x_init, (12,1))
         self.S_filt = S_init
-        self.motion_covar = motion_covar
-        self.hydra_covar  = hydra_covar
+        self.motion_covar    = motion_covar
+        self.hydra_covar     = hydra_covar
         self.hydra_covar_vel = hydra_covar_vel
-        self.ar1_covar    = ar1_covar
-        self.ar2_covar    = ar2_covar
+        self.ar1_covar       = ar1_covar
+        self.ar2_covar       = ar2_covar
         self.qcount = 0
 
     def __check_time__(self, t):
@@ -464,8 +464,8 @@ def canonicalize_obs(X_base, X_obs):
     current estimate in absolute terms.
     """
     rpy_base = X_base[6:9]
-    rpy = X_obs[6:9]
-    rpy = closer_angle(rpy, rpy_base)
+    rpy      = X_obs[6:9]
+    rpy      = closer_angle(rpy, rpy_base)
     X_obs[6:9] = rpy
     return X_obs
 
@@ -504,7 +504,7 @@ def smoother(A, R, mu, sigma):
     for t in xrange(T-2, -1, -1):
         L                   = sigma[t].dot(A.T).dot(np.linalg.inv(sigma_p[t]))
         mu_p_canon          = canonicalize_obs(mu_smooth[t+1], mu_p[t])
-        mu_smooth[t]        = mu[t] + 1*(L.dot(mu_smooth[t+1] - mu_p_canon))
+        mu_smooth[t]        = mu[t] + 0.9*(L.dot(mu_smooth[t+1] - mu_p_canon))
         mu_smooth[t][6:9,:] = put_in_range(mu_smooth[t][6:9,:])
         
         # added, though not necessary now

@@ -56,10 +56,10 @@ print tst
 
 pr2_1 = [Ts_bg_gh[i] for i in trn]
 pr2_2 = [Ts_bg_gh[i] for i in tst]
-hy_1 = [Ts_bh[i] for i in trn]
-hy_2 = [Ts_bh[i] for i in tst]
-xp_1 = np.take(X_bg_gh[6:9,:].T, [i for i in trn], axis=0)
-xp_2 = np.take(X_bg_gh[6:9,:].T, [i for i in tst], axis=0)
+hy_1  = [Ts_bh[i] for i in trn]
+hy_2  = [Ts_bh[i] for i in tst]
+xp_1  = np.take(X_bg_gh[6:9,:].T, [i for i in trn], axis=0)
+xp_2  = np.take(X_bg_gh[6:9,:].T, [i for i in tst], axis=0)
 
 ## visualize the states -- the roll pitch yaws.
 plotter = PlotterInit()
@@ -77,7 +77,7 @@ A,B,C,D,E = pr2_1, hy_1, xp_1, hy_2, xp_2
 
 #hi_params = ec.train_hyperparams(A,B,C)
 #cPickle.dump(hi_params, open('hyper-params.cpkl', 'wb')) ## save the hyper-parameters to a file.
-ests = ec.gp_correct_poses(A,B,C,D,E, None)
+ests  = ec.gp_correct_poses(A,B,C,D,E, None)
 X_est = state_from_tfms(ests, dt=1./30.).T
 X_est = np.c_[X_est[:,0], X_est]
 
@@ -85,7 +85,7 @@ axlabels = ['x','y','z','roll','pitch','yaw']
 plt.clf()
 
 xpf_t_2 = xpf_2.T
-xh_t_2 = xh_2.T
+xh_t_2  = xh_2.T
 
 for i in xrange(6):
     j = i+3 if i > 2 else i

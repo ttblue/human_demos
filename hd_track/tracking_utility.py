@@ -18,8 +18,12 @@ from hd_utils.colorize import colorize
 from hd_utils.conversions import *
 from hd_utils.utils import *
 from hd_utils.defaults import tfm_link_rof
+
+
 from hd_track.kalman import kalman, closer_angle
 from hd_track.kalman import smoother
+
+
 from hd_track.kalman_tuning import state_from_tfms_no_velocity
 from hd_track.streamer import streamize
 from hd_track.stream_pc import streamize_pc, streamize_rgbd_pc
@@ -35,15 +39,17 @@ def load_covariances():
     Load the noise covariance matrices:
     """
     covar_mats   =  cp.load(open(hd_path + '/hd_track/data/nodup-covars-1.cpickle'))
+    
+    
     ar_covar     =  1e2*covar_mats['kinect']
     motion_covar =  1e-3*covar_mats['process']
     hydra_covar  =  covar_mats['hydra']
-    
+
     motion_covar = np.diag(np.diag(motion_covar))
-    ar_covar = np.diag(np.diag(ar_covar))
-    hydra_covar = np.diag(np.diag(hydra_covar))
+    ar_covar     = np.diag(np.diag(ar_covar))
+    hydra_covar  = np.diag(np.diag(hydra_covar))
     
-    # make motion covariance large
+    #make motion covariance large
     motion_covar = 1e-3*np.eye(12) # motion covar 1e-3
     #print ar_covar
     #print hydra_covar
@@ -52,10 +58,8 @@ def load_covariances():
     hydra_covar = 1e-4*np.eye(6) # for rpy 1e-4 
     hydra_covar[0:3,0:3] = 1e-2*np.eye(3) # for xyz 1e-2
     
-    hydra_vcovar = 1e-5*np.eye(6) # for xyz-v 1e-5
-                                  # for rpy-v 1e-5
-    
-    print hydra_covar
+    hydra_vcovar = 1e-3*np.eye(6) # for xyz-v 1e-5
+                                   # for rpy-v 1e-5
 
     return (motion_covar, ar_covar, hydra_covar, hydra_vcovar)
 
@@ -279,29 +283,29 @@ def publish_static_tfm(parent_frame, child_frame, tfm):
             sleeper.sleep()
     thread.start_new_thread(spin_pub, ())
 
-'''
-What is this!!!
-'''
+
 def open_frac(angle):
-    angle_max = 33
+    """
+    Convert the angle in degrees to a fraction.
+    """
+    angle_max = 33.0
     return angle/angle_max
 
 
 def plot_kalman_core(X_kf, X_ks, X_ar1, vs_ar1, X_ar2, vs_ar2, X_hy, vs_hy, plot_commands):
-    
     """
     X_kf: kalman filter result
     X_ks: kalman smoother result
     [vs_ar1, X_ar1]: the timing and transform of Ar marker1
     [vs_ar2, X_ar2]: the timing and transform of Ar marker2
-    [vs_hy, X_hy]: the timing and transform of hydra
+    [vs_hy, X_hy]  : the timing and transform of hydra
     """
     if plot_commands == '': return
-    
+
     to_plot= [i for i in xrange(9)]
     axlabels = ['x', 'y', 'z', 'vx', 'vy', 'vz', 'roll', 'pitch', 'yaw', 'v_roll', 'v_pitch', 'v_yaw']
     for i in to_plot:
-        plt.subplot(4,3,i+1)
+        plt.subplot(3,3,i+1)
         if 'f' in plot_commands:
             plt.plot(X_kf[i,:], label='filter')
         if 's' in plot_commands:
@@ -313,7 +317,8 @@ def plot_kalman_core(X_kf, X_ks, X_ar1, vs_ar1, X_ar2, vs_ar2, X_hy, vs_hy, plot
         if 'h' in plot_commands:
             plt.plot(vs_hy, X_hy[i,:], '.', label='hydra')
         plt.ylabel(axlabels[i])
-        
+
+
 def correlation_shift(xa,xb):
     shifts = []
     for idx in [0, 1, 2]:
@@ -330,7 +335,6 @@ def plot_kalman_lr(data_file, calib_file, lr, freq, use_spline, customized_shift
     use_spline
     customized_shift: custimized shift between smoother and filter: to compensate for the lag of smoother
     '''
-    
     _, _, _, ar1_strm, ar2_strm, hy_strm = relative_time_streams(data_file, lr, freq, single_camera)    
     
     ## run kalman filter:
@@ -360,11 +364,11 @@ def plot_kalman_lr(data_file, calib_file, lr, freq, use_spline, customized_shift
     ## frame of the filter estimate:
     indices_ar1 = []
     indices_ar2 = []
-    indices_hy = []
+    indices_hy  = []
 
     Ts_ar1 = []
     Ts_ar2 = []
-    Ts_hy = []
+    Ts_hy  = []
 
     if use_spline:
         smooth_hy = (t for t in fit_spline_to_stream(hy_strm, nsteps))
@@ -398,11 +402,9 @@ def plot_kalman(data_file, calib_file, freq, use_spline=False, customized_shift=
     dat = cp.load(open(data_file))
     if dat.has_key('l'):
         plot_kalman_lr(data_file, calib_file, 'l', freq, use_spline, customized_shift, single_camera, plot_commands)
-    elif dat.has_key('r'):
+    if dat.has_key('r'):
         plot_kalman_lr(data_file, calib_file, 'r', freq, use_spline, customized_shift, single_camera, plot_commands)
-    else:
-        pass
-
+    
     
     
 def rviz_kalman(demo_dir, bag_file, data_file, calib_file, freq, use_rgbd=False, use_smoother=False, use_spline=False, customized_shift=None, single_camera=False):
@@ -411,18 +413,17 @@ def rviz_kalman(demo_dir, bag_file, data_file, calib_file, freq, use_rgbd=False,
     Otherwise, demo_dir is redundant
     '''
     if use_rgbd:
-        bag_file = osp.join(demo_dir, 'demo.bag')
+        bag_file  = osp.join(demo_dir, 'demo.bag')
         rgbd1_dir = osp.join(demo_dir, 'camera_#1')
         rgbd2_dir = osp.join(demo_dir, 'camera_#2')
         data_file = osp.join(demo_dir, 'demo.data') 
         bag = rosbag.Bag(bag_file)
     else:
         bag = rosbag.Bag(bag_file)
-        
+
     dat = cp.load(open(data_file))
     grippers = dat.keys()
-        
-     
+
     pub = rospy.Publisher('/point_cloud1', PointCloud2)
     pub2= rospy.Publisher('/point_cloud2', PointCloud2)
     
@@ -455,14 +456,14 @@ def rviz_kalman(demo_dir, bag_file, data_file, calib_file, freq, use_rgbd=False,
         
         X_ks = np.array(S_means)
         X_ks = np.reshape(X_ks, (X_ks.shape[0], X_ks.shape[1])).T
-    
-        
+
+
         # Shifting between filter and smoother:
         if customized_shift != None:
             shift = customized_shift
         else:
             shift = correlation_shift(X_kf, X_ks)
-            
+
         X_ks = np.roll(X_ks,shift,axis=1)
         X_ks[:,:shift]  = X_ks[:,shift][:,None]
         
@@ -474,8 +475,12 @@ def rviz_kalman(demo_dir, bag_file, data_file, calib_file, freq, use_rgbd=False,
         ## load the potentiometer-angle stream:
         pot_data = cp.load(open(data_file))[lr]['pot_angles']
         
-        ang_ts   = np.array([tt[1] for tt in pot_data])  ## time-stamps
-        ang_vals = [open_frac(tt[0]) for tt in pot_data]  ## angles
+        ang_ts       = np.array([tt[1] for tt in pot_data])  ## time-stamps
+        ang_vals     = [tt[0] for tt in pot_data]  ## angles
+        plt.plot(ang_vals)
+        plt.show()
+        ang_vals = [0*open_frac(x) for x in ang_vals]
+
         ang_strm[lr] = streamize(ang_vals, ang_ts, freq, lambda x : x[-1], tmin)
         
         if use_spline:
@@ -483,8 +488,6 @@ def rviz_kalman(demo_dir, bag_file, data_file, calib_file, freq, use_rgbd=False,
         else:
             smooth_hy[lr] = hy_strm
 
-    
-        
     ## get the point-cloud stream
     cam1_frame_id = '/camera1_rgb_optical_frame'
     cam2_frame_id = '/camera2_rgb_optical_frame'
@@ -545,18 +548,22 @@ def rviz_kalman(demo_dir, bag_file, data_file, calib_file, freq, use_rgbd=False,
         except StopIteration:
             print "pc2 ts: finished"
             pass
-        
 
-        for lr in grippers: 
+
+        ang_vals  = []
+        T_filt_lr = []
+        for lr in grippers:
             ang_val = soft_next(ang_strm[lr])
             if ang_val != None:
                 prev_ang[lr] = ang_val
-                ang_val  = [ang_val]
+                ang_val  = ang_val
             else:
-                ang_val = [prev_ang[lr]]
-        
-            handles = draw_trajectory(cam1_frame_id, [T_filt[lr][i]], color=(1,1,0,1), open_fracs=ang_val)
-        
+                ang_val = prev_ang[lr]
+
+            ang_vals.append(ang_val)
+            T_filt_lr.append(T_filt[lr][i])
+
+        handles = draw_trajectory(cam1_frame_id, T_filt_lr, color=(1,1,0,1), open_fracs=ang_vals)
 
         # draw un-filtered estimates:
         for lr in grippers:

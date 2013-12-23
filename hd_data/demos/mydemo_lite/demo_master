@@ -1,6 +1,0 @@
-
-- bag_file: /home/sibi/sandbox/human_demos/hd_data/demos/mydemo_lite/demo.bag
-  video_dir1: /home/sibi/sandbox/human_demos/hd_data/demos/mydemo_lite/camera_#1
-  video_dir2: /home/sibi/sandbox/human_demos/hd_data/demos/mydemo_lite/camera_#2
-  annot_dir: /home/sibi/sandbox/human_demos/hd_data/demos/mydemo_lite/ann.yaml
-  demo_name: /home/sibi/sandbox/human_demos/hd_data/demos/mydemo_lite

@@ -27,6 +27,6 @@ def draw_trajectory(frame_id, hmats, open_fracs=None, color=(0,0,1,0.5)):
     """
     if open_fracs ==None:
         open_fracs = len(hmats)*[0]
-    poses = hmats_to_pose_array(hmats, frame_id)
+    poses   = hmats_to_pose_array(hmats, frame_id)
     handles = rviz.draw_trajectory(poses, open_fracs=open_fracs, color=color)
     return handles
