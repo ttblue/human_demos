@@ -21,6 +21,7 @@ import os, os.path as osp
 import itertools
 import rospy
 import time, os, shutil
+import yaml
 
 from hd_calib import calibration_pipeline as cpipe
 from hd_utils.colorize import *
@@ -107,47 +108,46 @@ finally:
         print "stopping video2"
         video_handle2.send_signal(signal.SIGINT)
         video_handle2.wait()
+        
+    # save files
+    bag_filename = osp.join(demo_dir, 'demo.bag')
+    video1_dirname = osp.join(demo_dir, 'camera_#1')  
+    video2_dirname = osp.join(demo_dir, 'camera_#2')
+    annotation_filename = osp.join(demo_dir, 'ann.yaml')
+    data_filename = osp.join(demo_dir, "demo.data")
+    traj_filename = osp.join(demo_dir, "demo.traj")
 
-time.sleep(100)    
-
-bag_filename = osp.join(demo_dir, 'demo.bag')
-video1_dirname = osp.join(demo_dir, 'camera_#1')  
-video2_dirname = osp.join(demo_dir, 'camera_#2')
-annotation_filename = osp.join(demo_dir, 'ann.yaml')
-data_filename = osp.join(demo_dir, "demo.data")
-traj_filename = osp.join(demo_dir, "demo.traj")
-
-ed.save_observations_rgbd(args.demo_name, args.calibration_file)
+    ed.save_observations_rgbd(args.demo_name, args.calibration_file)
 
 
-freq = 30
-demo_fname = vals.demo_fname
-calib_fname = vals.calib_fname
+    freq = 30
+    demo_fname = vals.demo_fname
+    calib_fname = vals.calib_fname
 
-traj_data = traj_kalman(data_filename, calib_file, freq)
+    traj_data = traj_kalman(data_filename, calib_file, freq)
     
-with open(traj_filename, 'w') as fh:
-    cPickle.dump(traj_data, fh)
+    with open(traj_filename, 'w') as fh:
+        cPickle.dump(traj_data, fh)
 
-
-if yes_or_no("save demo?"):
-    with open(demo_dir+"/"+args.master_file,"w") as fh:
-        fh.write("\n"
-            "- bag_file: %(bagfilename)s\n"
-            "  video_dir1: %(video1dir)s\n"
-            "  video_dir2: %(video2dir)s\n"
-            "  annot_dir: %(annofilename)s\n"
-            "  data_file: %(datafilename)s\n"
-            "  traj_file: %(trajfilename)s\n"
-            "  demo_name: %(demoname)s"
-            %dict(bagfilename=bag_filename, video1dir=video1_dirname, 
-                  video2dir=video2_dirname, annofilename=annotation_filename,
-                  datafilename=data_filename, trajfilename=traj_filename,
-                  demoname=demo_dir))
-else:
-    if osp.exists(demo_dir):
-        print "Removing demo dir" 
+    video_dirs = []
+    for i in range(1,args.num_cameras+1):
+        video_dirs.append("camera_#%s"%(i))
+        
+    if yes_or_no("save demo?"):
+        with open(demo_dir+"/"+args.master_file,"w") as fh:
+            fh.write(
+                     "name: $(demo_name)\n",
+                     "h5path: $(demo_name).h5\n"
+                     "\n"
+                     "- bag_file: demo.bag\n"
+                     "  video_dirs %(video_dirs)\n"
+                     "  annotation_file: demo.ann.yaml\n"
+                     "  data_file: demo.data\n"
+                     "  traj_file: demo.traj\n"
+                     "  demo_name: %(demo_name)"
+                     %dict(video_dirs = [], demo_name = args.demo_name))
+    else:
+        if osp.exists(demo_dir):
+            print "Removing demo dir" 
         shutil.rmtree(demo_dir)
         print "Done"
-
-#exit()
