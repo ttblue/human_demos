@@ -353,21 +353,17 @@ class kalman:
         if T_hy != None and T_ar1 != None:
             if err1_ready:
                 err = T_ar1[0:3, 3] - T_hy[0:3, 3] + err1_mean                
-                cmp_res = np.greater(np.abs(err), 20 * err1_std)
+                cmp_res = np.greater(np.abs(err), np.array([0.02, 0.05, 0.02]))
                 if cmp_res[0] == True or cmp_res[1] == True or cmp_res[2] == True:
-                    print T_ar1[0:3, 3], T_hy[0:3, 3]
-                    print T_ar1[0:3, 3] - T_hy[0:3, 3], err1_mean 
                     print err, err1_std
                     T_ar1_outlier = True
-
-                
+ 
+                 
         if T_hy != None and T_ar2 != None:
             if err2_ready:
                 err = T_ar2[0:3, 3] - T_hy[0:3, 3] + err2_mean  
-                cmp_res = np.greater(np.abs(err), 20 * err2_std)
+                cmp_res = np.greater(np.abs(err), np.array([0.02, 0.05, 0.02]))
                 if cmp_res[0] == True or cmp_res[1] == True or cmp_res[2] == True:
-                    print T_ar2[0:3, 3], T_hy[0:3, 3]
-                    print T_ar2[0:3, 3] - T_hy[0:3, 3], err2_mean 
                     print err, err2_std
                     T_ar2_outlier = True
         
@@ -404,7 +400,8 @@ class kalman:
                 C = np.r_[C, c_ar2[0:3,:]]
                 Q = scl.block_diag(Q, q_ar2[0:3,0:3])
 
-        if T_hy != None:# observe the hydra
+        if T_hy != None and T_ar1 is None and T_ar2 is None:
+        #if T_hy != None:# observe the hydra
             pos, rpy = self.canonicalize_obs(T_hy)
 
             c_hy, q_hy = self.get_hydra_mats()

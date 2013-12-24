@@ -407,7 +407,7 @@ def plot_kalman(data_file, calib_file, freq, use_spline=False, customized_shift=
     
     
     
-def rviz_kalman(demo_dir, bag_file, data_file, calib_file, freq, use_rgbd=False, use_smoother=False, use_spline=False, customized_shift=None, single_camera=False):
+def rviz_kalman(demo_dir, bag_file, data_file, calib_file, freq, use_rgbd, use_smoother, use_spline, customized_shift, single_camera):
     '''
     For rgbd, data_file and bag_file are redundant
     Otherwise, demo_dir is redundant
@@ -477,8 +477,8 @@ def rviz_kalman(demo_dir, bag_file, data_file, calib_file, freq, use_rgbd=False,
         
         ang_ts       = np.array([tt[1] for tt in pot_data])  ## time-stamps
         ang_vals     = [tt[0] for tt in pot_data]  ## angles
-        plt.plot(ang_vals)
-        plt.show()
+#         plt.plot(ang_vals)
+#         plt.show()
         ang_vals = [0*open_frac(x) for x in ang_vals]
 
         ang_strm[lr] = streamize(ang_vals, ang_ts, freq, lambda x : x[-1], tmin)
@@ -494,7 +494,10 @@ def rviz_kalman(demo_dir, bag_file, data_file, calib_file, freq, use_rgbd=False,
     
     if use_rgbd:
         pc1_strm = streamize_rgbd_pc(rgbd1_dir, cam1_frame_id, freq, tmin)
-        pc2_strm = streamize_rgbd_pc(rgbd2_dir, cam2_frame_id, freq, tmin)
+        if single_camera:
+            pc2_strm = streamize_rgbd_pc(None, cam2_frame_id, freq, tmin)
+        else:
+            pc2_strm = streamize_rgbd_pc(rgbd2_dir, cam2_frame_id, freq, tmin)
     else:
         pc1_strm = streamize_pc(bag, '/camera1/depth_registered/points', freq, tmin)
         if single_camera:
@@ -603,7 +606,7 @@ def traj_kalman_lr(data_file, calib_file, lr, freq, use_spline, customized_shift
     _, _, _, ar1_strm, ar2_strm, hy_strm = relative_time_streams(data_file, lr, freq, single_camera)    
     
     ## run kalman filter:
-    nsteps, tmin, F_means,S,A,R = run_kalman_filter(data_file, lr, freq, use_spline, True, single_camera)
+    nsteps, tmin, F_means, S, A, R = run_kalman_filter(data_file, lr, freq, use_spline, True, single_camera)
     ## run kalman smoother:
     S_means, _ = smoother(A, R, F_means, S)
     
@@ -624,7 +627,9 @@ def traj_kalman_lr(data_file, calib_file, lr, freq, use_spline, customized_shift
 
     X_ks = np.roll(X_ks,shift,axis=1)
     X_ks[:,:shift]  = X_ks[:,shift][:,None]
-    T_filt = state_to_hmat(list(X_ks.T))
+    
+    T_filter = state_to_hmat(list(X_ks.T))
+    T_smoother = state_to_hmat(list(X_kf.T))
     
     ## load the potentiometer-angle stream:
     if lr == None:
@@ -650,7 +655,12 @@ def traj_kalman_lr(data_file, calib_file, lr, freq, use_spline, customized_shift
         
         ang_strm_vals.append(ang_val)
         
-    traj = {"tfms": T_filt, "pot_angles": ang_strm_vals, "freq": freq}
+    stamps = []
+    for i in xrange(nsteps):
+        stamps.append(tmin + i * 1.0 / freq)
+    
+        
+    traj = {"tfms": T_filter, "tfms_s": T_smoother, "pot_angles": ang_strm_vals, "stamps": stamps}
     
     return traj
     
@@ -664,7 +674,7 @@ def traj_kalman(data_file, calib_file, freq, use_spline=False, customized_shift=
             traj['l'] = traj_kalman_lr(data_file, calib_file, 'l', freq, use_spline, customized_shift, single_camera)
         if data.has_key('r'):
             traj['r'] = traj_kalman_lr(data_file, calib_file, 'r', freq, use_spline, customized_shift, single_camera)
-        
+
     return traj
 
     
