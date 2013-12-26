@@ -363,7 +363,6 @@ def save_observations_rgbd(demo_name, calib_file, num_cameras, for_gpr=False, sa
 
     winname = 'cam_image'    
     cam_counts = []
-    
     for i in range(num_cameras):
         yellowprint('Camera%i'%(i+1))
         rgb_fnames, depth_fnames, stamps = eu.get_rgbd_names_times(rgbd_dirs[i])
@@ -419,9 +418,8 @@ def save_observations_rgbd(demo_name, calib_file, num_cameras, for_gpr=False, sa
             data[lr]['pot_angles'].append((angle, stamp))
             blueprint("Got a %s potentiometer angle of %f at time %f"%(lr,angle, stamp))
 
-    for lr in data:
+    for lr in 'lr':
         yellowprint("Gripper %s:"%lr)
-        
         for i in range(num_cameras):
             yellowprint("Found %i transforms out of %i point clouds from camera%i"%(len(data[lr]['camera%i'%(i+1)]), cam_counts[i], i+1))
         
