@@ -53,8 +53,6 @@ def get_ar_marker_poses (pc, ar_markers = None):
 def save_observations (bag, calib_file, save_file=None):
     """
     Assuming that the bag files have specific topics.
-    Also assuming the calib has only one gripper.
-    Can add more later.
     """
     
     file_name = osp.join(calib_files_dir,calib_file)
@@ -197,8 +195,6 @@ def save_observations (bag, calib_file, save_file=None):
 def save_observations_one_camera (bag, calib_file, save_file=None):
     """
     Assuming that the bag files have specific topics.
-    Also assuming the calib has only one gripper.
-    Can add more later.
     """
     
     file_name = osp.join(calib_files_dir,calib_file)
@@ -313,8 +309,7 @@ def save_observations_rgbd(demo_name, calib_file, num_cameras, for_gpr=False, sa
     
     demo_dir        = osp.join(demo_files_dir, demo_name)
     calib_file_path = osp.join(calib_files_dir, calib_file)
-    
-    bag_file = osp.join(demo_dir, 'demo.bag')
+    bag_file        = osp.join(demo_dir, 'demo.bag')
     
     rgbd_dirs = []
     for i in range(1, num_cameras + 1):
@@ -336,11 +331,10 @@ def save_observations_rgbd(demo_name, calib_file, num_cameras, for_gpr=False, sa
     bag = rosbag.Bag(bag_file)
     
     for tfm in calib_data['transforms']:
-        if tfm['parent'] == c_frames[0] or tfm['parent'] == '/' + cframes[0]:
+        if tfm['parent'] == c_frames[0] or tfm['parent'] == '/' + c_frames[0]:
             if tfm['child'] == hydra_frame or tfm['child'] == '/' + hydra_frame:
                 tfm_c1_h = nlg.inv(tfm_link_rof).dot(tfm['tfm'])
             else:
-                other_camera_id = -1
                 for i in range(1, num_cameras):
                     if tfm['child'] == c_frames[i] or tfm['child'] == '/' + c_frames[i]:
                         tfm_c1_all[i] = nlg.inv(tfm_link_rof).dot(tfm['tfm']).dot(tfm_link_rof)
@@ -355,17 +349,19 @@ def save_observations_rgbd(demo_name, calib_file, num_cameras, for_gpr=False, sa
 
     grippers = {}
     data = {}
+    data['T_cam2hbase'] = tfm_c1_h
     for lr,gdata in calib_data['grippers'].items():
         gr = gripper_lite.GripperLite(lr, gdata['ar'], trans_marker_tooltip=gripper_trans_marker_tooltip[lr])
         gr.reset_gripper(lr, gdata['tfms'], gdata['ar'], gdata['hydra'])
         grippers[lr] = gr
-        data[lr] ={'camera1':[],
-                   'camera2':[],
-                   'hydra':[],
-                   'pot_angles':[]}
-        
-    winname = 'abcd'
-    
+        data[lr] ={'hydra':[],
+                   'pot_angles':[],
+                   'T_tt2hy': gr.get_rel_transform('tool_tip', gr.hydra_marker)}
+        ## place-holder for AR marker transforms:
+        for i in xrange(num_cameras):
+            data[lr]['camera%d'%(i+1)] = []
+
+    winname = 'cam_image'    
     cam_counts = []
     
     for i in range(num_cameras):
@@ -385,15 +381,12 @@ def save_observations_rgbd(demo_name, calib_file, num_cameras, for_gpr=False, sa
             ar_tfms = get_ar_marker_poses(pc)
             if ar_tfms:
                 blueprint("Got markers " + str(ar_tfms.keys()) + " at time %f"%stamps[ind])
+
             for lr,gr in grippers.items():
                 ar = gr.get_ar_marker() 
                 if ar in ar_tfms:
-                    if not for_gpr: # this is the transform from ar marker to gripper tooltip
-                        tt_tfm = gr.get_tooltip_transform(ar, np.asarray(ar_tfms[ar]))
-                        data[lr]['camera%i'%(i+1)].append((tfm_c1_all[i].dot(tt_tfm),stamps[ind]))
-                    else: # this is the transform from ar marker to hydra sensor on gripper
-                        T_marker_to_hydra_sensor = np.linalg.inv(tfm_c1_h).dot(tfm_c1_all[i]).dot(np.asarray(ar_tfms[ar])).dot(calib_data['grippers'][lr]['tfms'][1]['tfm'])
-                        data[lr]['camera%i'%(i+1)].append((T_marker_to_hydra_sensor,stamps[ind]))
+                    tt_tfm = gr.get_tooltip_transform(ar, np.asarray(ar_tfms[ar]))
+                    data[lr]['camera%i'%(i+1)].append((tfm_c1_all[i].dot(tt_tfm),stamps[ind]))
 
     yellowprint('Hydra')
     lr_long = {'l':'left','r':'right'}
@@ -440,12 +433,6 @@ def save_observations_rgbd(demo_name, calib_file, num_cameras, for_gpr=False, sa
     save_filename = osp.join(demo_dir, save_file)
 
     with open(save_filename, 'w') as sfh: cPickle.dump(data, sfh)
-    
-
-
-
-
-
 
 
     
