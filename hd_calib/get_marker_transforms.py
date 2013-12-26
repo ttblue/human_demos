@@ -131,15 +131,14 @@ def get_transform_frames (parent_frame, child_frame):
     return conversions.trans_rot_to_hmat(trans, quat)
 
 
-pot_param1 ={'l':0.0, 'r':0.0}
-pot_param2 = {'l':(300.0-pot_param1['l'])/30.0,
-              'r':(300.0-pot_param1['r'])/30.0}
+pot_param1 ={'l':30.0/300, 'r':-30.0/275.0}
+pot_param2 = {'l':0.0,'r':30.0}
 
 def get_pot_angle (lr='l'):
     """
     Get angle of gripper from potentiometer.
     """
-    global pot_initialized, arduino, a, b
+    global pot_initialized, arduino
     if not pot_initialized:
         arduino = read_arduino.get_arduino()
         pot_initialized = True
@@ -150,5 +149,5 @@ def get_pot_angle (lr='l'):
     else:
         pot_reading = arduino.get_reading(2)
     
-    return (pot_reading-pot_param1[lr])/pot_param2[lr]
+    return pot_param1[lr]*pot_reading + pot_param2[lr]
     

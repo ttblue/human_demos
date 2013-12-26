@@ -27,7 +27,7 @@ class streamize_pc():
     """
     
     def __init__(self, bag, cloud_topics, freq, tstart=None, verbose=False):
-        
+                
         if cloud_topics == None:
             self.done = True
             return
@@ -123,6 +123,12 @@ class streamize_rgbd_pc():
     """
     
     def __init__(self, rgbd_dir, frame_id, freq, tstart=None, verbose=False):
+    
+                
+        if rgbd_dir is None:
+            self.done = True
+            return
+        
         self.rgbd_dir = rgbd_dir
         self.verbose = verbose
         self.frame_id = frame_id
@@ -163,7 +169,7 @@ class streamize_rgbd_pc():
         if self.done:
             raise StopIteration
         else:
-            ttarg    = self.t + self.dt
+            ttarg = self.t + self.dt
             self.t += self.dt
 
             if self.ts > ttarg:

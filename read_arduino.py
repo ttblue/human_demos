@@ -65,7 +65,6 @@ class Arduino:
 	    	return int(self.reading.split()[idx-1])
             except:
 		pass
-            
 
 @once
 def get_arduino ():

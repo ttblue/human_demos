@@ -18,6 +18,7 @@ import os, os.path as osp
 import itertools
 import rospy
 import time, os, shutil
+import yaml
 
 from hd_calib import calibration_pipeline as cpipe
 from hd_utils.colorize import *
@@ -49,7 +50,7 @@ try:
     if not osp.exists(demo_dir):
         os.mkdir(demo_dir)
     
-    bag_cmd = "rosbag record -O %s /l_pot_angle /r_pot_angle /segment /tf"%(demo_dir+"/demo.bag")
+    bag_cmd = "rosbag record -O %s /l_pot_angle /r_pot_angle /segment /tf"%(demo_dir+"/demo")
     greenprint(bag_cmd)
     bag_handle = subprocess.Popen(bag_cmd, shell=True)
     time.sleep(1)
@@ -76,7 +77,13 @@ try:
     else:
         video_handle1 = subprocess.Popen(video_cmd1, shell=True)
         started_video1 = True    
-
+    
+    started_voice = False    
+    voice_cmd = "roslaunch pocketsphinx demo_recording.launch"
+    greenprint(voice_cmd)
+    voice_handle = subprocess.Popen(voice_cmd, shell=True)
+    started_voice = True
+    
     time.sleep(9999)    
 
 except KeyboardInterrupt:
@@ -96,25 +103,40 @@ finally:
         print "stopping video2"
         video_handle2.send_signal(signal.SIGINT)
         video_handle2.wait()
+    if started_voice:
+        print "stopping voice"
+        voice_handle.send_signal(signal.SIGINT)
+        voice_handle.wait()
+    
 
 
-bag_filename = demo_dir+"/demo.bag"
-video1_dirname = demo_dir+"/camera_#1"
-video2_dirname = demo_dir+"/camera_#2"
-annotation_filename = demo_dir+"/ann.yaml"
-
-if yes_or_no("save demo?"):
-    with open(demo_dir+"/"+args.master_file,"w") as fh:
-        fh.write("\n"
-            "- bag_file: %(bagfilename)s\n"
-            "  video_dir1: %(video1dir)s\n"
-            "  video_dir2: %(video2dir)s\n"
-            "  annot_dir: %(annofilename)s\n"
-            "  demo_name: %(demoname)s"%dict(bagfilename=bag_filename, video1dir=video1_dirname, video2dir=video2_dirname, annofilename=annotation_filename, demoname=demo_dir))
-else:
-    if osp.exists(demo_dir):
-        print "Removing demo dir" 
-        shutil.rmtree(demo_dir)
-        print "Done"
+    bag_filename = demo_dir+"/demo.bag"
+    video1_dirname = demo_dir+"/camera_#1"
+    video2_dirname = demo_dir+"/camera_#2"
+    annotation_filename = demo_dir+"/ann.yaml"
+    
+    video_dirs = []
+    for i in range(1,args.num_cameras+1):
+        video_dirs.append("camera_#%s"%(i))
+        
+    bag_info = {"bag_file": "demo.bag",
+                "video_dirs": video_dirs,
+                "annotation_file": "demo.ann.yaml",
+                "data_file": "demo.data",
+                "traj_file": "demo.traj",
+                "demo_name": args.demo_name}
+    
+    master_info = {"name": args.demo_name,
+                   "h5path": args.demo_name + ".h5",
+                    "bags": bag_info}
+    
+    if yes_or_no("save demo?"):
+        with open(demo_dir+"/"+args.master_file,"w") as fh:
+            yaml.dump(master_info, fh)
+    else:
+        if osp.exists(demo_dir):
+            print "Removing demo dir" 
+            shutil.rmtree(demo_dir)
+            print "Done"
 
 #exit()
