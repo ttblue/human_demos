@@ -39,6 +39,7 @@ class ARMarkersRos:
         if len(data.markers) == 0:
             if self.freq != 0.0:
                 time_now = data.header.stamp.to_sec()
+                if time_now == 0.0: time_now = rospy.Time.now().to_sec()
                 if time_now - self.latest_time > 3.0 / self.freq:
                     self.freq = 0.0
             return
@@ -46,15 +47,15 @@ class ARMarkersRos:
         # estimate frequency from sequential data
         self.count = (self.count + 1) % 100000
         self.latest_markers = data
-        if self.latest_time == 0.0:
-            self.latest_time = data.header.stamp.to_sec()
-        else:
-            time_now = data.header.stamp.to_sec()
+        
+        time_now = data.header.stamp.to_sec()
+        if time_now == 0.0: time_now = rospy.Time.now().to_sec()
+        if self.latest_time != 0.0:
             if self.freq == 0.0:
                 self.freq = 1.0 / (time_now - self.latest_time)
             else:
                 self.freq = (1.0 - self.alpha) * self.freq + self.alpha / (time_now - self.latest_time)
-            self.latest_time = time_now            
+        self.latest_time = time_now            
     
     def get_frequency (self):
         return self.freq 

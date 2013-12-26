@@ -40,7 +40,7 @@ def quick_calibrate():
     
     calib_tfms = {(frames[0],frames[i]):None for i in xrange(1,NUM_CAM)}
     
-    sleeper = rospy.Rate(10)
+    sleeper = rospy.Rate(30)
     
     try:
         while True:
