@@ -311,7 +311,7 @@ def save_observations_one_camera (bag, calib_file, save_file=None):
 
 def save_observations_rgbd(demo_name, calib_file, num_cameras, for_gpr=False, save_file=None):
     
-    demo_dir = osp.join(demo_files_dir, demo_name)
+    demo_dir        = osp.join(demo_files_dir, demo_name)
     calib_file_path = osp.join(calib_files_dir, calib_file)
     
     bag_file = osp.join(demo_dir, 'demo.bag')
