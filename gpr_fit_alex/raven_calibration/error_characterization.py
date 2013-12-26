@@ -72,8 +72,8 @@ def sys_correct_tf(gt_poses, poses, tf_init):
 
 def gp_pred_precompute_alpha(logtheta, covfunc, X, y):
 	# compute training set covariance matrix (K)
-	K = feval(covfunc, logtheta, X)					 # training covariances
-	L = nlg.cholesky(K)					  # cholesky factorization of cov (lower triangular matrix)
+	K     = feval(covfunc, logtheta, X)				 # training covariances
+	L     = nlg.cholesky(K)					         # cholesky factorization of cov (lower triangular matrix)
 	alpha = gpr.solve_chol(L.transpose(),y)		 # compute inv(K)*y
 	return alpha
 
