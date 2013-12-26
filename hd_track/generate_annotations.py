@@ -73,6 +73,12 @@ def demos_to_annotations(stamps, commands):
                 state = command
         if command == "finish recording":
             if state in parent_state[command]:
+                # final frame
+                subseq["look"] = stamp
+                subseq["start"] = stamp
+                subseq["stop"] = stamp
+                demo.append(dict(subseq))
+                
                 out.append(list(demo))
                 demo = []
                 state = command
@@ -94,8 +100,8 @@ for demo in demos:
     for (i_seg, seg_info) in enumerate(demo):
         seg_info["name"] = "seg%.2i"%i_seg
         seg_info["description"] = "(no description)"
-    stop_seg_info = {"description": "done", "look": 0, "start": 0, "stop": 0}
-    demo.append(stop_seg_info)
+        
+    demo[-1]["description"] = "done"
 
 print demos
         
