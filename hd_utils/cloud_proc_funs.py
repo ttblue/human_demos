@@ -1,11 +1,12 @@
 import clouds
 import cv2
 from defaults import asus_xtion_pro_f as f
-# import skimage.morphology as skim
+import skimage.morphology as skim
+import numpy as np
 
 DEBUG_PLOTS=False
 
-def extract_red(rgb, depth):
+def extract_red(rgb, depth, T_ab = np.eye(4)):
     """
     extract red points and downsample
     """
@@ -22,10 +23,11 @@ def extract_red(rgb, depth):
     
     valid_mask = depth > 0
     
-    xyz = clouds.depth_to_xyz(depth, f)
+    xyz_a = clouds.depth_to_xyz(depth, f)
+    xyz_b = xyz_a.dot(T_ab[:3,:3].T) + T_ab[:3,3][None,None,:]
     
     good_mask = red_mask & valid_mask
-    # good_mask = skim.remove_small_objects(good_mask, min_size=64)
+    good_mask = skim.remove_small_objects(good_mask, min_size=64)
 
     if DEBUG_PLOTS:
         cv2.imshow("hue", h_mask.astype('uint8')*255)
@@ -35,7 +37,7 @@ def extract_red(rgb, depth):
         cv2.imshow("rgb", rgb)
         cv2.waitKey()
             
-    good_xyz = xyz[good_mask]
+    good_xyz = xyz_b[good_mask]
     
 
     return clouds.downsample(good_xyz, .025)

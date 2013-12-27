@@ -59,10 +59,9 @@ def add_rgbd_to_hdf(video_dir, annotations, hdfroot, demo_name):
         rgb_imgs, depth_imgs= get_video_frames(video_dir, frame_stamps)
         
         for (i_seg, seg_info) in enumerate(demo_annotations):
-            if seg_info.has_key("name"):
-                seg_group = demo_group[demo_name + "_" + seg_info["name"]]
-                seg_group["rgb"] = rgb_imgs[i_seg]
-                seg_group["depth"] = depth_imgs[i_seg]
+            seg_group = demo_group[seg_info["name"]]
+            seg_group["rgb"] = rgb_imgs[i_seg]
+            seg_group["depth"] = depth_imgs[i_seg]
         
         
 def add_traj_to_hdf(trajs, annotations, hdfroot, demo_name):
@@ -76,34 +75,33 @@ def add_traj_to_hdf(trajs, annotations, hdfroot, demo_name):
         demo_group = hdfroot.create_group(demo_name + "_%i"%(i_demo))
         
         for seg_info in demo_annotations:
-            if seg_info.has_key("name"):
-                seg_group = demo_group.create_group(demo_name + "_" + seg_info["name"]) 
-                
-                start = seg_info["start"]
-                stop = seg_info["stop"]
-                
-                [i_start, i_stop] = np.searchsorted(stamps, [start, stop])
-                
-                stamps_seg = stamps[i_start:i_stop+1]
-                traj_seg = {}
-                
-                for lr in trajs:
-                    traj_seg[lr] = {}
-                    traj_seg[lr]["tfms"] = trajs[lr]["tfms"][i_start:i_stop+1]
-                    traj_seg[lr]["tfms_s"] = trajs[lr]["tfms_s"][i_start:i_stop+1]
-                    traj_seg[lr]["pot_angles"] = trajs[lr]["pot_angles"][i_start:i_stop+1]
-                    traj_seg[lr]["stamps"] = trajs[lr]["stamps"][i_start:i_stop+1]
-                    
-                    print traj_seg[lr]["stamps"]
-                    
-                    
-                for lr in trajs:
-                    lr_group = seg_group.create_group(lr)
-                    lr_group["tfms"] = traj_seg[lr]["tfms"]
-                    lr_group["tfms_s"] = traj_seg[lr]["tfms_s"]
-                    lr_group["pot_angles"] = traj_seg[lr]["pot_angles"]
-                    lr_group["stamps"] = traj_seg[lr]["stamps"]
+            seg_group = demo_group.create_group(seg_info["name"]) 
             
+            start = seg_info["start"]
+            stop = seg_info["stop"]
+            
+            [i_start, i_stop] = np.searchsorted(stamps, [start, stop])
+            
+            traj_seg = {}
+            
+            for lr in trajs:
+                traj_seg[lr] = {}
+                traj_seg[lr]["tfms"] = trajs[lr]["tfms"][i_start:i_stop+1]
+                traj_seg[lr]["tfms_s"] = trajs[lr]["tfms_s"][i_start:i_stop+1]
+                traj_seg[lr]["pot_angles"] = trajs[lr]["pot_angles"][i_start:i_stop+1]
+                traj_seg[lr]["stamps"] = trajs[lr]["stamps"][i_start:i_stop+1]
+                
+                
+                
+                
+                
+            for lr in trajs:
+                lr_group = seg_group.create_group(lr)
+                lr_group["tfms"] = traj_seg[lr]["tfms"]
+                lr_group["tfms_s"] = traj_seg[lr]["tfms_s"]
+                lr_group["pot_angles"] = traj_seg[lr]["pot_angles"]
+                lr_group["stamps"] = traj_seg[lr]["stamps"]
+        
 
 
 
@@ -149,12 +147,8 @@ else:
 # now should extract point cloud
 if not args.no_clouds:
     for (demo_name, demo_info) in hdf.items():
-        print demo_name, demo_info
         
         for (seg_name, seg_info) in demo_info.items():
-            #print seg_name, seg_info
-            
-            #print seg_info.keys()
         
             for field in ["cloud_xyz", "cloud_proc_func", "cloud_proc_mod", "cloud_proc_code"]:
                 if field in seg_info: del seg_info[field]
@@ -182,6 +176,9 @@ if args.verify:
         os.makedirs(demo_verify_dir)
         
         for (seg_name, seg_info) in demo_info.items():
+            
+                print demo_name, seg_name
+            
                 rgb = np.asarray(seg_info["rgb"])
                 depth = np.asarray(seg_info["depth"])
                 
