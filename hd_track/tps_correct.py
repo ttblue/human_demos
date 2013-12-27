@@ -4,8 +4,6 @@ import numpy as np
 import os, os.path as osp
 import cPickle as cp
 import pickle
-import scipy.linalg as scl, scipy.interpolate as si
-import math
 import matplotlib.pylab as plt
 
 from hd_utils.colorize import colorize

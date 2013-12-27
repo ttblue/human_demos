@@ -57,7 +57,7 @@ def initialize_covariances(freq=30.0):
                                       np.square(motion_vx_std)*np.eye(3),
                                       np.square(motion_rpy_std)*np.eye(3),
                                       np.square(motion_vth_std)*np.eye(3)  )
-    
+
     return (motion_covar, cam_covar, hydra_covar)
 
 
