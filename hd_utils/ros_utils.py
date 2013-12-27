@@ -4,6 +4,13 @@ import numpy as np
 
 import roslib
 import rospy
+
+roslib.load_manifest("tf")
+import tf
+
+import os
+import os.path as osp
+
 import sensor_msgs.msg as sm
 import visualization_msgs.msg as vm
 import geometry_msgs.msg as gm
@@ -22,12 +29,12 @@ import time
 import weakref
 from copy import deepcopy
 
+from hd_utils.conversions import hmats_to_transs_rots
+import thread
+
 
 @once
 def get_tf_listener():
-    import roslib
-    roslib.load_manifest('tf')
-    import tf
     return tf.TransformListener()
 
 
@@ -133,7 +140,7 @@ def transform_points(
             break
         except Exception:
             print 'tf exception:'
-            print colorize.colorize(traceback.format_exc(), 'yellow')
+            print colorize(traceback.format_exc(), 'yellow')
             rospy.sleep(.1)
             time.sleep(.05)
     if i == n_tries - 1:
@@ -444,27 +451,6 @@ class RvizWrapper:
         return handles
 
 
-    # def place_gripper(ps,open_frac=.5,ns='rviz_utils'):
-
-        # origFromTool = bumu.msg2arr(ps.pose)
-        # toolFromWrist = np.r_[-.18,0,0,0,0,0,1]
-        # origFromWrist = bgeom.pose_multiply(origFromTool,toolFromWrist)
-
-        # newps = gmm.PoseStamped()
-        # newps.header = ps.header
-        # newps.pose = bumu.arr2msg(origFromWrist,gmm.Pose)
-
-        # joint = .0166 + open_frac*(.463 - .0166)
-        # return place_kin_tree_from_link(newps,'r_wrist_roll_link',valuedict = dict(
-            # r_gripper_r_finger_joint=joint,
-            # r_gripper_l_finger_joint=joint,
-            # r_gripper_r_finger_tip_joint=joint,
-            # r_gripper_l_finger_tip_joint=joint))
-
-import os
-import os.path as osp
-
-
 @once
 def get_pr2_urdf():
     U = urdf.URDF()
@@ -572,3 +558,23 @@ def make_kin_tree_from_joint(
                                    valuedict=valuedict, color=color)
 
 
+def publish_static_tfm(parent_frame, child_frame, tfm):
+    publish_static_tfms([parent_frame], [child_frame], [tfm])
+
+def publish_static_tfms(parent_frames, child_frames, tfms):
+    """
+    Publish multiple static frames on the TF.
+    """
+    tf_broadcaster = tf.TransformBroadcaster()
+    transs, rots   = hmats_to_transs_rots(tfms)
+    N = len(tfms)
+    def spin_pub():
+        sleeper = rospy.Rate(100)
+        while not rospy.is_shutdown():
+            for i in xrange(N):
+                tf_broadcaster.sendTransform(transs[i], rots[i],
+                                             rospy.Time.now(),
+                                             child_frames[i], parent_frames[i])
+            sleeper.sleep()
+    thread.start_new_thread(spin_pub, ())
+    
