@@ -4,10 +4,10 @@ import openravepy,trajoptpy, numpy as np, json
 def inverse_kinematics(robot, manip_name, ee_hmat):
     init_guess = np.zeros(7)
     
-    xyz_target = ee_hmat[:3, 3]
+    xyz_target  = ee_hmat[:3, 3]
     quat_target = openravepy.quatFromRotationMatrix(ee_hmat[:3, :3])
     
-    
+
     request = {
       "basic_info" : {
         "n_steps" : 10,
@@ -56,4 +56,4 @@ def inverse_kinematics(robot, manip_name, ee_hmat):
     result = trajoptpy.OptimizeProblem(prob) # do optimization
     traj = result.GetTraj()
     
-    return traj[-1]         
+    return traj[-1]

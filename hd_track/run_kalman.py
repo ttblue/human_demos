@@ -169,10 +169,12 @@ def load_data_for_kf(dat_fname, lr, freq=30., hy_tps_fname=None, plot=False):
     if plot:
         blueprint("Plotting tps-corrected hydra...")
         plot_tf_streams([hy_strm, hy_corr_strm, cam_strms[0]], ['hy', 'hy-tps', 'cam1'])
-        
-    
+
     ## now setup and run the kalman-filter:
-    
+    motion_covar, cam_covar, hydra_covar = initialize_covariances(freq)
+    x0, S0 = get_first_state([hy_corr_strm]+cam_strms, freq)
+    KF = kalman()
+    KF.init_filter(0, x0, S0, motion_covar, cam_covar, hydra_covar)
 
 
 
