@@ -101,7 +101,7 @@ for demo in demos:
         seg_info["name"] = "seg%.2i"%i_seg
         seg_info["description"] = "(no description)"
         
-    demo[-1]["description"] = "done"
+    demo[-1]["name"] = "done"
 
 print demos
         
