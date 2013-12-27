@@ -13,36 +13,6 @@ import hd_utils.transformations as tfms
 from   hd_track.kalman import closer_angle
 
 
-def correct_hydra(Ts_hydra, T_tt2hy, T_cam2hbase, f_tps):
-    """
-    Warps the xyz from hydra according to f_tps.
-    Note the rpy are left unchanged.
-    ================================
-
-    Ts_hydra  : Tool-tip transform from hydra's estimate in cam1 frame
-    T_tt2hy   : Transform from tool-tip to hydra-sensor on the gripper
-    T_cam2hbase : Transform from camera1 to hydra-base
-    """
-    T_hbase2cam = np.linalg.inv(T_cam2hbase)
-    T_hy2tt     = np.linalg.inv(T_tt2hy)
-
-    Ts_HB = [T_hbase2cam.dot(tfm).dot(T_tt2hy) for tfm in Ts_hydra]
-    N     = len(Ts_HB)
-    Xs_HB = np.empty((N,3))
-    for i in xrange(N):
-        Xs_HB[i,:] = Ts_HB[i][0:3,3]
-    Xs_aligned     = f_tps.transform_points(Xs_HB)
-
-    Ts_aligned = []    
-    for i in xrange(N):
-        t_aligned = Ts_HB[i]
-        t_aligned[0:3,3] = Xs_aligned[i,:]
-        t_aligned_cam2tt = T_cam2hbase.dot(t_aligned).dot(T_hy2tt)
-        Ts_aligned.append(t_aligned_cam2tt)
-
-    return Ts_aligned
-
-
 def load_data(dat_fname, lr):
     """
     Returns four things for the left/right (based on lr) gripper:
@@ -211,7 +181,7 @@ def align_tf_streams(hydra_strm, cam_strm, wsize=20):
     ## chop-off wsized data from the start and end of the camera-data:
     start_idx, end_idx = 0, len(Xs_cam)-1
     while cam_inds[start_idx] < wsize: start_idx += 1
-    while cam_inds[end_idx] >= len(Xs_hy) - wsize: end_idx   -= 1
+    while cam_inds[end_idx] >= len(Xs_hy) - wsize: end_idx -= 1
 
     dists    = []
     cam_inds = cam_inds[start_idx:end_idx+1]

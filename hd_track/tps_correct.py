@@ -33,6 +33,9 @@ def fit_tps(x_gt, x, plot=True, save_fname=None):
     """
     Fits a thin-plate spline model to x (source points) and x_gt (ground-truth target points).
     This transform can be used to correct the state-dependent hydra errors.
+    
+    X, X_GT are of the shape : Nx3
+    
     """
     bend_coef = 0.00  ## increase this to make the tps-interpolation more smooth
     f_tps = registration.fit_ThinPlateSpline(x, x_gt, bend_coef = bend_coef, rot_coef = 0.001)
@@ -67,6 +70,38 @@ def load_tps(fname):
     f_tps.trans_g = f_dat['trans_g']
     f_tps.w_ng    = f_dat['w_ng']
     return f_tps
+
+
+
+def correct_hydra(Ts_hydra, T_tt2hy, T_cam2hbase, f_tps):
+    """
+    Warps the xyz from hydra according to f_tps.
+    Note the rpy are left unchanged.
+    ================================
+
+    Ts_hydra  : Tool-tip transform from hydra's estimate in cam1 frame
+    T_tt2hy   : Transform from tool-tip to hydra-sensor on the gripper
+    T_cam2hbase : Transform from camera1 to hydra-base
+    """
+    T_hbase2cam = np.linalg.inv(T_cam2hbase)
+    T_hy2tt     = np.linalg.inv(T_tt2hy)
+
+    Ts_HB = [T_hbase2cam.dot(tfm).dot(T_tt2hy) for tfm in Ts_hydra]
+    N     = len(Ts_HB)
+    Xs_HB = np.empty((N,3))
+    for i in xrange(N):
+        Xs_HB[i,:] = Ts_HB[i][0:3,3]
+    Xs_aligned     = f_tps.transform_points(Xs_HB)
+
+    Ts_aligned = []    
+    for i in xrange(N):
+        t_aligned = Ts_HB[i]
+        t_aligned[0:3,3] = Xs_aligned[i,:]
+        t_aligned_cam2tt = T_cam2hbase.dot(t_aligned).dot(T_hy2tt)
+        Ts_aligned.append(t_aligned_cam2tt)
+
+    return Ts_aligned
+
 
 
 # indices for the training data

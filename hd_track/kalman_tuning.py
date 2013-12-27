@@ -76,15 +76,25 @@ def state_from_tfms(Ts, dt=1./30.):
 
     return Xs
 
-def state_from_tfms_no_velocity(Ts):
+
+def state_from_tfms_no_velocity(Ts, vlength=12):
+    """
+    Ts : a list of transforms
+    vlength : in {6,12} : the number of variables in the state-vector
+              if 12 : zero velocities are returned
+              if 6  : only xyzrpy are returned
+    """
     N  = len(Ts)
-    Xs = np.zeros((N, 12))
+    Xs = np.zeros((N, vlength))
     
     for i in xrange(N):
         Xs[i,0:3] = Ts[i][0:3,3]
-        Xs[i,6:9] = np.array(tfms.euler_from_matrix(Ts[i]))
-        
+        if vlength==6:
+            Xs[i,3:6] = np.array(tfms.euler_from_matrix(Ts[i]))
+        else:
+            Xs[i,6:9] = np.array(tfms.euler_from_matrix(Ts[i]))
     return Xs
+
 
 def fit_process_noise(fname=None, f=30.):
     """

@@ -121,7 +121,6 @@ def get_corresponding_data(strm1, strm2):
             idx += 1
         except:
             break
-        
 
     N = len(dat1)
     print colorize("Found %s corresponding data points." % colorize(str(N), "red", True), "blue", True)
