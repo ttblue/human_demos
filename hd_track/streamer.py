@@ -2,6 +2,7 @@
 from __future__ import division
 import numpy as np
 
+
 class streamize():
     """
     A class that takes in a list of objects and their time-stamps.
@@ -35,6 +36,7 @@ class streamize():
         
         self.idx  = 0
         self.t    = tstart
+        self.tstart = tstart
     
     def __iter__(self):
         return self
@@ -57,8 +59,31 @@ class streamize():
             return self.favg(cands) if cands else None
         
     def get_data(self):
-        return (self.objs, self.ts)            
-            
+        return (self.objs, self.ts)
+    
+
+def time_shift_stream(strm, dT):
+    """
+    Time-shifts the stream by dT.
+    Basically re-times the time-stamps and returns a new stream.
+    """
+    shift_stream = streamize(strm.objs, strm.ts+dT, 1./strm.dt, strm.favg, strm.tstart)
+    return shift_stream 
+
+
+def soft_next(stream):
+    """
+    Does not throw a stop-exception if a stream ends. Instead returns none.
+    """
+    ret = None
+    try:
+        ret = stream.next()
+    except:
+        pass
+    return ret
+
+
+
 if __name__ == '__main__':
     a  = [1,2,3,4,5,6]
     ts = [1,2,3,4,5,6]
