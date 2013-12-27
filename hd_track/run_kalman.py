@@ -14,7 +14,7 @@ import scipy.linalg as scl
 import math
 import matplotlib.pylab as plt
 
-from hd_utils.colorize import colorize
+from hd_utils.colorize import colorize, redprint, blueprint
 from hd_utils.conversions import *
 from hd_utils.utils import *
 from hd_utils.defaults import tfm_link_rof
@@ -51,41 +51,39 @@ def initialize_covariances(freq=30.0):
     motion_vx_std  = 0.05/freq # 5cm/s 
     motion_vth_std = np.deg2rad(10/freq) # 10 deg/s
 
-    cam_covar    =  scl.block_diag(   np.square(cam_xyz_std)*np.eye(3), np.square(cam_rpy_std)*np.eye(3)  )
-    hydra_covar  =  scl.block_diag(   np.square(hydra_xyz_std)*np.eye(3), np.square(hydra_rpy_std)*np.eye(3)  )
-    motion_covar =  scl.block_diag(   np.square(motion_xyz_std)*np.eye(3),
-                                      np.square(motion_vx_std)*np.eye(3),
-                                      np.square(motion_rpy_std)*np.eye(3),
-                                      np.square(motion_vth_std)*np.eye(3)  )
+    I3 = np.eye(3)
+    cam_covar    =  scl.block_diag(   np.square(cam_xyz_std)*I3, np.square(cam_rpy_std)*I3  )
+    hydra_covar  =  scl.block_diag(   np.square(hydra_xyz_std)*I3, np.square(hydra_rpy_std)*I3  )
+    motion_covar =  scl.block_diag(   np.square(motion_xyz_std)*I3,
+                                      np.square(motion_vx_std)*I3,
+                                      np.square(motion_rpy_std)*I3,
+                                      np.square(motion_vth_std)*I3  )
 
     return (motion_covar, cam_covar, hydra_covar)
 
 
-def get_first_state(dt, c1_ts, c1_tfs, c2_ts, c2_tfs, hy_ts, hy_tfs):
+def get_first_state(tf_streams, freq=30.):
     """
-    Return the first state (mean, covar) to initialize the kalman filter with.
-    Assumes that the time-stamps start at a common zero (are on the same time-scale).
-    
-    Returns a state b/w t=[0, dt]
+    Returns the first state and covariance given :
+     - TF_STREAMS : a list of streams of transform data.
+     - FREQ       : the frequency of these streams (and also the filter).
+    """
+    dt = 1./freq
+    n_streams = len(tf_streams)
 
-    Gives priority to AR-markers. If no ar-markers are found in [0,dt], it returns
-    hydra's estimate but with larger covariance.
-    """
-    
-    ar1 = [c1_tfs[i] for i in xrange(len(c1_ts)) if c1_ts[i] <= dt]
-    ar2 = [c2_tfs[i] for i in xrange(len(c2_ts)) if c2_ts[i] <= dt]
-    hy =  [hy_tfs[i] for i in xrange(len(hy_ts)) if hy_ts[i] <= dt] 
-    
-    if ar1 != [] or ar2 != []:
-        ar1.extend(ar2)
-        x0 =  state_from_tfms_no_velocity([avg_transform(ar1)])
-        I3 = np.eye(3)
-        S0 = scl.block_diag(1e-3*I3, 1e-2*I3, 1e-3*I3, 1e-3*I3)
-    else:
-        assert len(hy)!=0, colorize("No transforms found for KF initialization. Aborting.", "red", True)
-        x0 = state_from_tfms_no_velocity([avg_transform(hy)])
-        I3 = np.eye(3)
-        S0 = scl.block_diag(1e-1*I3, 1e-1*I3, 1e-2*I3, 1e-2*I3)
+    tfs0 = []
+    for i in xrange(n_streams):
+        tfs, ts = tf_streams[i].get_data()
+        for ti, t in enumerate(ts):
+            if t <= dt:
+                tfs0.append(tfs[ti])
+
+    if len(tfs0)==0:
+        redprint("Cannot initialize initial state for KF: no data found within dT in all streams")    
+
+    x0 =  state_from_tfms_no_velocity([avg_transform(tfs0)])
+    I3 = np.eye(3)
+    S0 = scl.block_diag(1e-3*I3, 1e-2*I3, 1e-3*I3, 1e-3*I3)
     return (x0, S0)
 
 
