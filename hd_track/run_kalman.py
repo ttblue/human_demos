@@ -93,6 +93,7 @@ def plot_tf_streams(tf_strms, strm_labels, block=True):
     Plots the x,y,z,r,p,y from a list TF_STRMS of streams.
     """
     assert len(tf_strms)==len(strm_labels)
+    plt.figure()
     ylabels = ['x', 'y', 'z', 'r', 'p', 'y']
     n_streams = len(tf_strms)
     Xs   = []
@@ -101,8 +102,9 @@ def plot_tf_streams(tf_strms, strm_labels, block=True):
         tfs, ind = [], []
         for i,tf in enumerate(strm):
             if tf != None:
-                tfs.append(tfs)
+                tfs.append(tf)
                 ind.append(i)
+        strm.reset()
         X = state_from_tfms_no_velocity(tfs, 6)
         Xs.append(X)
         inds.append(ind)
@@ -132,14 +134,15 @@ def load_data_for_kf(dat_fname, lr, freq=30., hy_tps_fname=None, plot=False):
     _,_,_, tf_streams = relative_time_streams(tfm_data, freq)
 
     hy_strm   = tf_streams[0]
-    hy_strm   = fit_spline_to_tf_stream(hy_strm, freq)
     cam_strms = tf_streams[1:]
+
+    #blueprint("Fitting spline to hydra stream..")
+    #hy_strm   = fit_spline_to_tf_stream(hy_strm, freq)
 
     strm_labels =  ['hydra'] + ['cam%d'%(i+1) for i in xrange(len(cam_strms))]
     if plot:
-        blueprint("Plotting raw (unaligned) data-streams...")
+        blueprint("Plotting raw (UN-ALIGNED) data-streams...")
         plot_tf_streams([hy_strm]+cam_strms, strm_labels, block=False)
-
 
     ## time-align all the transform streams:
     tmin, tmax, nsteps, hy_strm, cam_strms = align_all_streams(hy_strm, cam_strms)
@@ -175,39 +178,6 @@ def load_data_for_kf(dat_fname, lr, freq=30., hy_tps_fname=None, plot=False):
     x0, S0 = get_first_state([hy_corr_strm]+cam_strms, freq)
     KF = kalman()
     KF.init_filter(0, x0, S0, motion_covar, cam_covar, hydra_covar)
-
-
-
-
-def run_kalman_filter(fname, lr, freq, use_spline=False, use_hydra=True, single_camera=False):
-    """
-    Runs the kalman filter
-    dt = 1/freq
-    KF, nsteps, tmin, ar1_strm, ar2_strm, hy_strm = setup_kalman(fname, lr, freq, single_camera)
-    
-    ## run the filter:
-    mu,S = [], []
-    
-    if use_hydra and use_spline:
-        smooth_hy = (t for t in fit_spline_to_stream(hy_strm, nsteps))
-    else:
-        smooth_hy = hy_strm
-    
-
-    for i in xrange(nsteps):
-        if use_hydra:
-            KF.register_observation(dt*i, soft_next(ar1_strm), soft_next(ar2_strm), soft_next(smooth_hy)) 
-        else:
-            KF.register_observation(dt*i, soft_next(ar1_strm), soft_next(ar2_strm), None)
-           
-        mu.append(KF.x_filt)
-        S.append(KF.S_filt)
-
-    A, R = KF.get_motion_mats(dt)
-    
-    return nsteps, tmin, mu, S, A, R
-    """
-    pass
 
 
 

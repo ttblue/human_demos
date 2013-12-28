@@ -11,6 +11,7 @@ from hd_track.streamer import streamize, time_shift_stream
 from hd_utils.utils import avg_transform
 import hd_utils.transformations as tfms
 from   hd_track.kalman import closer_angle
+from hd_utils.colorize import blueprint, redprint
 
 
 def load_data(dat_fname, lr):
@@ -78,7 +79,7 @@ def relative_time_streams(tfm_data, freq):
     """
     
     n_series = len(tfm_data)
-    print "Found %d data-streams to streamize."%n_series
+    blueprint("Found %d data-streams to streamize."%n_series)
     
     dt =1./freq
 
@@ -99,8 +100,9 @@ def relative_time_streams(tfm_data, freq):
         tfs, ts = series
         if ts.any():
             ts -= tmin
-            strm = streamize(tfs, ts, freq, avg_transform)
-
+            strm = streamize(tfs, ts, freq, avg_transform, tstart=-dt)
+            streams.append(strm)
+                
     return tmin, tmax, nsteps, streams
 
 
@@ -112,7 +114,7 @@ def fit_spline_to_tf_stream(strm, new_freq, deg=3):
     Returns a stream of transforms.
     """
     tfs, ts = strm.get_data()
-    tstart  = strm.get_strat_time()
+    tstart  = strm.get_start_time()
     tmax    = ts[-1]
     
     ndt = 1./new_freq
@@ -134,9 +136,11 @@ def fit_spline_to_tf_stream(strm, new_freq, deg=3):
         
         tf_dat[3:6,i] = now_rpy
 
+    blueprint("\t fitting spline to data (scipy) ..")
     s = N*.001**2
     (tck, _) = si.splprep(tf_dat, s=s, u=ts, k=deg)
 
+    blueprint("\t evaluating spline at new time-stamps ..")
     interp_xyzrpys = np.r_[si.splev(new_ts, tck)].T
 
     smooth_tfms = []
@@ -170,18 +174,18 @@ def align_tf_streams(hydra_strm, cam_strm, wsize=20):
     idx = 0
     for tfm in cam_strm:
         if tfm != None:
-            Xs_cam.append(tfm[0:3,3])
+            Xs_cam.append(tfm[0,3])
             cam_inds.append(idx)
         idx += 1
 
     for hy_tfm in hydra_strm:   
         hy_tfm = hydra_strm.next()
-        Xs_hy.append(hy_tfm[0:3,3])
+        Xs_hy.append(hy_tfm[0,3])
 
     ## chop-off wsized data from the start and end of the camera-data:
     start_idx, end_idx = 0, len(Xs_cam)-1
-    while cam_inds[start_idx] < wsize: start_idx += 1
-    while cam_inds[end_idx] >= len(Xs_hy) - wsize: end_idx -= 1
+    while cam_inds[start_idx] < wsize and start_idx < len(Xs_cam): start_idx += 1
+    while cam_inds[end_idx] >= len(Xs_hy) - wsize and end_idx >= 0: end_idx -= 1
 
     dists    = []
     cam_inds = cam_inds[start_idx:end_idx+1]
@@ -190,8 +194,13 @@ def align_tf_streams(hydra_strm, cam_strm, wsize=20):
         hy_xs = [Xs_hy[idx + shift] for idx in cam_inds]
         dists.append(np.linalg.norm(np.array(hy_xs) - Xs_cam))
 
-    return xrange(-wsize, wsize+1)[np.argmin(dists)]
-
+    blueprint("\t The shift-distances are:")
+    print dists
+    blueprint("\t\t and argmin is : %d"%np.argmin(dists))
+    
+    shift = xrange(-wsize, wsize+1)[np.argmin(dists)]
+    redprint("\t\t SHIFT FOUND IS : %d"%shift)
+    return shift
 
 
 def align_all_streams(hy_strm, cam_streams, wsize=20):
@@ -205,17 +214,18 @@ def align_all_streams(hy_strm, cam_streams, wsize=20):
     """
     n_streams = len(cam_streams)
     tmin, tmax = float('inf'), float('-inf')
+    strm_dt  = hy_strm.dt
     if n_streams >= 1:
-        dt_hydra   = align_tf_streams(hy_strm, cam_streams[0], wsize)
-        hy_aligned = time_shift_stream(hy_strm, -dt_hydra)
+        shift_hydra   = align_tf_streams(hy_strm, cam_streams[0], wsize)
+        hy_aligned = time_shift_stream(hy_strm, -strm_dt*shift_hydra)
 
         tmin = min(tmin, np.min(hy_aligned.ts))
         tmax = max(tmax, np.max(hy_aligned.ts))
 
-        aligned_streams = []
+        aligned_streams = [cam_streams[0]]
         for i in xrange(1, n_streams):
-            dt = align_tf_streams(hy_aligned, cam_streams[i], wsize)
-            shifted_stream = time_shift_stream(cam_streams[i], dt)
+            shift_strm = align_tf_streams(hy_aligned, cam_streams[i], wsize)
+            shifted_stream = time_shift_stream(cam_streams[i], strm_dt*shift_strm)
 
             tmin = min(tmin, np.min(shifted_stream.ts))
             tmax = max(tmax, np.max(shifted_stream.ts))
