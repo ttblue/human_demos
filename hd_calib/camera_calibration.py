@@ -91,7 +91,7 @@ def convert_hmats_to_points (hmats, use_four_points=False):
     
     points = []
     for hmat in hmats:
-        x, y, z, p = hmat[0:3].T
+        x, y, z, p = hmat[0:3,:].T
         
         points.append(p)
         
@@ -195,8 +195,8 @@ class CameraCalibrator:
             self.point_list[(c1, c2)] = {c1:[], c2:[]}
         
         p1, p2, dist = cu.get_corresponding_points(self.observed_cb_points[c1],
-                                                 self.observed_cb_points[c2],
-                                                 self.est_tfms[c1, c2])
+                                                   self.observed_cb_points[c2],
+                                                   self.est_tfms[c1, c2])
         print "Distance difference between camera %i and camera %i points:", dist
         
         self.point_list[(c1, c2)][c1].extend(p1)
@@ -207,9 +207,9 @@ class CameraCalibrator:
     def initialize_calibration(self, method):
         '''
         Initializes calibration using various methods:
-        a) pycb -- 
-        b) cb -- Chess board?
-        c) ar marker 
+        a) pycb -- Arjun's python chessboard finder.
+        b) cb -- OpenCV's chessboard finder.
+        c) ar -- ar markers 
         '''
         if method == 'pycb':
             self.image_list = {i:[] for i in range(self.num_cameras)}
@@ -267,33 +267,33 @@ class CameraCalibrator:
         raw_input("Place AR marker(s) visible to all cameras to get an 'initial' estimate. Then hit enter.")
         N_AVG = 10
 
-        self.est_tfms = {i:{} for i in xrange(1, self.num_cameras)}
-        tfms_found = {i:{} for i in xrange(self.num_cameras)}
+        self.est_tfms = {cam_id:{} for cam_id in xrange(1, self.num_cameras)}
+        tfms_found = {cam_id:{} for cam_id in xrange(self.num_cameras)}
         sleeper = rospy.Rate(30)
         for _ in xrange(N_AVG):
-            for i in xrange(self.num_cameras):
-                mtfms = self.cameras.get_ar_markers(camera=i)
+            for cam_id in xrange(self.num_cameras):
+                mtfms = self.cameras.get_ar_markers(camera=cam_id)
                 for m in mtfms:
-                    if m not in tfms_found[i]:
-                        tfms_found[i][m] = []
-                    tfms_found[i][m].append(mtfms[m])
+                    if m not in tfms_found[cam_id]:
+                        tfms_found[cam_id][m] = []
+                    tfms_found[cam_id][m].append(mtfms[m])
             sleeper.sleep()
             
-        for i in tfms_found:
-            for m in tfms_found[i]:
-                tfms_found[i][m] = utils.avg_transform(tfms_found[i][m])
+        for cam_id in tfms_found:
+            for m in tfms_found[cam_id]:
+                tfms_found[cam_id][m] = utils.avg_transform(tfms_found[cam_id][m])
 
-        for i in xrange(1, self.num_cameras):
-            ar1, ar2 = common_ar_markers(tfms_found[0], tfms_found[i])
+        for cam_id in xrange(1, self.num_cameras):
+            ar1, ar2 = common_ar_markers(tfms_found[0], tfms_found[cam_id])
             if not ar1 or not ar2:
-                redprint("No common AR Markers found between camera 1 and %i" % (i + 1))
+                redprint("No common AR Markers found between camera 1 and %i" % (cam_id + 1))
                 return False
 
             if len(ar1.keys()) == 1:
-                self.est_tfms[0, i] = ar1.values()[0].dot(nlg.inv(ar2.values()[0]))
+                self.est_tfms[0, cam_id] = ar1.values()[0].dot(nlg.inv(ar2.values()[0]))
             else:
-                self.est_tfms[0, i] = find_rigid_tfm(convert_hmats_to_points(ar1.values()),
-                                           convert_hmats_to_points(ar2.values()))
+                self.est_tfms[0, cam_id] = find_rigid_tfm(convert_hmats_to_points(ar1.values(), True),
+                                                          convert_hmats_to_points(ar2.values(), True))
         
         return True
                 
@@ -318,7 +318,7 @@ class CameraCalibrator:
                     sleeper.sleep()
                 else: break
             if tries == 0:
-                redprint ("Could not find all the chessboard points for camera %i." % (j + 1))
+                redprint ("Could not find all the chessboard points for camera %i after several tries." % (j + 1))
                 return False
             self.observed_cb_points[j] = points
 

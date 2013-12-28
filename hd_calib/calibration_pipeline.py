@@ -133,6 +133,7 @@ class CalibratedTransformPublisher(Thread):
     def get_camera_transforms(self):
         '''
         Return a dictionary {(c1, c2): tf1, (c1', c2'): tf2}
+        tf1 is a dict with 'parent', 'child' and 4x4 'tfm'
         '''
 
         result_tfms = {}
@@ -292,6 +293,9 @@ class CalibratedTransformPublisher(Thread):
 
 
 def calibrate_potentiometer(lr='l'):
+    """
+    Incorrect now. Need to change this + save info. 
+    """
     if not gmt.pot_initialized:
         gmt.arduino = read_arduino.Arduino()
         pot_initialized = True

@@ -68,3 +68,14 @@ nosetests.xml
 
 #time stamps
 *stamps.txt
+
+# cache, temp and make files
+*Makefile
+*cache*
+*Cache*
+*cmake_install.cmake
+*CMakeFiles
+
+# camera mapping and types
+*camera_mapping
+*camera_types
