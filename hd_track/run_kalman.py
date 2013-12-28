@@ -93,6 +93,7 @@ def plot_tf_streams(tf_strms, strm_labels, block=True):
     Plots the x,y,z,r,p,y from a list TF_STRMS of streams.
     """
     assert len(tf_strms)==len(strm_labels)
+    plt.figure()
     ylabels = ['x', 'y', 'z', 'r', 'p', 'y']
     n_streams = len(tf_strms)
     Xs   = []
@@ -101,7 +102,7 @@ def plot_tf_streams(tf_strms, strm_labels, block=True):
         tfs, ind = [], []
         for i,tf in enumerate(strm):
             if tf != None:
-                tfs.append(tfs)
+                tfs.append(tf)
                 ind.append(i)
         X = state_from_tfms_no_velocity(tfs, 6)
         Xs.append(X)
@@ -132,23 +133,25 @@ def load_data_for_kf(dat_fname, lr, freq=30., hy_tps_fname=None, plot=False):
     _,_,_, tf_streams = relative_time_streams(tfm_data, freq)
 
     hy_strm   = tf_streams[0]
-    hy_strm   = fit_spline_to_tf_stream(hy_strm, freq)
     cam_strms = tf_streams[1:]
+
+    #blueprint("Fitting spline to hydra stream..")
+    #hy_strm   = fit_spline_to_tf_stream(hy_strm, freq)
 
     strm_labels =  ['hydra'] + ['cam%d'%(i+1) for i in xrange(len(cam_strms))]
     if plot:
-        blueprint("Plotting raw (unaligned) data-streams...")
+        blueprint("Plotting raw (UN-ALIGNED) data-streams...")
         plot_tf_streams([hy_strm]+cam_strms, strm_labels, block=False)
-
 
     ## time-align all the transform streams:
     tmin, tmax, nsteps, hy_strm, cam_strms = align_all_streams(hy_strm, cam_strms)
 
     if plot:
         blueprint("Plotting ALIGNED data-streams...")
-        plot_tf_streams([hy_strm]+cam_strms, strm_labels, block=True)
+        plot_tf_streams([hy_strm]+cam_strms, strm_labels, block=False)
 
     ### TPS correct the hydra data:
+    blueprint("TPS-correcting hydra stream...")
     if hy_tps_fname==None:
         # train a tps-model:
         ## NOTE THE TPS-MODEL is fit b/w hydra and CAMERA'1'
@@ -164,7 +167,7 @@ def load_data_for_kf(dat_fname, lr, freq=30., hy_tps_fname=None, plot=False):
 
     hy_tfs, hy_ts  = hy_strm.get_data()
     hy_tfs_aligned = correct_hydra(hy_tfs, T_tt2hy, T_cam2hbase, f_tps) 
-    hy_corr_strm   = streamize(hy_tfs_aligned, hy_ts, hy_strm.freq, hy_strm.favg, hy_strm.tstart)
+    hy_corr_strm   = streamize(hy_tfs_aligned, hy_ts, 1./hy_strm.dt, hy_strm.favg, hy_strm.tstart)
 
     if plot:
         blueprint("Plotting tps-corrected hydra...")
@@ -175,39 +178,6 @@ def load_data_for_kf(dat_fname, lr, freq=30., hy_tps_fname=None, plot=False):
     x0, S0 = get_first_state([hy_corr_strm]+cam_strms, freq)
     KF = kalman()
     KF.init_filter(0, x0, S0, motion_covar, cam_covar, hydra_covar)
-
-
-
-
-def run_kalman_filter(fname, lr, freq, use_spline=False, use_hydra=True, single_camera=False):
-    """
-    Runs the kalman filter
-    dt = 1/freq
-    KF, nsteps, tmin, ar1_strm, ar2_strm, hy_strm = setup_kalman(fname, lr, freq, single_camera)
-    
-    ## run the filter:
-    mu,S = [], []
-    
-    if use_hydra and use_spline:
-        smooth_hy = (t for t in fit_spline_to_stream(hy_strm, nsteps))
-    else:
-        smooth_hy = hy_strm
-    
-
-    for i in xrange(nsteps):
-        if use_hydra:
-            KF.register_observation(dt*i, soft_next(ar1_strm), soft_next(ar2_strm), soft_next(smooth_hy)) 
-        else:
-            KF.register_observation(dt*i, soft_next(ar1_strm), soft_next(ar2_strm), None)
-           
-        mu.append(KF.x_filt)
-        S.append(KF.S_filt)
-
-    A, R = KF.get_motion_mats(dt)
-    
-    return nsteps, tmin, mu, S, A, R
-    """
-    pass
 
 
 
@@ -540,6 +510,7 @@ def traj_kalman(data_file, calib_file, freq, use_spline=False, customized_shift=
 
     return traj
 
-    
 
+if __name__=='__main__':
+    load_data_for_kf('../hd_data/demos/demo2_gpr/demo.data', 'r', plot=True)
 

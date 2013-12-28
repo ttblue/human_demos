@@ -50,6 +50,7 @@ class streamize():
 
     def next(self):
         if not self.idx < len(self.ts):
+            self.reset()
             raise StopIteration
         else:
             ttarg    = self.t + self.dt
@@ -74,7 +75,7 @@ class streamize():
 
     def set_start_time(self, tstart):
         self.tstart = tstart
-        self.rest()
+        self.reset()
         
     def get_start_time(self):
         return self.tstart
