@@ -55,7 +55,7 @@ class ARMarkersRos:
                 self.freq = 1.0 / (time_now - self.latest_time)
             else:
                 self.freq = (1.0 - self.alpha) * self.freq + self.alpha / (time_now - self.latest_time)
-        self.latest_time = time_now            
+        self.latest_time = time_now      
     
     def get_frequency (self):
         return self.freq 
@@ -92,23 +92,22 @@ class CameraData:
                 camera_frame = camera_frame[1:]
             
         self.camera_name = camera_frame.split("_")[0]
-        self.pc_topic = '/' + self.camera_name + '/depth_registered/points'
-        self.image_topic = '/' + self.camera_name + '/rgb/image_color'
-        self.image = None
-        self.pc = None
+
         self.latest_time_pc = 0
         self.latest_time_img = 0
         
         if rospy.get_name() == '/unnamed':
             rospy.init_node('point_clouds_' + self.camera_name)
             
-        self.pc_pub = None
-        self.image_pub = None
-        
         if collect_pc:
+            self.pc_topic = '/' + self.camera_name + '/depth_registered/points'
+            self.pc = None
             self.pc_sub = rospy.Subscriber(self.pc_topic, PointCloud2, callback=self.store_last_callback_pc, tcp_nodelay=True)
+
         
         if collect_image:
+            self.image_topic = '/' + self.camera_name + '/rgb/image_color'
+            self.image = None
             self.image_sub = rospy.Subscriber(self.image_topic, Image, callback = self.store_last_callback_image, tcp_nodelay=True)
         
     def store_last_callback_pc (self, data):
@@ -143,7 +142,7 @@ class RosCameras:
     calibrated = False
     
     camera_transforms = None
-    parent_frame = None
+    parent_frame = 'camera1_rgb_optical_frame'
     stored_tfms = {}
 
     def __init__(self, num_cameras=2):
@@ -151,6 +150,7 @@ class RosCameras:
         # Corresponds to camera 1
 
         self.num_cameras = num_cameras
+        self.calibrated = (self.num_cameras == 1)
         
         camera_frame = 'camera%d_rgb_optical_frame'
         
@@ -161,9 +161,7 @@ class RosCameras:
             camera_frame_name = camera_frame % (i + 1)
             self.camera_frames[i] = camera_frame_name
             self.camera_markers[i] = ARMarkersRos(camera_frame_name)
-            self.camera_pointclouds[i] = CameraData(camera_frame_name)
-                
-        self.parent_frame = 'camera1_rgb_optical_frame'
+            self.camera_pointclouds[i] = CameraData(camera_frame_name) 
     
     def get_ar_markers (self, markers=None, camera=None, parent_frame=False, get_time=False):
         """

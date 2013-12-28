@@ -90,7 +90,7 @@ class HydraCalibrator:
         
         sleeper = rospy.Rate(30)
         while j < n_avg:
-            print colorize('\tGetting averaging transform : %d of %d ...'%(j,n_avg-1), "blue", True)
+            print colorize('\tGetting averaging transform : %d of %d ...'%(j+1,n_avg), "blue", True)
 
             calib_tfm = self.calib_func()
             print calib_tfm
