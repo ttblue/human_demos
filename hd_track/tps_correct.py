@@ -37,8 +37,8 @@ def fit_tps(x_gt, x, plot=True, save_fname=None):
     X, X_GT are of the shape : Nx3
     
     """
-    bend_coef = 0.00  ## increase this to make the tps-interpolation more smooth
-    f_tps = registration.fit_ThinPlateSpline(x, x_gt, bend_coef = bend_coef, rot_coef = 0.001)
+    bend_coef = 0.0  ## increase this to make the tps-interpolation more smooth
+    f_tps = registration.fit_ThinPlateSpline(x, x_gt, bend_coef = bend_coef, rot_coef = 0.0)
 
     if plot:
         plot_reqs = plot_warping(f_tps.transform_points, x, x_gt, fine=False, draw_plinks=True)
@@ -72,6 +72,17 @@ def load_tps(fname):
     return f_tps
 
 
+def put_cam_in_hbase(Ts_cam, T_tt2hy, T_cam2hbase):
+    """
+    Transforms the tfs in Ts_cam so that they are in hydra-base frame
+    and give the hydra-sensor's pose estimate.
+    """
+    T_hbase2cam = np.linalg.inv(T_cam2hbase)
+    Ts_new = []
+    for tf in Ts_cam:
+        Ts_new.append(T_hbase2cam.dot(tf).dot(T_tt2hy))
+    return Ts_new
+
 
 def correct_hydra(Ts_hydra, T_tt2hy, T_cam2hbase, f_tps):
     """
@@ -86,7 +97,7 @@ def correct_hydra(Ts_hydra, T_tt2hy, T_cam2hbase, f_tps):
     T_hbase2cam = np.linalg.inv(T_cam2hbase)
     T_hy2tt     = np.linalg.inv(T_tt2hy)
 
-    Ts_HB = [T_hbase2cam.dot(tfm).dot(T_tt2hy) for tfm in Ts_hydra]
+    Ts_HB = put_cam_in_hbase(Ts_hydra, T_tt2hy, T_cam2hbase)
     N     = len(Ts_HB)
     Xs_HB = np.empty((N,3))
     for i in xrange(N):
@@ -102,6 +113,24 @@ def correct_hydra(Ts_hydra, T_tt2hy, T_cam2hbase, f_tps):
 
     return Ts_aligned
 
+
+def fit_tps_on_tf_data(Ts_hy, Ts_cam, T_tt2hy, T_cam2hbase, plot=False):
+    """
+    Given two lists of CORRESPONDING transforms as saved in extract_data.py
+    (i.e., these are the estimates of the tool-tip in camera1 frame,
+           using:
+           Hydra for Ts_hy
+           Camera for Ts_cam
+    """
+    Ts_hy_hbase  = put_cam_in_hbase(Ts_hy, T_tt2hy, T_cam2hbase)
+    Ts_cam_hbase = put_cam_in_hbase(Ts_cam, T_tt2hy, T_cam2hbase)
+    n_matching   = len(Ts_hy_hbase)
+    x_hy, x_cam  = np.empty((n_matching,3)), np.empty((n_matching,3))
+    for i in xrange(n_matching):
+        x_hy[i,:]  = Ts_hy_hbase[i][0:3,3]
+        x_cam[i,:] = Ts_cam_hbase[i][0:3,3]
+    
+    return fit_tps(x_cam, x_hy, plot)
 
 
 # indices for the training data

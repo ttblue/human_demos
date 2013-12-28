@@ -239,3 +239,10 @@ def align_all_streams(hy_strm, cam_streams, wsize=20):
         nsteps = (tmax-tmin)/hy_aligned.dt
         return (tmin, tmax, nsteps, hy_aligned, aligned_streams)
 
+
+def reject_outlier_tf_stream(strm):
+    """
+    Rejects transforms from a stream of TF based on
+    outliers in the x,y or z coordinates.
+    """
+    pass
