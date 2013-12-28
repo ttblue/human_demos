@@ -50,6 +50,7 @@ class streamize():
 
     def next(self):
         if not self.idx < len(self.ts):
+            self.reset()
             raise StopIteration
         else:
             ttarg    = self.t + self.dt

@@ -172,6 +172,7 @@ def align_tf_streams(hydra_strm, cam_strm, wsize=20):
     Xs_cam   = []
     cam_inds = []
     idx = 0
+    
     for tfm in cam_strm:
         if tfm != None:
             Xs_cam.append(tfm[0,3])
@@ -179,7 +180,6 @@ def align_tf_streams(hydra_strm, cam_strm, wsize=20):
         idx += 1
 
     for hy_tfm in hydra_strm:   
-        hy_tfm = hydra_strm.next()
         Xs_hy.append(hy_tfm[0,3])
 
     ## chop-off wsized data from the start and end of the camera-data:
@@ -194,12 +194,8 @@ def align_tf_streams(hydra_strm, cam_strm, wsize=20):
         hy_xs = [Xs_hy[idx + shift] for idx in cam_inds]
         dists.append(np.linalg.norm(np.array(hy_xs) - Xs_cam))
 
-    blueprint("\t The shift-distances are:")
-    print dists
-    blueprint("\t\t and argmin is : %d"%np.argmin(dists))
-    
     shift = xrange(-wsize, wsize+1)[np.argmin(dists)]
-    redprint("\t\t SHIFT FOUND IS : %d"%shift)
+    redprint("\t\t stream time-alignment shift is : %d (= %0.3f seconds)"%(shift,hydra_strm.dt*shift))
     return shift
 
 
@@ -216,14 +212,17 @@ def align_all_streams(hy_strm, cam_streams, wsize=20):
     tmin, tmax = float('inf'), float('-inf')
     strm_dt  = hy_strm.dt
     if n_streams >= 1:
+        
+        blueprint("\t aligning hydra with camera1")
         shift_hydra   = align_tf_streams(hy_strm, cam_streams[0], wsize)
-        hy_aligned = time_shift_stream(hy_strm, -strm_dt*shift_hydra)
+        hy_aligned    = time_shift_stream(hy_strm, -strm_dt*shift_hydra)
 
         tmin = min(tmin, np.min(hy_aligned.ts))
         tmax = max(tmax, np.max(hy_aligned.ts))
 
         aligned_streams = [cam_streams[0]]
         for i in xrange(1, n_streams):
+            blueprint("\t aligning camera%d with camera1"%(i+1))
             shift_strm = align_tf_streams(hy_aligned, cam_streams[i], wsize)
             shifted_stream = time_shift_stream(cam_streams[i], strm_dt*shift_strm)
 

@@ -104,7 +104,6 @@ def plot_tf_streams(tf_strms, strm_labels, block=True):
             if tf != None:
                 tfs.append(tf)
                 ind.append(i)
-        strm.reset()
         X = state_from_tfms_no_velocity(tfs, 6)
         Xs.append(X)
         inds.append(ind)
@@ -149,9 +148,10 @@ def load_data_for_kf(dat_fname, lr, freq=30., hy_tps_fname=None, plot=False):
 
     if plot:
         blueprint("Plotting ALIGNED data-streams...")
-        plot_tf_streams([hy_strm]+cam_strms, strm_labels, block=True)
+        plot_tf_streams([hy_strm]+cam_strms, strm_labels, block=False)
 
     ### TPS correct the hydra data:
+    blueprint("TPS-correcting hydra stream...")
     if hy_tps_fname==None:
         # train a tps-model:
         ## NOTE THE TPS-MODEL is fit b/w hydra and CAMERA'1'
@@ -167,7 +167,7 @@ def load_data_for_kf(dat_fname, lr, freq=30., hy_tps_fname=None, plot=False):
 
     hy_tfs, hy_ts  = hy_strm.get_data()
     hy_tfs_aligned = correct_hydra(hy_tfs, T_tt2hy, T_cam2hbase, f_tps) 
-    hy_corr_strm   = streamize(hy_tfs_aligned, hy_ts, hy_strm.freq, hy_strm.favg, hy_strm.tstart)
+    hy_corr_strm   = streamize(hy_tfs_aligned, hy_ts, 1./hy_strm.dt, hy_strm.favg, hy_strm.tstart)
 
     if plot:
         blueprint("Plotting tps-corrected hydra...")
@@ -510,6 +510,7 @@ def traj_kalman(data_file, calib_file, freq, use_spline=False, customized_shift=
 
     return traj
 
-    
 
+if __name__=='__main__':
+    load_data_for_kf('../hd_data/demos/demo2_gpr/demo.data', 'r', plot=True)
 
