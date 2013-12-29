@@ -107,7 +107,7 @@ def plot_tf_streams(tf_strms, strm_labels, title=None, block=True):
         X = state_from_tfms_no_velocity(tfs, 6)
         Xs.append(X)
         inds.append(ind)
-    
+
     for i in xrange(6):
         plt.subplot(2,3,i+1)
         plt.hold(True)
@@ -161,12 +161,12 @@ def load_data_for_kf(dat_fname, lr, freq=30., hy_tps_fname=None, plot=False):
         # train a tps-model:
         ## NOTE THE TPS-MODEL is fit b/w hydra and CAMERA'1'
         _, hy_tfs, cam1_tfs = get_corresponding_data(hy_strm, cam_strms[0])
-        f_tps = fit_tps_on_tf_data(hy_tfs, cam1_tfs, T_tt2hy, T_cam2hbase, plot)
+        f_tps = fit_tps_on_tf_data(hy_tfs, cam1_tfs, plot)
     else:
         f_tps = load_tps(hy_tps_fname)
 
     hy_tfs, hy_ts  = hy_strm.get_data()
-    hy_tfs_aligned = correct_hydra(hy_tfs, T_tt2hy, T_cam2hbase, f_tps) 
+    hy_tfs_aligned = correct_hydra(hy_tfs, T_cam2hbase, f_tps, T_cam2hbase) 
     hy_corr_strm   = streamize(hy_tfs_aligned, hy_ts, 1./hy_strm.dt, hy_strm.favg, hy_strm.tstart)
 
     if plot:
