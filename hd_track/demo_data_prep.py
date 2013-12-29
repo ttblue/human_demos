@@ -240,9 +240,50 @@ def align_all_streams(hy_strm, cam_streams, wsize=20):
         return (tmin, tmax, nsteps, hy_aligned, aligned_streams)
 
 
-def reject_outlier_tf_stream(strm):
+def reject_outliers_tf_stream(strm, n_window=2, v_th=[0.15,0.15,0.1]):
     """
     Rejects transforms from a stream of TF based on
     outliers in the x,y or z coordinates.
+    
+    Rejects based on threshold on the median velocity computed over a window.
+    
+    STRM : The stream of transforms to filter
+    N_WINDOW: The number of neighbors of a data-point to consider
+              (note the neighbors can be far away in time, if the stream is sparse)
+    V_TH : The threshold velocity. A data-point is considered an outlier, if v > vth
+           V_TH is specified for x,y,z
+    
+    Note: N_WINDOW/2 number of data-points at the beginning and
+          the end of the stream are not filtered.
     """
-    pass
+    s_window = int(n_window/2)
+    tfs, ts = strm.get_data()
+    N = len(tfs)
+    Xs = np.empty((N,3))
+    for i in xrange(N):
+        Xs[i,:] = tfs[i][0:3,3]
+    
+    n = N-2*s_window
+    v = np.empty((n, 3, 2*s_window))
+    
+    X0 = Xs[s_window:s_window+n,:]
+    t0 = ts[s_window:s_window+n]
+    shifts  = np.arange(-s_window, s_window+1)
+    shifts  = shifts[np.nonzero(shifts)]
+    for i,di in enumerate(shifts):
+        dx = Xs[s_window+di:s_window+n+di,:] - X0
+        dt = ts[s_window+di: s_window+n+di] - t0
+        v[:,:,i] = np.abs(dx/dt[:,None])
+
+    #import IPython
+    #IPython.embed()
+
+    v_med   = np.mean(v,axis=2)
+    inliers = np.arange(n)[np.all(v_med <= v_th, axis=1)]
+    tfs_in = []
+    for i in inliers:
+        tfs_in.append(tfs[i])
+    ts_in = ts[inliers]
+
+    return streamize(tfs_in, ts_in, 1./strm.dt, strm.favg, strm.tstart)
+

@@ -112,14 +112,15 @@ def correct_hydra(Ts_hydra, T_cam2hbase, f_tps, T_cam2hbase_train):
 
     do_transform = not np.allclose(T_cam2hbase, T_cam2hbase_train)
     if do_transform:
+        redprint("\t TPS-correction : The camera hydra-base calibration has changed. Transforming.. ")
         T_tf = T_cam2hbase_train.dot(np.linalg.inv(T_cam2hbase))
         Ti_tf = np.linalg.inv(T_tf)
-        R_tf,t_tf = T_tf[0:3,0:3], T_tf[0:3,3]
+        R_tf,t_tf    = T_tf[0:3,0:3], T_tf[0:3,3]
         Ri_tf, ti_tf = Ti_tf[0:3,0:3], Ti_tf[0:3,3] 
 
         for i in xrange(N):
             Xs[i,:] = R_tf.dot(Ts_hydra[i][0:3,3]) + t_tf
-        
+
         ## do a tps-warp:    
         Xs_aligned = f_tps.transform_points(Xs)
 

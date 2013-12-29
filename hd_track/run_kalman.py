@@ -88,11 +88,16 @@ def get_first_state(tf_streams, freq=30.):
     return (x0, S0)
 
 
-def plot_tf_streams(tf_strms, strm_labels, title=None, block=True):
+def plot_tf_streams(tf_strms, strm_labels, styles=None, title=None, block=True):
     """
     Plots the x,y,z,r,p,y from a list TF_STRMS of streams.
     """
     assert len(tf_strms)==len(strm_labels)
+    if styles!=None:
+        assert len(tf_strms)==len(styles)
+    else:
+        styles = ['-']*len(tf_strms)
+
     plt.figure()
     ylabels = ['x', 'y', 'z', 'r', 'p', 'y']
     n_streams = len(tf_strms)
@@ -114,7 +119,7 @@ def plot_tf_streams(tf_strms, strm_labels, title=None, block=True):
         for j in xrange(n_streams):
             xj = Xs[j]
             ind_j = inds[j]
-            plt.plot(ind_j, xj[:,i], label=strm_labels[j])
+            plt.plot(ind_j, xj[:,i], styles[j], label=strm_labels[j])
             plt.ylabel(ylabels[i])
         plt.legend()
 
@@ -141,6 +146,9 @@ def load_data_for_kf(dat_fname, lr, freq=30., hy_tps_fname=None, plot=False):
 
     #blueprint("Fitting spline to hydra stream..")
     #hy_strm   = fit_spline_to_tf_stream(hy_strm, freq)
+
+    cam1_in = reject_outliers_tf_stream(cam_strms[0])
+    plot_tf_streams([cam1_in, cam_strms[0]], ['in', 'all'], styles=['-','.'])
 
     strm_labels =  ['hydra'] + ['cam%d'%(i+1) for i in xrange(len(cam_strms))]
     if False and plot:
@@ -171,7 +179,7 @@ def load_data_for_kf(dat_fname, lr, freq=30., hy_tps_fname=None, plot=False):
 
     if plot:
         blueprint("Plotting tps-corrected hydra...")
-        plot_tf_streams([hy_strm, hy_corr_strm, cam_strms[0]], ['hy', 'hy-tps', 'cam1'])
+        plot_tf_streams([hy_strm, hy_corr_strm, cam_strms[0]], ['hy', 'hy-tps', 'cam1'], styles=['-','-','.'])
 
     ## now setup and run the kalman-filter:
     blueprint("Initializing Kalman filter..")
