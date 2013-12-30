@@ -3,6 +3,30 @@ import yaml, rosbag
 import argparse
 import os, os.path as osp
 
+"""
+Voice command meanings:
+
+begin recording: 
+    start next demonstration (basically start video and bag commands).
+robot look: 
+    stores time stamps for looking at point cloud for current segment. (can be recalled if needed)
+begin segment: 
+    start recording current segment for demonstration -- point from which human trajectory is relevant.
+stop segment:
+    stop recording current segment -- human trajectory from this point no longer relevant.
+new segment:
+    robot look + begin segment
+stop recording:
+    done with current demonstration
+finish recording:
+    save current demonstration
+cancel recording:
+    delete current demonstration at any point after it is started
+done session: 
+    finished with recording all demonstrations for current segment
+"""
+
+
 def extract_segment(bag):
     
     stamps = []
@@ -23,7 +47,7 @@ def demos_to_annotations(stamps, commands):
     """
     
     parent_state = {"begin recording": ["all start", "finish recording", "cancel recording"],
-                    "robot look": ["begin recording", "stop segment"],
+                    "robot look": ["begin recording", "stop segment", "robot look"],
                     "begin segment": ["robot look"],
                     "stop segment": ["begin segment", "new segment"],
                     "new segment": ["stop segment","begin recording"],

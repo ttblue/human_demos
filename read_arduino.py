@@ -1,10 +1,10 @@
-import serial 
-import glob
 from hd_utils.colorize import colorize
-import time
-from threading import Thread
-
 from hd_utils.func_utils import once
+from threading import Thread
+import glob
+import serial
+import time
+
 
 class Arduino:
     """
@@ -46,25 +46,31 @@ class Arduino:
     def poll_arduino(self):
         """
         Polls the arduino in a separate thread.
+        Gives old reading until valid new reading is found.
         """
         buffer = ''
         while True:
-            buffer = buffer + self.ser.read(self.ser.inWaiting())
-            if '\n' in buffer:
-                lines = buffer.split('\n')
-                self.reading = lines[-2]
-                buffer = lines[-1]
+            new_reading = self.ser.readline()
+            
+            try:
+                new_vals = [int(val) for val in new_reading.split()]
+                if new_vals[0]^new_vals[1] == new_vals[2]:
+                    self.reading = new_reading
+                else: 
+                    print "Got bad reading [v1, v2, v1 XOR v2]: ", new_reading
+            except:
+                pass
+                    
 
 
     def get_reading(self, idx=1):
         """
         return the latest reading read from the arduino.
         """
-        while True:
-	    try:
-	    	return int(self.reading.split()[idx-1])
-            except:
-		pass
+        try:
+            return int(self.reading.split()[idx-1])
+        except:
+            pass
 
 @once
 def get_arduino ():
