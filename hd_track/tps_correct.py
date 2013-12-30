@@ -29,7 +29,7 @@ see the marker.
 When the camera cannot see the marker, this TPS model is used for interpolation.
 """
 
-def fit_tps(x_gt, x, plot=True, save_fname=None):
+def fit_tps(x_gt, x, plot=True):
     """
     Fits a thin-plate spline model to x (source points) and x_gt (ground-truth target points).
     This transform can be used to correct the state-dependent hydra errors.
@@ -37,7 +37,7 @@ def fit_tps(x_gt, x, plot=True, save_fname=None):
     X, X_GT are of the shape : Nx3
     
     """
-    bend_coeff = 0.01  ## increase this to make the tps-interpolation more smooth, decrease to fit better.
+    bend_coeff = 0.1  ## increase this to make the tps-interpolation more smooth, decrease to fit better.
     f_tps = registration.fit_ThinPlateSpline(x, x_gt, bend_coef = bend_coeff, rot_coef = 0.01*bend_coeff)
 
     if plot:
@@ -46,14 +46,17 @@ def fit_tps(x_gt, x, plot=True, save_fname=None):
         for req in plot_reqs:
             plotter.request(req)
 
-    if save_fname != None:
-        save_tps(f_tps, save_fname)
-
     return f_tps
 
 
-def save_tps(f_tps, fname):
-    f_dat = {'x_na'   : f_tps.x_na,
+def save_tps(f_tps, T_cam2hbase, fname):
+    """
+    Saves the tps-model to a file.
+    T_cam2hbase is the calibration transform from the
+    camera1 (main camera) to the hydra-base.
+    """
+    f_dat = {'T_cam2hbase_train':T_cam2hbase,
+             'x_na'   : f_tps.x_na,
              'lin_ag' : f_tps.lin_ag,
              'trans_g': f_tps.trans_g,
              'w_ng'   : f_tps.w_ng}
@@ -69,7 +72,7 @@ def load_tps(fname):
     f_tps.lin_ag  = f_dat['lin_ag']
     f_tps.trans_g = f_dat['trans_g']
     f_tps.w_ng    = f_dat['w_ng']
-    return f_tps
+    return f_tps, f_dat['T_cam2hbase_train']
 
 
 def put_cam_in_hbase(Ts_cam, T_tt2hy, T_cam2hbase):
