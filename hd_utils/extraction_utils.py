@@ -35,13 +35,15 @@ def get_video_frames(video_dir, frame_stamps):
         depths.append(depth)
     return rgbs, depths
 
-def get_rgbd_names_times (video_dir):
+def get_rgbd_names_times (video_dir, depth=True):
     from glob import glob
-    rgbnames = glob(osp.join(video_dir, "rgb*.jpg"))
-    depthnames = glob(osp.join(video_dir, "depth*.png"))
-    ind2rgbfname = dict([(int(osp.splitext(osp.basename(fname))[0][3:]), fname) for fname in rgbnames])
-    ind2depthfname = dict([(int(osp.splitext(osp.basename(fname))[0][5:]), fname) for fname in depthnames])
     
     video_stamps = np.loadtxt(osp.join(video_dir,"stamps.txt"))
+    rgbnames = glob(osp.join(video_dir, "rgb*.jpg"))
+    ind2rgbfname = dict([(int(osp.splitext(osp.basename(fname))[0][3:]), fname) for fname in rgbnames])
     
-    return ind2rgbfname, ind2depthfname, video_stamps
+    if depth:
+        depthnames = glob(osp.join(video_dir, "depth*.png"))
+        ind2depthfname = dict([(int(osp.splitext(osp.basename(fname))[0][5:]), fname) for fname in depthnames])
+        return ind2rgbfname, ind2depthfname, video_stamps
+    else: return ind2rgbfname, video_stamps
