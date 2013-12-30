@@ -103,7 +103,8 @@ def relative_time_streams(tfm_data, freq):
             strm = streamize(tfs, ts, freq, avg_transform, tstart=-dt)
             streams.append(strm)
                 
-    return tmin, tmax, nsteps, streams
+    tshift = -tmin
+    return tmin, tmax, nsteps, streams, tshift
 
 
 def fit_spline_to_tf_stream(strm, new_freq, deg=3):
@@ -207,15 +208,20 @@ def align_all_streams(hy_strm, cam_streams, wsize=20):
     cam_streams : A list of camera-data streams.
                   The first stream is assumed to be camera1 stream.
                   All streams are aligned with camera1 (i.e. camera1 stream is not changed).
+    Also returns the shifts applied to each camera/ hydra stream.
     """
     n_streams = len(cam_streams)
     tmin, tmax = float('inf'), float('-inf')
     strm_dt  = hy_strm.dt
+    
+    hy_shift, cam_shifts = None, [0] ## no shift for the first-camera!
+    
     if n_streams >= 1:
         
         blueprint("\t aligning hydra with camera1")
         shift_hydra   = align_tf_streams(hy_strm, cam_streams[0], wsize)
-        hy_aligned    = time_shift_stream(hy_strm, -strm_dt*shift_hydra)
+        hy_shift      = -strm_dt*shift_hydra
+        hy_aligned    = time_shift_stream(hy_strm, hy_shift)
 
         tmin = min(tmin, np.min(hy_aligned.ts))
         tmax = max(tmax, np.max(hy_aligned.ts))
@@ -224,7 +230,9 @@ def align_all_streams(hy_strm, cam_streams, wsize=20):
         for i in xrange(1, n_streams):
             blueprint("\t aligning camera%d with camera1"%(i+1))
             shift_strm = align_tf_streams(hy_aligned, cam_streams[i], wsize)
-            shifted_stream = time_shift_stream(cam_streams[i], strm_dt*shift_strm)
+            cam_shift  = strm_dt*shift_strm
+            cam_shifts.append(cam_shift)
+            shifted_stream = time_shift_stream(cam_streams[i], cam_shift)
 
             tmin = min(tmin, np.min(shifted_stream.ts))
             tmax = max(tmax, np.max(shifted_stream.ts))
@@ -237,5 +245,51 @@ def align_all_streams(hy_strm, cam_streams, wsize=20):
             strm.set_start_time(strm.get_start_time() - tmin)
 
         nsteps = (tmax-tmin)/hy_aligned.dt
-        return (tmin, tmax, nsteps, hy_aligned, aligned_streams)
+        return (tmin, tmax, nsteps, hy_aligned, hy_shift, aligned_streams, cam_shifts)
 
+
+def reject_outliers_tf_stream(strm, n_window=10, v_th=[0.35,0.35,0.25]):
+    """
+    Rejects transforms from a stream of TF based on
+    outliers in the x,y or z coordinates.
+    
+    Rejects based on threshold on the median velocity computed over a window.
+    
+    STRM : The stream of transforms to filter
+    N_WINDOW: The number of neighbors of a data-point to consider
+              (note the neighbors can be far away in time, if the stream is sparse)
+    V_TH : The threshold velocity. A data-point is considered an outlier, if v > vth
+           V_TH is specified for x,y,z
+    
+    Note: N_WINDOW/2 number of data-points at the beginning and
+          the end of the stream are not filtered.
+    """
+    s_window = int(n_window/2)
+    tfs, ts  = strm.get_data()
+    N = len(tfs)
+    Xs = np.empty((N,3))
+    for i in xrange(N):
+        Xs[i,:] = tfs[i][0:3,3]
+    
+    n = N-2*s_window
+    v = np.empty((n, 3, 2*s_window))
+    
+    X0 = Xs[s_window:s_window+n,:]
+    t0 = ts[s_window:s_window+n]
+    shifts  = np.arange(-s_window, s_window+1)
+    shifts  = shifts[np.nonzero(shifts)]
+    for i,di in enumerate(shifts):
+        dx = Xs[s_window+di:s_window+n+di,:] - X0
+        dt = ts[s_window+di: s_window+n+di] - t0
+        v[:,:,i] = np.abs(dx/dt[:,None])
+
+    v_med   = np.median(v,axis=2)
+    inliers = s_window + np.arange(n)[np.all(v_med <= v_th, axis=1)]
+    inliers = np.r_[np.arange(s_window), inliers, np.arange(n+s_window,N)]
+
+    tfs_in = []
+    for i in inliers:
+        tfs_in.append(tfs[i])
+    ts_in = ts[inliers]
+
+    return streamize(tfs_in, ts_in, 1./strm.dt, strm.favg, strm.tstart)

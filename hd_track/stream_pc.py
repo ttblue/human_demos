@@ -26,7 +26,7 @@ class streamize_pc():
     This class is iterable.
     """
     
-    def __init__(self, bag, cloud_topics, freq, tstart=None, verbose=False):
+    def __init__(self, bag, cloud_topics, freq, tstart=None, delay=0, verbose=False):
                 
         if cloud_topics == None:
             self.done = True
@@ -34,6 +34,8 @@ class streamize_pc():
         
         self.bag = bag
         self.verbose = verbose
+        self.tstart = tstart
+        self.delay = delay
         
         if not isinstance(cloud_topics, list):
             self.topics = [cloud_topics]
@@ -42,7 +44,7 @@ class streamize_pc():
         
         self.done = False
         
-        self.cloud_gen = bag.read_messages(topics=self.topics)
+        self.cloud_gen = self.bag.read_messages(topics=self.topics)
         
         try:
             _,self.curr_msg,_ = self.cloud_gen.next()
@@ -52,7 +54,7 @@ class streamize_pc():
             raise StopIteration ('Empty topics.')
                 
         self.dt = 1./freq
-        self.t  = -self.dt if tstart==None else tstart-self.base_ts-self.dt
+        self.t  = -self.dt-self.delay if self.tstart==None else self.tstart-self.base_ts-self.dt-self.delay
         self.ts = 0.0
         
         self.num_seen = 1
@@ -66,8 +68,24 @@ class streamize_pc():
     def time_now(self):
         return self.base_ts + self.t
     
+    def reset (self):
+        self.cloud_gen = self.bag.read_messages(topics=self.topics)
+        
+        try:
+            _,self.curr_msg,_ = self.cloud_gen.next()
+        except StopIteration:
+            self.done = True
+            raise StopIteration ('Empty topics.')
+                
+        self.t  = -self.dt-self.delay if self.tstart==None else self.tstart-self.base_ts-self.dt-self.delay
+        self.ts = 0.0
+        
+        self.num_seen = 1
+    
+
     def next(self):
         if self.done:
+            self.reset()
             raise StopIteration
         else:
             ttarg    = self.t + self.dt
@@ -122,32 +140,39 @@ class streamize_rgbd_pc():
     This class is iterable.
     """
     
-    def __init__(self, rgbd_dir, frame_id, freq, tstart=None, verbose=False):
-    
-                
+    def __init__(self, rgbd_dir, frame_id, freq, tstart=None, delay=0, verbose=False):
         if rgbd_dir is None:
             self.done = True
             return
-        
+
         self.rgbd_dir = rgbd_dir
-        self.verbose = verbose
+        self.verbose  = verbose
         self.frame_id = frame_id
-        
+        self.tstart   = tstart
+        self.delay    = delay
+
         self.rgbs_fnames, self.depth_fnames, self.stamps = eu.get_rgbd_names_times(rgbd_dir)
         self.index = 0
-        
+
         self.curr_msg, self.base_ts = self.get_pc()
 
-        self.done = False        
-                
+        self.done = False
+
         self.dt = 1./freq
-        self.t  = -self.dt if tstart==None else tstart-self.base_ts-self.dt
+        self.t  = -self.dt-self.delay if self.tstart==None else self.tstart-self.base_ts-self.dt-self.delay       
         self.ts = 0.0
-        
         self.num_seen = 1
+
 
     def __iter__(self):
         return self
+
+
+    def reset (self):            
+        self.t  = -self.dt-self.delay if self.tstart==None else self.tstart-self.base_ts-self.dt-self.delay
+        self.ts = 0.0
+        self.num_seen = 1
+    
     
     def get_pc(self):
         rgb = cv2.imread(self.rgbs_fnames[self.index])
@@ -167,6 +192,7 @@ class streamize_rgbd_pc():
     
     def next(self):
         if self.done:
+            self.reset()
             raise StopIteration
         else:
             ttarg = self.t + self.dt
@@ -205,6 +231,7 @@ class streamize_rgbd_pc():
             self.ts = curr_t                     
             
             return rtn_msg
+
 
             
 if __name__ == '__main__':

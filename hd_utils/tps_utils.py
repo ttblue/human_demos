@@ -7,7 +7,7 @@ from hd_utils.mayavi_plotter import *
 Utility functions to visualize tps warping function.
 """
 
-def gen_grid(f, mins, maxes, ncoarse=20, nfine=30):
+def gen_grid(f, mins, maxes, ncoarse=10, nfine=30):
     """
     generate 3d grid and warps it using the function f.
     The grid is based on the number of lines (ncoarse & nfine).

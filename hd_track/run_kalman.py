@@ -88,11 +88,16 @@ def get_first_state(tf_streams, freq=30.):
     return (x0, S0)
 
 
-def plot_tf_streams(tf_strms, strm_labels, block=True):
+def plot_tf_streams(tf_strms, strm_labels, styles=None, title=None, block=True):
     """
     Plots the x,y,z,r,p,y from a list TF_STRMS of streams.
     """
     assert len(tf_strms)==len(strm_labels)
+    if styles!=None:
+        assert len(tf_strms)==len(styles)
+    else:
+        styles = ['-']*len(tf_strms)
+
     plt.figure()
     ylabels = ['x', 'y', 'z', 'r', 'p', 'y']
     n_streams = len(tf_strms)
@@ -107,20 +112,24 @@ def plot_tf_streams(tf_strms, strm_labels, block=True):
         X = state_from_tfms_no_velocity(tfs, 6)
         Xs.append(X)
         inds.append(ind)
-    
+
     for i in xrange(6):
         plt.subplot(2,3,i+1)
         plt.hold(True)
         for j in xrange(n_streams):
             xj = Xs[j]
             ind_j = inds[j]
-            plt.plot(ind_j, xj[:,i], label=strm_labels[j])
+            plt.plot(ind_j, xj[:,i], styles[j], label=strm_labels[j])
             plt.ylabel(ylabels[i])
         plt.legend()
+
+    if title!=None:
+        plt.gcf().suptitle(title)
     plt.show(block=block)
 
 
-def load_data_for_kf(dat_fname, lr, freq=30., hy_tps_fname=None, plot=False):
+
+def load_data_for_kf(dat_fname, lr, freq=30., fit_spline=False, plot=False, hy_tps_fname=None, save_tps_fname=None ):
     """
     Collects all the data in the correct format/ syncs it to run on the kalman filter.
     
@@ -130,25 +139,43 @@ def load_data_for_kf(dat_fname, lr, freq=30., hy_tps_fname=None, plot=False):
                   If None this function fits a tps model based on the current data file.
     """
     tfm_data, pot_data, T_cam2hbase, T_tt2hy = load_data(dat_fname, lr)
-    _,_,_, tf_streams = relative_time_streams(tfm_data, freq)
+    _,_,_, tf_streams, tshift = relative_time_streams(tfm_data, freq)
 
     hy_strm   = tf_streams[0]
     cam_strms = tf_streams[1:]
+    pot_strm  = streamize(pot_data[0], tshift+pot_data[1], freq, np.mean, hy_strm.get_start_time())
 
-    #blueprint("Fitting spline to hydra stream..")
-    #hy_strm   = fit_spline_to_tf_stream(hy_strm, freq)
+    if fit_spline:
+        blueprint("Fitting spline to hydra stream..")
+        hy_strm   = fit_spline_to_tf_stream(hy_strm, freq)
 
-    strm_labels =  ['hydra'] + ['cam%d'%(i+1) for i in xrange(len(cam_strms))]
+
+    blueprint("Rejecting outliers in tf-streams...")
+    for i in xrange(len(cam_strms)):
+        cam_inlier = reject_outliers_tf_stream(cam_strms[i])
+        if plot:
+            plot_tf_streams([cam_inlier, cam_strms[i]], ['inliers', 'all'], styles=['-','.'], title='cam%d outliers'%(i+1), block=False)
+        cam_strms[i] = cam_inlier
+
     if plot:
+        strm_labels =  ['hydra'] + ['cam%d'%(i+1) for i in xrange(len(cam_strms))]
         blueprint("Plotting raw (UN-ALIGNED) data-streams...")
-        plot_tf_streams([hy_strm]+cam_strms, strm_labels, block=False)
+        plot_tf_streams([hy_strm]+cam_strms, strm_labels, title="unaligned data-streams", block=False)
+
 
     ## time-align all the transform streams:
-    tmin, tmax, nsteps, hy_strm, cam_strms = align_all_streams(hy_strm, cam_strms)
+    blueprint("Time-aligning all data-streams...")
+    tmin, tmax, nsteps, hy_strm, hy_shift, cam_strms, cam_shifts = align_all_streams(hy_strm, cam_strms)
+
+    ## these are the shifts to be applied to the point-cloud/ image streams for
+    ## synchronized visualization:
+    cam_shifts = tshift + np.array(cam_shifts)
+    hy_shift  += tshift
 
     if plot:
-        blueprint("Plotting ALIGNED data-streams...")
-        plot_tf_streams([hy_strm]+cam_strms, strm_labels, block=False)
+        blueprint("\t Plotting ALIGNED data-streams...")
+        redprint("\t\t Close all matplotlib plots to continue...")
+        plot_tf_streams([hy_strm]+cam_strms, strm_labels, title="ALIGNED data-streams", block=False)
 
     ### TPS correct the hydra data:
     blueprint("TPS-correcting hydra stream...")
@@ -156,29 +183,92 @@ def load_data_for_kf(dat_fname, lr, freq=30., hy_tps_fname=None, plot=False):
         # train a tps-model:
         ## NOTE THE TPS-MODEL is fit b/w hydra and CAMERA'1'
         _, hy_tfs, cam1_tfs = get_corresponding_data(hy_strm, cam_strms[0])
-        n_matching   = len(hy_tfs)
-        x_hy, x_cam  = np.empty((n_matching,3)), np.empty((n_matching,3))
-        for i in xrange(n_matching):
-            x_hy[i,:]  = hy_tfs[i][0:3,3]
-            x_cam[i,:] = cam1_tfs[i][0:3,3]
-        f_tps = fit_tps(x_cam, x_hy, plot)
-    else:
-        f_tps = load_tps(hy_tps_fname)
+        f_tps = fit_tps_on_tf_data(hy_tfs, cam1_tfs, plot)
+        T_cam2hbase_train   = T_cam2hbase
 
+        if save_tps_fname != None:
+            save_tps(f_tps, T_cam2hbase, save_tps_fname)
+    else:
+        f_tps, T_cam2hbase_train = load_tps(hy_tps_fname)
+
+    blueprint("TPS-correcting hydra-stream..")
     hy_tfs, hy_ts  = hy_strm.get_data()
-    hy_tfs_aligned = correct_hydra(hy_tfs, T_tt2hy, T_cam2hbase, f_tps) 
+    hy_tfs_aligned = correct_hydra(hy_tfs, T_cam2hbase, f_tps, T_cam2hbase_train) 
     hy_corr_strm   = streamize(hy_tfs_aligned, hy_ts, 1./hy_strm.dt, hy_strm.favg, hy_strm.tstart)
 
     if plot:
-        blueprint("Plotting tps-corrected hydra...")
-        plot_tf_streams([hy_strm, hy_corr_strm, cam_strms[0]], ['hy', 'hy-tps', 'cam1'])
+        blueprint("\t Plotting tps-corrected hydra...")
+        plot_tf_streams([hy_strm, hy_corr_strm, cam_strms[0]], ['hy', 'hy-tps', 'cam1'], styles=['-','-','.'], block=False)
 
-    ## now setup and run the kalman-filter:
+    ## now setup the kalman-filter:
+    blueprint("Initializing Kalman filter..")
     motion_covar, cam_covar, hydra_covar = initialize_covariances(freq)
+    blueprint("\t Getting starting state for KF..")
     x0, S0 = get_first_state([hy_corr_strm]+cam_strms, freq)
     KF = kalman()
     KF.init_filter(0, x0, S0, motion_covar, cam_covar, hydra_covar)
+    redprint("Done initializing KF. Returning demo-info..")
 
+    filter_data = {'demo_dir': osp.dirname(dat_fname),
+                   'KF'     : KF,
+                   'nsteps' : nsteps,
+                   'tmin'   : tmin,
+                   'tmax'   : tmax,
+                   'pot_strm': pot_strm,
+                   'hy_strm': hy_strm,
+                   'hy_shift': hy_shift,
+                   'cam_strms': cam_strms,
+                   'cam_shifts': cam_shifts}
+
+    return filter_data
+
+
+def run_kf(filter_data, do_smooth=False):
+    """
+    Actually runs the data-through the kalman filter.
+    FILTER_DATA : a dictionary containing all the required data, as returned from load_data_for_kf
+    DO_SMOOTH   : if true, the smoother is also run on the data.
+    
+    Returns : A list of kalman filter state-estimates, covariances and time-stamps.
+
+    Note :
+    1. The kalman-filter in filter_data as returned by load_data_for_kf 
+       has appropriately been initialized.
+    2. Note: This runs the k.f. for only one-gripper.
+    """
+    KF        = filter_data['KF']
+    hy_strm   = filter_data['hy_strm']
+    cam_strms = filter_data['cam_strms']
+    nsteps    = filter_data['tstart']
+    tstart    = hy_strm.get_start_time()
+    
+    ## place holders for kalman filter's output:
+    xs_kf, covars_kf, ts_kf = [KF.x_filt],[KF.S_filt],[KF.t_filt]
+    for i in xrange(nsteps):
+        KF.register_tf_observation(soft_next(hy_strm), KF.hydra_covar, do_control_update=True)
+        for strm in cam_strms:
+            KF.register_tf_observation(soft_next(strm), KF.cam_covar, do_control_update=False)
+        xs_kf.append(KF.x_filt)
+        covars_kf.append(KF.S_filt)
+        ts_kf.append(KF.t_filt)
+
+    if do_smooth:
+        xs_smthr, covars_smthr = smoother(*KF.motion_mats, xs_ks, S_kf)
+        return (ts_kf, xs_kf, covars_kf, xs_smthr, covars_smthr)
+    else:
+        return (xs_kf, covars_kf, ts_kf)
+
+
+def filter_traj(demo_fname, mplot=False, rviz=False, tps_model_fname=None):
+    """
+    Runs the kalman filter for BOTH the grippers and visualizes the output.
+    Also writes the demo.traj file.
+    
+    MPLOT : Show the data in matplotlib plots
+    RVIZ : Visualize the filtered data in rviz
+    TPS_MODEL_FNAME : The name of the file to load the tps-model from
+    """
+    pass
 
 
 def open_frac(angle):
@@ -189,117 +279,11 @@ def open_frac(angle):
     return angle/angle_max
 
 
-def plot_kalman_core(X_kf, X_ks, X_ar1, vs_ar1, X_ar2, vs_ar2, X_hy, vs_hy, plot_commands):
-    """
-    X_kf: kalman filter result
-    X_ks: kalman smoother result
-    [vs_ar1, X_ar1]: the timing and transform of Ar marker1
-    [vs_ar2, X_ar2]: the timing and transform of Ar marker2
-    [vs_hy, X_hy]  : the timing and transform of hydra
-    """
-    if plot_commands == '': return
-
-    to_plot= [i for i in xrange(9)]
-    axlabels = ['x', 'y', 'z', 'vx', 'vy', 'vz', 'roll', 'pitch', 'yaw', 'v_roll', 'v_pitch', 'v_yaw']
-    for i in to_plot:
-        plt.subplot(3,3,i+1)
-        if 'f' in plot_commands:
-            plt.plot(X_kf[i,:], label='filter')
-        if 's' in plot_commands:
-            plt.plot(X_ks[i,:], label='smoother')
-        if '1' in plot_commands:
-            plt.plot(vs_ar1, X_ar1[i,:], '.', label='camera1')
-        if '2' in plot_commands:
-            plt.plot(vs_ar2, X_ar2[i,:], '.', label='camera2')
-        if 'h' in plot_commands:
-            plt.plot(vs_hy, X_hy[i,:], '.', label='hydra')
-        plt.ylabel(axlabels[i])
-
-
-def plot_kalman_lr(data_file, calib_file, lr, freq, use_spline, customized_shift, single_camera, plot_commands):
-    '''
-    input: data_file
-    lr: 'l' or 'r'
-    freq
-    use_spline
-    customized_shift: custimized shift between smoother and filter: to compensate for the lag of smoother
-    
-    _, _, _, ar1_strm, ar2_strm, hy_strm = relative_time_streams(data_file, lr, freq, single_camera)    
-    
-    ## run kalman filter:
-    nsteps, tmin, F_means,S,A,R = run_kalman_filter(data_file, lr, freq, use_spline, True, single_camera)
-    ## run kalman smoother:
-    S_means, _ = smoother(A, R, F_means, S)
-    
-    
-    X_kf = np.array(F_means)
-    X_kf = np.reshape(X_kf, (X_kf.shape[0], X_kf.shape[1])).T
-
-    X_ks = np.array(S_means)
-    X_ks = np.reshape(X_ks, (X_ks.shape[0], X_ks.shape[1])).T
-    
-
-    # Shifting
-    if customized_shift != None:
-        shift = customized_shift
-    else:
-        shift = correlation_shift(X_kf, X_ks)
-        
-
-    X_ks = np.roll(X_ks,shift,axis=1)
-    X_ks[:,:shift]  = X_ks[:,shift][:,None]
-
-  
-    ## frame of the filter estimate:
-    indices_ar1 = []
-    indices_ar2 = []
-    indices_hy  = []
-
-    Ts_ar1 = []
-    Ts_ar2 = []
-    Ts_hy  = []
-
-    if use_spline:
-        smooth_hy = (t for t in fit_spline_to_stream(hy_strm, nsteps))
-    else:
-        smooth_hy = hy_strm
-
-    for i in xrange(nsteps):
-        ar1_est = soft_next(ar1_strm)
-        ar2_est = soft_next(ar2_strm)
-        hy_est = soft_next(smooth_hy)
-        
-        if ar1_est != None:
-            Ts_ar1.append(ar1_est)
-            indices_ar1.append(i)
-        if ar2_est != None:
-            Ts_ar2.append(ar2_est)
-            indices_ar2.append(i)
-        if hy_est != None:
-            Ts_hy.append(hy_est)
-            indices_hy.append(i)
-
-    X_ar1 = state_from_tfms_no_velocity(Ts_ar1).T
-    X_ar2 = state_from_tfms_no_velocity(Ts_ar2).T
-    X_hy  = state_from_tfms_no_velocity(Ts_hy).T
-
-    plot_kalman_core(X_kf[:,1:], X_ks[:,1:], X_ar1, indices_ar1, X_ar2, indices_ar2, X_hy, indices_hy, plot_commands)
-    plt.show()
-    '''
-    pass
-    
-def plot_kalman(data_file, calib_file, freq, use_spline=False, customized_shift=None, single_camera=False, plot_commands='s12fh'):
-    dat = cp.load(open(data_file))
-    for lr in 'lr':
-        if dat.has_key(lr):
-            plot_kalman_lr(data_file, calib_file, lr, freq, use_spline, customized_shift, single_camera, plot_commands)
-
-    
 def rviz_kalman(demo_dir, bag_file, data_file, calib_file, freq, use_rgbd, use_smoother, use_spline, customized_shift, single_camera):
     '''
     For rgbd, data_file and bag_file are redundant
     Otherwise, demo_dir is redundant
-    
+    '''
     if use_rgbd:
         bag_file  = osp.join(demo_dir, 'demo.bag')
         rgbd1_dir = osp.join(demo_dir, 'camera_#1')
@@ -477,8 +461,8 @@ def rviz_kalman(demo_dir, bag_file, data_file, calib_file, freq, use_rgbd, use_s
                 hydra_tfm_pub[lr].publish(pose_to_stamped_pose(hmat_to_pose(T_far), cam1_frame_id))
         
         sleeper.sleep()
-        '''
-    pass
+        
+    
         
 
         

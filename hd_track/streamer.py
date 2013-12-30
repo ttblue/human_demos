@@ -76,7 +76,7 @@ class streamize():
     def set_start_time(self, tstart):
         self.tstart = tstart
         self.reset()
-        
+
     def get_start_time(self):
         return self.tstart
 
@@ -122,6 +122,9 @@ def get_corresponding_data(strm1, strm2):
             idx += 1
         except:
             break
+
+    strm1.reset()
+    strm2.reset()
 
     N = len(dat1)
     print colorize("Found %s corresponding data points." % colorize(str(N), "red", True), "blue", True)
