@@ -76,7 +76,7 @@ class streamize():
     def set_start_time(self, tstart):
         self.tstart = tstart
         self.reset()
-        
+
     def get_start_time(self):
         return self.tstart
 
