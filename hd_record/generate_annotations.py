@@ -111,19 +111,19 @@ if __name__=='__main__':
     args = parser.parse_args()
 
     data_dir = os.getenv("HD_DATA_DIR")
-    demo_dir = osp.join(data_dir, args.demo_type, args.demo_name)
+    demo_dir = osp.join(data_dir, "demos", args.demo_type, args.demo_name)
     bag = rosbag.Bag(osp.join(demo_dir,'demo.bag'))
     ann_file = osp.join(demo_dir,'ann.yaml')
     
     stamps, commands = extract_segment(bag)
     demos = demos_to_annotations(stamps, commands)
     
-    for (i_seg, seg_info) in enumerate(demo):
+    for (i_seg, seg_info) in enumerate(demos):
         seg_info["name"] = "seg%.2i"%i_seg
         seg_info["description"] = "(no description)"
             
-    demo[-1]["description"] = "final frame"
-    demo[-1]["name"] = "done"
+    demos[-1]["description"] = "final frame"
+    demos[-1]["name"] = "done"
             
     print "writing to %s"%ann_file
     with open(ann_file, "w") as fh:
