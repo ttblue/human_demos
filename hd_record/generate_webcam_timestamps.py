@@ -1,3 +1,4 @@
+#!/usr/bin/python
 import os, os.path as osp
 
 def gen_timestamps (video_dir):

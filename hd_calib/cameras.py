@@ -74,10 +74,10 @@ class ARMarkersRos:
 
         if markers is None:
             marker_transforms = {marker.id:conversions.pose_to_hmat(marker.pose.pose)\
-                                 for marker in self.latest_markers.markers}
+                                 for marker in self.latest_markers.markers if marker.id != 0}
         else:
             marker_transforms = {marker.id:conversions.pose_to_hmat(marker.pose.pose)\
-                                 for marker in self.latest_markers.markers if marker.id in markers}
+                                 for marker in self.latest_markers.markers if marker.id in markers and marker.id != 0}
 
         if not get_time:
             return marker_transforms

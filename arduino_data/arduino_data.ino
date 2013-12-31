@@ -17,9 +17,12 @@ void loop() {
   // read the input on analog pin 0:
   int sensorValue = analogRead(A0);
   int sensorValue2 = analogRead(A2);
+  int xorval = sensorValue ^ sensorValue2;
 
   Serial.print(sensorValue);
   Serial.print(" ");
-  Serial.println(sensorValue2);
+  Serial.print(sensorValue2);
+  Serial.print(" ");
+  Serial.println(xorval);
   delay(1);        // delay in between reads for stability
 }

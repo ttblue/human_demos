@@ -21,6 +21,6 @@ if __name__ == "__main__":
     calib_fname = osp.join(data_dir, 'calib', vals.calib_fname)
         
     if vals.save_fname == '':
-        ed.save_observations_rgbd(vals.demo_name, calib_fname, vals.num_cameras)
+        ed.save_observations_rgbd(vals.demo_name, calib_fname, vals.num_cameras, True)
     else:
-        ed.save_observations_rgbd(vals.demo_name, calib_fname, vals.num_cameras, vals.save_fname)
+        ed.save_observations_rgbd(vals.demo_name, calib_fname, vals.num_cameras, True, vals.save_fname)

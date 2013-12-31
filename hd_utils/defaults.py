@@ -27,10 +27,9 @@ asus_xtion_pro_f = 544.260779961
 
 
 hd_path = os.getenv('HD_DIR')
-
-calib_files_dir = osp.join(hd_path, 'hd_data', 'calib')
-
-demo_files_dir =  osp.join(hd_path, 'hd_data', 'demos')
+data_dir = osp.join(hd_path, 'hd_data')
+calib_files_dir = osp.join(data_dir, 'calib')
+demo_files_dir =  osp.join(data_dir, 'demos')
 
 '''
 Transform from head to kinect
