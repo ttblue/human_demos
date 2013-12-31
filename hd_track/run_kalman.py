@@ -11,7 +11,7 @@ import numpy as np
 import os, os.path as osp
 import cPickle as cp
 import scipy.linalg as scl
-import math
+import math, sys
 import matplotlib.pylab as plt
 
 from hd_utils.colorize import colorize, redprint, blueprint
@@ -105,6 +105,8 @@ def plot_tf_streams(tf_strms, strm_labels, styles=None, title=None, block=True):
     inds = []
     for strm in tf_strms:
         tfs, ind = [], []
+        #import IPython
+        #IPython.embed()
         for i,tf in enumerate(strm):
             if tf != None:
                 tfs.append(tf)
@@ -146,18 +148,6 @@ def load_data_for_kf(demo_fname, freq=30.0, rem_outliers=True, tps_correct=True,
         for cam in cam_dat[lr].keys():
             all_cam_names.add(cam)
 
-    ## remove outliers in the camera streams
-    if rem_outliers:
-        blueprint("Rejecting TF outliers in camera-data..")
-        for lr in 'lr':
-            for cam in cam_dat[lr].keys():
-                strm_in = reject_outliers_tf_stream(cam_dat[lr][cam]['stream'])
-                if plot:
-                    cam_name = cam+'_'+lr
-                    plot_tf_streams([cam_dat[lr][cam]['stream'], strm_in], strm_labels=[cam_name, cam_name+'_in'], styles=['.','-'], block=False)
-                cam_dat[lr][cam]['stream'] = strm_in
-
-
     ## time-align all tf-streams (wrt their respective hydra-streams):
     ## NOTE THE STREAMS ARE MODIFIED IN PLACE (the time-stamps are changed)
     ## and also the tstart
@@ -166,8 +156,23 @@ def load_data_for_kf(demo_fname, freq=30.0, rem_outliers=True, tps_correct=True,
     for lr in 'lr':
         for cam in cam_dat[lr].keys():
             all_cam_strms.append(cam_dat[lr][cam]['stream'])
-    tmin, _, _ = relative_time_streams(hy_dat.values() + pot_dat.values() + all_cam_strms)
+    tmin, _, _ = relative_time_streams(hy_dat.values() + pot_dat.values() + all_cam_strms, freq)
     tshift1 = -tmin
+
+
+    ## remove outliers in the camera streams
+    if rem_outliers:
+        blueprint("Rejecting TF outliers in camera-data..")
+        for lr in 'lr':
+            for cam in cam_dat[lr].keys():
+                strm_in = reject_outliers_tf_stream(cam_dat[lr][cam]['stream'])
+                if plot and False:
+                    blueprint("\t Plotting outlier rejection..")
+                    cam_name = cam+'_'+lr
+                    plot_tf_streams([cam_dat[lr][cam]['stream'], strm_in], strm_labels=[cam_name, cam_name+'_in'], styles=['.','-'], block=False)
+                cam_dat[lr][cam]['stream'] = strm_in
+
+
 
     ## do time-alignment (with the respective l/r hydra-streams):
     blueprint("Calculating TF stream time-shifts..")
@@ -176,27 +181,30 @@ def load_data_for_kf(demo_fname, freq=30.0, rem_outliers=True, tps_correct=True,
         ndat = {'r':-1, 'l':-1}  ## compare whether left/right has more data-points
         for lr in 'lr':
             if cam in cam_dat[lr].keys():
-                ndat[lr] = len(cam_info[lr][cam]['stream'].get_data()[0])
-
-        lr_align = ndat.keys[np.argmax(ndat.values())]
+                ndat[lr] = len(cam_dat[lr][cam]['stream'].get_data()[0])
+       
+        lr_align = ndat.keys()[np.argmax(ndat.values())]
         time_shifts[cam] = dt* align_tf_streams(hy_dat[lr_align], cam_dat[lr_align][cam]['stream'])
 
-    redprint("\t Time-shifts found : ")
-    print time_shifts
+    redprint("\t Time-shifts found : %s"%str(time_shifts))
     
     ## time-shift the streams:
     blueprint("Time-aligning TF streams..")
     for lr in 'lr':
+        redprint("\t Alignment for : %s"%lr_full[lr])
         aligned_cam_strms = []
         for cam in cam_dat[lr].keys():
-            aligned_cam_strms.append( time_shift_stream(cam_info[lr][cam]['stream'], time_shifts[cam]) )
-                
-        if plot:
+            aligned_cam_strms.append( time_shift_stream(cam_dat[lr][cam]['stream'], time_shifts[cam]) )
+
+        if plot and False:
             unaligned_cam_streams = []
-            for cam_dat in cam_dat[lr].values():
-                unaligned_cam_streams.append(cam_dat['stream'])
+            for cam in cam_dat[lr].values():
+                unaligned_cam_streams.append(cam['stream'])
+            
+            blueprint("\t plotting unaligned TF streams...")
             plot_tf_streams(unaligned_cam_streams + [hy_dat[lr]], cam_dat[lr].keys()+['hydra'], title='UNALIGNED CAMERA-streams (%s)'%lr_full[lr], block=False)
-            plot_tf_streams(aligned_cam_strms+hy_dat[lr], cam_dat[lr].keys()+['hydra'], title='ALIGNED CAMERA-streams (%s)'%lr_full[lr], block=False)
+            blueprint("\t plotting aligned TF streams...")
+            plot_tf_streams(aligned_cam_strms+[hy_dat[lr]], cam_dat[lr].keys()+['hydra'], title='ALIGNED CAMERA-streams (%s)'%lr_full[lr], block=False)
             
         for i,cam in enumerate(cam_dat[lr].keys()):
             cam_dat[lr][cam]['stream'] = aligned_cam_strms[i]
@@ -204,15 +212,20 @@ def load_data_for_kf(demo_fname, freq=30.0, rem_outliers=True, tps_correct=True,
 
     ## put the aligned-streams again on the same time-scale: 
     blueprint("Re-aligning the TF-streams after TF based time-shifts..")
-    tmin, tmax, nsteps = relative_time_streams(hy_dat.values() + pot_dat.values() + all_cam_strms)
+    tmin, tmax, nsteps = relative_time_streams(hy_dat.values() + pot_dat.values() + all_cam_strms, freq)
     tshift2 = -tmin
+    redprint("TOTAL TIME-SHIFT : (%0.3f + %0.3f) = %0.3f"%(tshift1, tshift2, tshift1+tshift2))
 
     ## TPS-correct the hydra-data:
     if tps_correct:
+        tps_models = {'l':None, 'r':None}
         if tps_model_fname == None:
             blueprint("\t Fitting TPS model to demo data..")
-            tps_models = {}
             for lr in 'lr':
+                if 'camera1' not in cam_dat[lr].keys():
+                    redprint("camera1 not in the data for %s gripper -- Cannot do tps-fit. Skipping.."%lr_full[lr])
+                    break
+
                 _, hy_tfs, cam1_tfs = get_corresponding_data(hy_dat[lr], cam_dat[lr]['camera1']['stream'])
                 f_tps = fit_tps_on_tf_data(hy_tfs, cam1_tfs, plot=False) ## <<< mayavi plotter has some issues with multiple insantiations..
                 T_cam2hbase_train = T_cam2hbase
@@ -226,21 +239,20 @@ def load_data_for_kf(demo_fname, freq=30.0, rem_outliers=True, tps_correct=True,
             with open(tps_model_fname, 'r') as f:
                 tps_models, T_cam2hbase_train = cp.load(f)
 
-
         blueprint("TPS-correcting hydra-data..")
         for lr in 'lr':
-            hy_tfs, hy_ts  = hy_dat[lr].get_data()
-            hy_tfs_aligned = correct_hydra(hy_tfs, T_cam2hbase, tps_models[lr], T_cam2hbase_train)
-            hy_strm_aligned = streamize(hy_tfs_aligned, hy_ts, 1./hy_strm.dt, hy_strm.favg, hy_strm.tstart)
+            if tps_models[lr] != None:
+                hy_tfs, hy_ts  = hy_dat[lr].get_data()
+                hy_tfs_aligned = correct_hydra(hy_tfs, T_cam2hbase, tps_models[lr], T_cam2hbase_train)
+                hy_strm_aligned = streamize(hy_tfs_aligned, hy_ts, 1./hy_strm.dt, hy_strm.favg, hy_strm.tstart)
     
-            if plot:
-                if tps_mode_fname!=None:
-                    plot_tf_strms([hy_dat[lr], hy_strm_aligned], ['hy-old', 'hy-corr'], title='hydra-correction %s'%lr_full[lr], block=False)
-                else:
-                    plot_tf_strms([hy_dat[lr], hy_strm_aligned, cam_dat[lr]['camera1']['stream']], ['hy-old', 'hy-corr', 'cam1'], title='hydra-correction', block=False)
+                if plot:
+                    if tps_mode_fname!=None:
+                        plot_tf_strms([hy_dat[lr], hy_strm_aligned], ['hy-old', 'hy-corr'], title='hydra-correction %s'%lr_full[lr], block=False)
+                    else:
+                        plot_tf_strms([hy_dat[lr], hy_strm_aligned, cam_dat[lr]['camera1']['stream']], ['hy-old', 'hy-corr', 'cam1'], title='hydra-correction', block=False)
 
-            hy_dat[lr] = hy_strm_aligned
-
+                hy_dat[lr] = hy_strm_aligned
 
     ## now setup the kalman-filter:
     blueprint("Initializing Kalman filter..")
