@@ -31,12 +31,15 @@ demo_type_dir = None
 latest_demo_file = None
 cmd_checker = None
 camera_types = None
+demo_info = None
+prefix = None
+demo_num = 0
 
 bag_cmd = "rosbag record -O %s /l_pot_angle /r_pot_angle /segment /tf"
 kinect_cmd = "record_rgbd_video --out=%s --downsample=%i --device_id=#%i"
 webcam_cmd =  "date +%%s.%%N > %s/stamps_init.txt; " + \
 "gst-launch -m v4l2src device=/dev/video%i ! video/x-raw-yuv,width=1280,framerate=30/1 \
-! timeoverlay ! ffmpegcolorspace ! jpegenc \
+! ffmpegcolorspace ! jpegenc \
 ! multifilesink post-messages=true location=\"%s/rgb%%05d.jpg\" > %s/stamps_info.txt"
 voice_cmd = "roslaunch pocketsphinx demo_recording.launch"
 
@@ -68,7 +71,7 @@ def load_parameters (demo_type, num_cameras):
     """
     Initialize global variables.
     """
-    global camera_types, demo_type_dir, master_file, demo_num, demo_info, latest_demo_file
+    global camera_types, demo_type_dir, master_file, demo_num, demo_info, latest_demo_file, prefix
     demo_type_dir = osp.join(demo_files_dir, demo_type)
     if not osp.isdir(demo_type_dir):
         os.mkdir(demo_type_dir)
@@ -98,13 +101,14 @@ def load_parameters (demo_type, num_cameras):
     for i in range(1,num_cameras+1):
         video_dirs.append("camera_#%s"%(i))
         
-    demo_info = {"- bag_file": "demo.bag",
-                 "  video_dirs": str(video_dirs),
-                 "  annotation_file": "ann.yaml",
-                 "  data_file": "demo.data",
-                 "  traj_file": "demo.traj",
-                 "  demo_name": ""}
-
+    demo_info = {"bag_file": "demo.bag",
+                 "video_dirs": str(video_dirs),
+                 "annotation_file": "ann.yaml",
+                 "data_file": "demo.data",
+                 "traj_file": "demo.traj",
+                 "demo_name": ""}
+    prefix = ["  " for _ in demo_info]
+    prefix[0] = "- "
 
 def create_commands_for_demo (demo_dir):
     """
@@ -116,7 +120,7 @@ def create_commands_for_demo (demo_dir):
     camera_commands = {}
     dev_id = 1
     for cam in camera_types:
-        if camera_types[cam] == 'kinect':
+        if camera_types[cam] == 'rgbd':
             cam_dir = osp.join(demo_dir, 'camera_')
             camera_commands[cam] = kinect_cmd%(cam_dir, downsample, dev_id) 
             dev_id += 1
@@ -151,7 +155,7 @@ def record_demo (bag_cmd_demo, camera_commands, use_voice=True):
         video_handles= {}
 
         greenprint(bag_cmd_demo)
-        bag_handle = subprocess.Popen(bag_cmd_demo, shell=True)
+        bag_handle = subprocess.Popen(bag_cmd_demo, stdout=devnull, stderr=devnull, shell=True)
         time.sleep(1)
         poll_result = bag_handle.poll() 
         if poll_result is not None:
@@ -161,8 +165,7 @@ def record_demo (bag_cmd_demo, camera_commands, use_voice=True):
 
         for cam in camera_commands:
             greenprint(camera_commands[cam])
-            video_handles[cam] = subprocess.Popen(camera_commands[cam], shell=True)
-            print "hallelujah"
+            video_handles[cam] = subprocess.Popen(camera_commands[cam], stdout=devnull, stderr=devnull, shell=True)
             started_video[cam] = True
         
 
@@ -253,10 +256,10 @@ def record_pipeline ( demo_type, calib_file = "",
                 sleeper.sleep()
         else:
             status = raw_input("Hit enter when ready to record demo (or q/Q to quit). ")
-        
+
         if status in ["done session", "q","Q"]:
             greenprint("Done recording for this session.")
-            break
+            exit()
 
 
         # Initialize names and record
@@ -270,15 +273,16 @@ def record_pipeline ( demo_type, calib_file = "",
         save_demo = record_demo(bag_cmd, camera_commands, use_voice)
         
         if save_demo:
-            demo_info["  demo name"] = demo_name
+            demo_info["demo name"] = demo_name
             with open(master_file, 'a') as fh:
-                for item in demo_info:
-                    fh.write(item+': '+demo_info[item] + '\n')
+                for i, item in enumerate(demo_info):
+                    fh.write(prefix[i]+item+': '+demo_info[item] + '\n')
+
             cam_type_file = osp.join(demo_dir, 'camera_types.yaml')
-            with open(cam_type_file,"a") as fh: yaml.dump(camera_types)
+            with open(cam_type_file,"w") as fh: yaml.dump(camera_types, fh)
             
             for cam in camera_types:
-                if camera_types[cam] == "webcam":
+                if camera_types[cam] == "rgb":
                     gen_timestamps(osp.join(demo_dir, 'camera_#%i'%cam))
 
             with open(latest_demo_file,'w') as fh: fh.write(str(demo_num))
@@ -327,14 +331,14 @@ def record_single_demo (demo_type, demo_name, calib_file = "",
 
     # Get voice command and subscriber launched and ready
     greenprint(voice_cmd)
-    voice_handle = subprocess.Popen(voice_cmd, stdout=devnull, shell=True)
+    voice_handle = subprocess.Popen(voice_cmd, stdout=devnull, stderr=devnull, shell=True)
     started_voice = True
     cmd_checker = voice_alerts()
 
     # Check if continuing or stopping
     if use_voice:
-        
-        subprocess.call("espeak -v en 'Ready.'", stdout=devnull, shell=True)
+
+        subprocess.call("espeak -v en 'Ready.'", stdout=devnull, stderr=devnull, shell=True)
         while True:
             status = cmd_checker.get_latest_msg()
             if  status in ["begin recording","done session"]:
@@ -357,16 +361,16 @@ def record_single_demo (demo_type, demo_name, calib_file = "",
     save_demo = record_demo(bag_cmd, camera_commands, use_voice)
 
     if save_demo:
-        demo_info["  demo name"] = demo_name
+        demo_info["demo name"] = demo_name
         with open(master_file, 'a') as fh:
-            for item in demo_info:
-                fh.write(item+': '+demo_info[item] + '\n')
+            for i, item in enumerate(demo_info):
+                fh.write(prefix[i]+item+': '+demo_info[item] + '\n')
                 
         for cam in camera_types:
-            if camera_types[cam] == "webcam":
+            if camera_types[cam] == "rgb":
                 gen_timestamps(osp.join(demo_dir, 'camera_#%i'%cam))
         cam_type_file = osp.join(demo_dir, 'camera_types.yaml')
-        with open(cam_type_file,"a") as fh: yaml.dump(camera_types)
+        with open(cam_type_file,"w") as fh: yaml.dump(camera_types, fh)
         
         greenprint("Saved %s"%demo_name)
     else:
