@@ -451,7 +451,8 @@ def calibrate_gripper_lite(lr):
     
 def initialize_calibration(num_cams=NUM_CAMERAS):
     global cameras, tfm_pub
-    rospy.init_node('calibration', anonymous=True)
+    if rospy.get_name() == '/unnamed':
+        rospy.init_node('calibration', anonymous=True)
     cameras = RosCameras(num_cameras=num_cams)
     tfm_pub = CalibratedTransformPublisher(cameras)
 

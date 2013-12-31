@@ -56,7 +56,7 @@ def demos_to_annotations(stamps, commands):
                     "finish recording": ["stop recording", "stop segment"],
                     "cancel recording": ["stop recording", "begin recording", "robot look", "begin segment", "stop segment", "new segment"],
                     #  should never reach cancel recording.
-                    "done session": ["finish recording", "cancel recording"]} #not relevant, should not reach here.
+                    "done session": ["finish recording", "cancel recording", "all start"]} #not relevant, should not reach here.
 
     state = "all start"
     demo = []
