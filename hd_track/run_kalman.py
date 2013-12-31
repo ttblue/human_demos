@@ -14,7 +14,7 @@ import scipy.linalg as scl
 import math, sys
 import matplotlib.pylab as plt
 
-from hd_utils.colorize import colorize, redprint, blueprint
+from hd_utils.colorize import colorize, redprint, blueprint, yellowprint, greenprint
 from hd_utils.conversions import *
 from hd_utils.utils import *
 from hd_utils.defaults import tfm_link_rof
@@ -186,7 +186,7 @@ def load_data_for_kf(demo_fname, freq=30.0, rem_outliers=True, tps_correct=True,
         lr_align = ndat.keys()[np.argmax(ndat.values())]
         time_shifts[cam] = dt* align_tf_streams(hy_dat[lr_align], cam_dat[lr_align][cam]['stream'])
 
-    redprint("\t Time-shifts found : %s"%str(time_shifts))
+    greenprint("Time-shifts found : %s"%str(time_shifts))
     
     ## time-shift the streams:
     blueprint("Time-aligning TF streams..")
@@ -214,7 +214,7 @@ def load_data_for_kf(demo_fname, freq=30.0, rem_outliers=True, tps_correct=True,
     blueprint("Re-aligning the TF-streams after TF based time-shifts..")
     tmin, tmax, nsteps = relative_time_streams(hy_dat.values() + pot_dat.values() + all_cam_strms, freq)
     tshift2 = -tmin
-    redprint("TOTAL TIME-SHIFT : (%0.3f + %0.3f) = %0.3f"%(tshift1, tshift2, tshift1+tshift2))
+    greenprint("TOTAL TIME-SHIFT : (%0.3f + %0.3f) = %0.3f"%(tshift1, tshift2, tshift1+tshift2))
 
     ## TPS-correct the hydra-data:
     if tps_correct:
@@ -222,9 +222,10 @@ def load_data_for_kf(demo_fname, freq=30.0, rem_outliers=True, tps_correct=True,
         if tps_model_fname == None:
             blueprint("\t Fitting TPS model to demo data..")
             for lr in 'lr':
+                blueprint("\t TPS fitting for %s"%lr_full[lr])
                 if 'camera1' not in cam_dat[lr].keys():
-                    redprint("camera1 not in the data for %s gripper -- Cannot do tps-fit. Skipping.."%lr_full[lr])
-                    break
+                    redprint("\t\t camera1 not in the data for %s gripper -- Cannot do tps-fit. Skipping.."%lr_full[lr])
+                    continue
 
                 _, hy_tfs, cam1_tfs = get_corresponding_data(hy_dat[lr], cam_dat[lr]['camera1']['stream'])
                 f_tps = fit_tps_on_tf_data(hy_tfs, cam1_tfs, plot=False) ## <<< mayavi plotter has some issues with multiple insantiations..
@@ -244,13 +245,13 @@ def load_data_for_kf(demo_fname, freq=30.0, rem_outliers=True, tps_correct=True,
             if tps_models[lr] != None:
                 hy_tfs, hy_ts  = hy_dat[lr].get_data()
                 hy_tfs_aligned = correct_hydra(hy_tfs, T_cam2hbase, tps_models[lr], T_cam2hbase_train)
-                hy_strm_aligned = streamize(hy_tfs_aligned, hy_ts, 1./hy_strm.dt, hy_strm.favg, hy_strm.tstart)
+                hy_strm_aligned = streamize(hy_tfs_aligned, hy_ts, 1./hy_dat[lr].dt, hy_dat[lr].favg, hy_dat[lr].tstart)
     
                 if plot:
-                    if tps_mode_fname!=None:
-                        plot_tf_strms([hy_dat[lr], hy_strm_aligned], ['hy-old', 'hy-corr'], title='hydra-correction %s'%lr_full[lr], block=False)
+                    if tps_model_fname!=None:
+                        plot_tf_streams([hy_dat[lr], hy_strm_aligned], ['hy-old', 'hy-corr'], title='hydra-correction %s'%lr_full[lr], block=False)
                     else:
-                        plot_tf_strms([hy_dat[lr], hy_strm_aligned, cam_dat[lr]['camera1']['stream']], ['hy-old', 'hy-corr', 'cam1'], title='hydra-correction', block=False)
+                        plot_tf_streams([hy_dat[lr], hy_strm_aligned, cam_dat[lr]['camera1']['stream']], ['hy-old', 'hy-corr', 'cam1'], title='hydra-correction', block=True)
 
                 hy_dat[lr] = hy_strm_aligned
 
