@@ -15,22 +15,25 @@ from   hd_track.kalman import closer_angle
 from hd_utils.colorize import blueprint, redprint
 
 
-def load_data(dat_fname, lr, freq=30.0):
-    
-    with open(dat_fname, 'r') as f:
-        dat = cp.load(f)
-
-    demo_dir       = osp.dirname(dat_fname)
+def get_cam_types(demo_dir):
     cam_type_fname = osp.join(demo_dir, 'camera_types.yaml')
-    
     with open(cam_type_fname, 'r') as f:
         cam_types_raw = yaml.load(f)
 
     cam_types = {}
     for k,v in cam_types_raw.iteritems():
         cam_types['camera%d'%k] = v
-        
-    
+
+    return cam_types
+
+
+def load_data(dat_fname, lr, freq=30.0):
+
+    with open(dat_fname, 'r') as f:
+        dat = cp.load(f)
+
+    demo_dir    = osp.dirname(dat_fname)
+    cam_types   = get_cam_types()
     T_cam2hbase = dat['T_cam2hbase']
 
     cam_info = {}

@@ -157,8 +157,7 @@ def load_data_for_kf(demo_fname, freq=30.0, rem_outliers=True, tps_correct=True,
                     plot_tf_streams([cam_dat[lr][cam]['stream'], strm_in], strm_labels=[cam_name, cam_name+'_in'], styles=['.','-'], block=False)
                 cam_dat[lr][cam]['stream'] = strm_in
 
-    
-    
+
     ## time-align all tf-streams (wrt their respective hydra-streams):
     ## NOTE THE STREAMS ARE MODIFIED IN PLACE (the time-stamps are changed)
     ## and also the tstart
@@ -201,9 +200,8 @@ def load_data_for_kf(demo_fname, freq=30.0, rem_outliers=True, tps_correct=True,
             
         for i,cam in enumerate(cam_dat[lr].keys()):
             cam_dat[lr][cam]['stream'] = aligned_cam_strms[i]
-                
-                    
-                     
+
+
     ## put the aligned-streams again on the same time-scale: 
     blueprint("Re-aligning the TF-streams after TF based time-shifts..")
     tmin, tmax, nsteps = relative_time_streams(hy_dat.values() + pot_dat.values() + all_cam_strms)
@@ -216,8 +214,9 @@ def load_data_for_kf(demo_fname, freq=30.0, rem_outliers=True, tps_correct=True,
             tps_models = {}
             for lr in 'lr':
                 _, hy_tfs, cam1_tfs = get_corresponding_data(hy_dat[lr], cam_dat[lr]['camera1']['stream'])
-                f_tps = fit_tps_on_tf_data(hy_tfs, cam1_tfs, plot)
-                tps_models[lr] = f_tps
+                f_tps = fit_tps_on_tf_data(hy_tfs, cam1_tfs, plot=False) ## <<< mayavi plotter has some issues with multiple insantiations..
+                T_cam2hbase_train = T_cam2hbase
+                tps_models[lr]    = f_tps
 
                 tps_save_fname = osp.join(demo_dir, 'tps_models.cp')
                 with open(tps_save_fname, 'w') as f:
@@ -227,11 +226,20 @@ def load_data_for_kf(demo_fname, freq=30.0, rem_outliers=True, tps_correct=True,
             with open(tps_model_fname, 'r') as f:
                 tps_models, T_cam2hbase_train = cp.load(f)
 
+
         blueprint("TPS-correcting hydra-data..")
         for lr in 'lr':
             hy_tfs, hy_ts  = hy_dat[lr].get_data()
             hy_tfs_aligned = correct_hydra(hy_tfs, T_cam2hbase, tps_models[lr], T_cam2hbase_train)
-            hy_dat[lr]     = streamize(hy_tfs_aligned, hy_ts, 1./hy_strm.dt, hy_strm.favg, hy_strm.tstart)
+            hy_strm_aligned = streamize(hy_tfs_aligned, hy_ts, 1./hy_strm.dt, hy_strm.favg, hy_strm.tstart)
+    
+            if plot:
+                if tps_mode_fname!=None:
+                    plot_tf_strms([hy_dat[lr], hy_strm_aligned], ['hy-old', 'hy-corr'], title='hydra-correction %s'%lr_full[lr], block=False)
+                else:
+                    plot_tf_strms([hy_dat[lr], hy_strm_aligned, cam_dat[lr]['camera1']['stream']], ['hy-old', 'hy-corr', 'cam1'], title='hydra-correction', block=False)
+
+            hy_dat[lr] = hy_strm_aligned
 
 
     ## now setup the kalman-filter:
@@ -244,7 +252,8 @@ def load_data_for_kf(demo_fname, freq=30.0, rem_outliers=True, tps_correct=True,
         cam_strms = [cdat['stream'] for cdat in cam_dat[lr].values()]
         x0, S0 = get_first_state(cam_strms+[hy_dat[lr]], freq)
         KF = kalman()
-        KF.init_filter(0, x0, S0, motion_covar, cam_covar, hydra_covar)
+        kf_tstart = hy_dat[lr].get_start_time() - dt
+        KF.init_filter(kf_tstart, x0, S0, motion_covar, cam_covar, hydra_covar)
         KFs[lr] = KF
         blueprint("\t\t\t Done initializing KF.")
 
@@ -262,7 +271,7 @@ def load_data_for_kf(demo_fname, freq=30.0, rem_outliers=True, tps_correct=True,
     return filter_data
 
 
-def run_kf(filter_data, do_smooth=False):
+def run_kf(filter_data, do_smooth=False, plot=False):
     """
     Actually runs the data-through the kalman filter.
     FILTER_DATA : a dictionary containing all the required data, as returned from load_data_for_kf
@@ -274,28 +283,39 @@ def run_kf(filter_data, do_smooth=False):
     1. The kalman-filter in filter_data as returned by load_data_for_kf 
        has appropriately been initialized.
     2. Note: This runs the k.f. for only one-gripper.
-    """
-    KF        = filter_data['KF']
-    hy_strm   = filter_data['hy_strm']
-    cam_strms = filter_data['cam_strms']
-    nsteps    = filter_data['tstart']
-    tstart    = hy_strm.get_start_time()
-    
-    ## place holders for kalman filter's output:
-    xs_kf, covars_kf, ts_kf = [KF.x_filt],[KF.S_filt],[KF.t_filt]
-    for i in xrange(nsteps):
-        KF.register_tf_observation(soft_next(hy_strm), KF.hydra_covar, do_control_update=True)
-        for strm in cam_strms:
-            KF.register_tf_observation(soft_next(strm), KF.cam_covar, do_control_update=False)
-        xs_kf.append(KF.x_filt)
-        covars_kf.append(KF.S_filt)
-        ts_kf.append(KF.t_filt)
 
-    if do_smooth:
-        xs_smthr, covars_smthr = smoother(*KF.motion_mats, xs_ks, S_kf)
-        return (ts_kf, xs_kf, covars_kf, xs_smthr, covars_smthr)
-    else:
-        return (xs_kf, covars_kf, ts_kf)
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    NEEDS TO BE FIXED TO USE DIFFERENT COVARIANCES BASED ON CAMERA-TYPES
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    
+    """
+    kf_estimates = {}
+    cam_types    = get_cam_types(filter_data['demo_dir'])
+
+    for lr in 'lr':
+        KF        = filter_data['KF'][lr]
+        hy_strm   = filter_data['hy_dat'][lr]
+        cam_strms = filter_data['cam_dat'][lr]
+        nsteps    = filter_data['nsteps']
+        tstart    = hy_strm.get_start_time()
+
+        ## place holders for kalman filter's output:
+        xs_kf, covars_kf, ts_kf = [KF.x_filt],[KF.S_filt],[KF.t_filt]
+        for i in xrange(nsteps):
+            KF.register_tf_observation(soft_next(hy_strm), KF.hydra_covar, do_control_update=True)
+            for strm in cam_strms:
+                KF.register_tf_observation(soft_next(strm), KF.cam_covar, do_control_update=False)
+            xs_kf.append(KF.x_filt)
+            covars_kf.append(KF.S_filt)
+            ts_kf.append(KF.t_filt)
+
+        if do_smooth:
+            xs_smthr, covars_smthr = smoother(*KF.motion_mats, xs_ks, S_kf)
+            kf_estimates[lr] = (ts_kf, xs_kf, covars_kf, xs_smthr, covars_smthr)
+        else:
+            kf_estimates[lr] = (xs_kf, covars_kf, ts_kf)
+
+    return kf_estimates
 
 
 
@@ -529,5 +549,6 @@ def traj_kalman(data_file, calib_file, freq, use_spline=False, customized_shift=
 
 
 if __name__=='__main__':
-    load_data_for_kf('../hd_data/demos/demo2_gpr/demo.data', 'r', plot=True)
+    load_data_for_kf('../hd_data/demos/demo2_gpr/demo.data', freq=30.0, rem_outliers=True, tps_correct=True, tps_model_fname=None, plot=True)
+
 
