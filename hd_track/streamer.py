@@ -101,6 +101,26 @@ def soft_next(stream):
     return ret
 
 
+class stream_soft_next:
+    """
+    Modified soft_next for streams which reset once exhausted.
+    """
+    def __init__(self, strm):
+        self.strm = strm
+        self.exhausted = False
+    
+    def __call__(self):
+        if self.exhausted:
+            return None
+        else:
+            ret = None
+            try:
+                ret = self.strm.next()
+            except StopIteration:
+                self.exhausted = True
+            return ret
+
+
 def get_corresponding_data(strm1, strm2):
     """
     Returns two lists of same-length where the corresponding enteries occur at the same time-stamp.
