@@ -135,6 +135,7 @@ def load_data_for_kf(demo_fname, freq=30.0, rem_outliers=True, tps_correct=True,
     pot_dat = {}
     dt      = 1./freq
     demo_dir  = osp.dirname(dat_fname)
+    lr_full   = {'l': 'left', 'r':'right'}
 
     T_cam2hbase, cam_dat['l'], hy_dat['l'], pot_dat['l'] = load_data(demo_fname, 'l', freq)
     T_cam2hbase, cam_dat['r'], hy_dat['r'], pot_dat['r'] = load_data(demo_fname, 'r', freq)
@@ -156,6 +157,8 @@ def load_data_for_kf(demo_fname, freq=30.0, rem_outliers=True, tps_correct=True,
                     plot_tf_streams([cam_dat[lr][cam]['stream'], strm_in], strm_labels=[cam_name, cam_name+'_in'], styles=['.','-'], block=False)
                 cam_dat[lr][cam]['stream'] = strm_in
 
+    
+    
     ## time-align all tf-streams (wrt their respective hydra-streams):
     ## NOTE THE STREAMS ARE MODIFIED IN PLACE (the time-stamps are changed)
     ## and also the tstart
@@ -181,14 +184,26 @@ def load_data_for_kf(demo_fname, freq=30.0, rem_outliers=True, tps_correct=True,
 
     redprint("\t Time-shifts found : ")
     print time_shifts
+    
     ## time-shift the streams:
     blueprint("Time-aligning TF streams..")
-    for cam in all_cam_names:
-        for lr in 'lr':
-            cam_shifted_strms = []
-            if cam in cam_dat[lr].keys():
-                cam_shifted_strms.append( time_shift_stream(cam_info[lr][cam]['stream'], time_shifts[cam]) )
-
+    for lr in 'lr':
+        aligned_cam_strms = []
+        for cam in cam_dat[lr].keys():
+            aligned_cam_strms.append( time_shift_stream(cam_info[lr][cam]['stream'], time_shifts[cam]) )
+                
+        if plot:
+            unaligned_cam_streams = []
+            for cam_dat in cam_dat[lr].values():
+                unaligned_cam_streams.append(cam_dat['stream'])
+            plot_tf_streams(unaligned_cam_streams + [hy_dat[lr]], cam_dat[lr].keys()+['hydra'], title='UNALIGNED CAMERA-streams (%s)'%lr_full[lr], block=False)
+            plot_tf_streams(aligned_cam_strms+hy_dat[lr], cam_dat[lr].keys()+['hydra'], title='ALIGNED CAMERA-streams (%s)'%lr_full[lr], block=False)
+            
+        for i,cam in enumerate(cam_dat[lr].keys()):
+            cam_dat[lr][cam]['stream'] = aligned_cam_strms[i]
+                
+                    
+                     
     ## put the aligned-streams again on the same time-scale: 
     blueprint("Re-aligning the TF-streams after TF based time-shifts..")
     tmin, tmax, nsteps = relative_time_streams(hy_dat.values() + pot_dat.values() + all_cam_strms)
