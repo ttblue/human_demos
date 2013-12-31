@@ -234,16 +234,15 @@ class CameraCalibrator:
         self.observed_ar_transforms = {i:{} for i in xrange(self.num_cameras)}
         
         sleeper = rospy.Rate(30)
-        for cam_id in xrange(self.num_cameras):
-            raw_input("Hit enter when ready for camera %i (cover other cameras)" % (cam_id + 1))
-            for i in xrange(n_avg):
+        for i in xrange(n_avg):
+            for cam_id in xrange(self.num_cameras):
                 greenprint("Averaging %d out of %d for camera %i" % (i + 1, n_avg, cam_id + 1), False)
                 tfms = self.cameras.get_ar_markers(camera=cam_id)
                 for marker in tfms: 
                     if marker not in self.observed_ar_transforms[cam_id]:
                         self.observed_ar_transforms[cam_id][marker] = []
                     self.observed_ar_transforms[cam_id][marker].append(tfms[marker])
-                sleeper.sleep()
+            sleeper.sleep()
 
         for cam_id in self.observed_ar_transforms:
             for marker in self.observed_ar_transforms[cam_id]:
