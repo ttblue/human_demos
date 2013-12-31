@@ -2,6 +2,7 @@
 import yaml, rosbag
 import argparse
 import os, os.path as osp
+from hd_utils.defaults import demo_files_dir
 
 """
 Voice command meanings:
@@ -109,9 +110,8 @@ if __name__=='__main__':
     parser.add_argument("demo_type",help="Type of demonstration")
     parser.add_argument("demo_name",help="Name of demo")
     args = parser.parse_args()
-
-    data_dir = os.getenv("HD_DATA_DIR")
-    demo_dir = osp.join(data_dir, "demos", args.demo_type, args.demo_name)
+    
+    demo_dir = osp.join(demo_files_dir, args.demo_type, args.demo_name)
     bag = rosbag.Bag(osp.join(demo_dir,'demo.bag'))
     ann_file = osp.join(demo_dir,'ann.yaml')
     
