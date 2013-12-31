@@ -134,7 +134,7 @@ def load_data_for_kf(demo_fname, freq=30.0, rem_outliers=True, tps_correct=True,
     hy_dat  = {}
     pot_dat = {}
     dt      = 1./freq
-    demo_dir  = osp.dirname(dat_fname)
+    demo_dir  = osp.dirname(demo_fname)
     lr_full   = {'l': 'left', 'r':'right'}
 
     T_cam2hbase, cam_dat['l'], hy_dat['l'], pot_dat['l'] = load_data(demo_fname, 'l', freq)
@@ -310,7 +310,8 @@ def run_kf(filter_data, do_smooth=False, plot=False):
             ts_kf.append(KF.t_filt)
 
         if do_smooth:
-            xs_smthr, covars_smthr = smoother(*KF.motion_mats, xs_ks, S_kf)
+            A,R  = KF.get_motion_mats()
+            xs_smthr, covars_smthr = smoother(A, R, xs_ks, S_kf)
             kf_estimates[lr] = (ts_kf, xs_kf, covars_kf, xs_smthr, covars_smthr)
         else:
             kf_estimates[lr] = (xs_kf, covars_kf, ts_kf)
@@ -319,7 +320,7 @@ def run_kf(filter_data, do_smooth=False, plot=False):
 
 
 
-def filter_traj(demo_fname, mplot=False, rviz=False, tps_model_fname=None, save_tps):
+def filter_traj(demo_fname, mplot=False, rviz=False, tps_model_fname=None, save_tps=False):
     """
     Runs the kalman filter for BOTH the grippers and visualizes the output.
     Also writes the demo.traj file.
@@ -327,7 +328,6 @@ def filter_traj(demo_fname, mplot=False, rviz=False, tps_model_fname=None, save_
     MPLOT : Show the data in matplotlib plots
     RVIZ : Visualize the filtered data in rviz
     TPS_MODEL_FNAME : The name of the file to load the tps-model from
-    """
     if save_tps:
         demo_dir = osp.dirname(demo_fname)
         save_tps_fname = osp.join(demo_dir, 'tps_model.dat')
@@ -339,7 +339,8 @@ def filter_traj(demo_fname, mplot=False, rviz=False, tps_model_fname=None, save_
 
 
     #traj = {"tfms": T_filter, "tfms_s": T_smoother, "pot_angles": ang_strm_vals, "stamps": stamps}
-
+    """
+    pass
 
 
 def open_frac(angle):

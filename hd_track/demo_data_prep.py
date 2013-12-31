@@ -7,6 +7,7 @@ import math
 import cPickle as cp
 import scipy.interpolate as si
 import yaml
+import os.path as osp
 
 from hd_track.streamer import streamize, time_shift_stream
 from hd_utils.utils import avg_transform
@@ -33,7 +34,7 @@ def load_data(dat_fname, lr, freq=30.0):
         dat = cp.load(f)
 
     demo_dir    = osp.dirname(dat_fname)
-    cam_types   = get_cam_types()
+    cam_types   = get_cam_types(demo_dir)
     T_cam2hbase = dat['T_cam2hbase']
 
     cam_info = {}
