@@ -314,18 +314,26 @@ def initialize_KFs(kf_data):
     KF_DATA : Data as returned by prepare_kf_data function above. 
     """
     KFs = {'l':None, 'r':None}
+    motion_covar, cam_covar, hydra_covar = initialize_covariances(freq)
+
     for lr in 'lr':
+        KF_lr = []
         for i in xrange(n_segs):
-            cam_strms = kf_data[lr][i]['cam_strms']
             hy_strm   = kf_data[lr][i]['hy_strm']
+            cam_dat   = kf_data[lr][i]['cam_strms']
+            cam_strms= []
+            for cinfo in cam_data.values():
+                cam_strms.append(cinfo['stream'])
 
-            x0, S0 = get_first_state(cam_strms.values()+[hy_strm], freq=1./hy_strm.dt)
-
-            KF = kalman()
-            kf_tstart = hy_dat[lr].get_start_time() - dt
-            KF.init_filter(kf_tstart, x0, S0, motion_covar, cam_covar, hydra_covar)
-            KFs[lr] = KF
+            x0, S0 = get_first_state(cam_strms + [hy_strm], freq=1./hy_strm.dt)
             
+            KF = kalman()
+            kf_tstart = hy_strm.get_start_time()
+            KF.init_filter(kf_tstart, x0, S0, motion_covar, cam_covar, hydra_covar) ## << really don't need to give cam/ hydra covariance to KF
+            KF_lr.append(KF)
+        KFs[lr] = KF_lr
+    return KFs
+
              
             
 
