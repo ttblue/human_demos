@@ -63,6 +63,42 @@ def load_data(dat_fname, lr, freq=30.0):
     
 
 
+def segment_streams(strms, time_shifts, demo_dir, base_stream='camera1'):
+    """
+    Segments a list of streams based on the timings in the annotation file
+    and the time-shift data.
+
+    STRMS      : A list of streams
+    TIME_SHIFT : A dictionary of time-shifts applied to the streams wrt to the raw streams
+    DEMO_DIR   : The demo-directory : used to get the annotation file
+    BASE_STRM  : The stream relative to which the annotation times are specified
+
+    RETURNS : a list of list of streams. len(list) == number of segments
+    """
+    if base_stream not in time_shifts.keys():
+        redprint("Cannot segment streams. Base time shift data is missing for : %s"%base_stream)
+
+    ann_fname = osp.join(demo_dir, 'ann.yaml')
+    with open(ann_fname) as f:
+        ann_dat = yaml.load(f)
+
+    n_segs = len(ann_dat)
+    start_times = np.array([seg_info['start']+time_shifts[base_stream] for seg_info in ann_dat])
+    stop_times  = np.array([seg_info['stop']+time_shifts[base_stream] for seg_info in ann_dat])
+    
+    strm_segs = []
+    for strm in strms:
+        strm_segs.append(segment_stream(strm, start_times, stop_times))
+
+    out_segs = []
+    for i in xrange(n_segs):
+        si = []
+        for n in len(strms):
+            si.append(strm_segs[n][i])
+        out_segs.append(si)
+    
+    return out_segs
+
 
 def relative_time_streams(strms, freq):
     """

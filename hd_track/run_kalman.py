@@ -131,7 +131,7 @@ def plot_tf_streams(tf_strms, strm_labels, styles=None, title=None, block=True):
 
 
 
-def load_data_for_kf(demo_fname, freq=30.0, rem_outliers=True, tps_correct=True, tps_model_fname=None, plot=False):
+def load_demo_data(demo_fname, freq=30.0, rem_outliers=True, tps_correct=True, tps_model_fname=None, plot=False):
     cam_dat = {}
     hy_dat  = {}
     pot_dat = {}
@@ -246,7 +246,7 @@ def load_data_for_kf(demo_fname, freq=30.0, rem_outliers=True, tps_correct=True,
                 hy_tfs, hy_ts  = hy_dat[lr].get_data()
                 hy_tfs_aligned = correct_hydra(hy_tfs, T_cam2hbase, tps_models[lr], T_cam2hbase_train)
                 hy_strm_aligned = streamize(hy_tfs_aligned, hy_ts, 1./hy_dat[lr].dt, hy_dat[lr].favg, hy_dat[lr].tstart)
-    
+
                 if plot:
                     if tps_model_fname!=None:
                         plot_tf_streams([hy_dat[lr], hy_strm_aligned], ['hy-old', 'hy-corr'], title='hydra-correction %s'%lr_full[lr], block=False)
@@ -255,6 +255,87 @@ def load_data_for_kf(demo_fname, freq=30.0, rem_outliers=True, tps_correct=True,
 
                 hy_dat[lr] = hy_strm_aligned
 
+    ## return the data:
+    filter_data = {'demo_dir': demo_dir,
+                   'nsteps' : nsteps,
+                   'tmin'   : tmin,
+                   'tmax'   : tmax,
+                   'pot_dat': pot_dat,
+                   'hy_dat': hy_dat,
+                   'cam_dat': cam_dat,
+                   't_shift': tshift1+tshift2,
+                   'cam_shifts': time_shifts}
+    return filter_data
+
+
+
+def prepare_kf_data(demo_fname, freq=30.0, rem_outliers=True, tps_correct=True, tps_model_fname=None, plot=False):
+    filter_data = load_demo_data(demo_fname, freq, rem_outliers, tps)
+
+    time_shifts = filter_data['cam_shifts']
+    for strm_name in time_shifts.keys():
+        time_shifts[strm_name] += filter_data['t_shift']
+
+    rec_data = {'l':None, 'r':None}
+    for lr in 'lr':
+        hy_strm   = filter_data['hy_dat'][lr]
+        cam_strms = filter_data['cam_dat'][lr]
+        pot_strm  = filter_data['pot_dat'][lr]
+        
+        strms = [hy_strm, pot_strm]
+        for cam in cam_strms.keys():
+            strms.append(cam_strms[cam]['stream'])
+
+        seg_streams  = segment_streams(strms, time_shifts, filter_data['demo_dir'], base_stream='camera1')
+        n_segs = len(seg_streams)
+    
+        seg_data = []
+        for i in xrange(n_segs):
+            
+            ## get camera streams for the segment in question:
+            seg_cam_strms = {}
+            for i,cam in enumerate(cam_strms.keys()):
+                seg_cam_strms[cam] = {'type'   : cam_strms[cam]['type'],
+                                      'stream' : seg_streams[i][2+i]}
+
+            seg = {'hy_strm'  : seg_streams[i][0],
+                   'pot_strm' : seg_streams[i][1],
+                   'cam_strms': seg_cam_strms}
+            seg_data.append(seg)
+        
+        rec_data[lr] = seg_data
+
+    return rec_data, time_shifts, demo_fname
+
+
+def initialize_KFs(kf_data):
+    """
+    Initializes the Kalman filters (one-each for left/right x segment).
+    KF_DATA : Data as returned by prepare_kf_data function above. 
+    """
+    KFs = {'l':None, 'r':None}
+    for lr in 'lr':
+        for i in xrange(n_segs):
+            cam_strms = kf_data[lr][i]['cam_strms']
+            hy_strm   = kf_data[lr][i]['hy_strm']
+
+            x0, S0 = get_first_state(cam_strms.values()+[hy_strm], freq=1./hy_strm.dt)
+
+            KF = kalman()
+            kf_tstart = hy_dat[lr].get_start_time() - dt
+            KF.init_filter(kf_tstart, x0, S0, motion_covar, cam_covar, hydra_covar)
+            KFs[lr] = KF
+            
+             
+            
+
+
+def run_kf_all_segs():
+    """
+    This function runs the kalman filter separately for all segments in a demo and
+    saves the demo.traj file for the demo.
+    """
+    
     ## now setup the kalman-filter:
     blueprint("Initializing Kalman filter..")
     motion_covar, cam_covar, hydra_covar = initialize_covariances(freq)
@@ -262,8 +343,8 @@ def load_data_for_kf(demo_fname, freq=30.0, rem_outliers=True, tps_correct=True,
     for lr in 'lr':
         blueprint("\t setting up %s kalman-filter"%{'r': 'right', 'l':'left'}[lr])
         blueprint("\t\t Getting starting state for KF..")
-        cam_strms = [cdat['stream'] for cdat in cam_dat[lr].values()]
         x0, S0 = get_first_state(cam_strms+[hy_dat[lr]], freq)
+        cam_strms = [cdat['stream'] for cdat in cam_dat[lr].values()]
         KF = kalman()
         kf_tstart = hy_dat[lr].get_start_time() - dt
         KF.init_filter(kf_tstart, x0, S0, motion_covar, cam_covar, hydra_covar)
@@ -284,6 +365,7 @@ def load_data_for_kf(demo_fname, freq=30.0, rem_outliers=True, tps_correct=True,
     return filter_data
 
 
+
 def run_kf(filter_data, do_smooth=False, plot=False):
     """
     Actually runs the data-through the kalman filter.
@@ -295,7 +377,6 @@ def run_kf(filter_data, do_smooth=False, plot=False):
     Note :
     1. The kalman-filter in filter_data as returned by load_data_for_kf 
        has appropriately been initialized.
-    2. Note: This runs the k.f. for only one-gripper.
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     NEEDS TO BE FIXED TO USE DIFFERENT COVARIANCES BASED ON CAMERA-TYPES
