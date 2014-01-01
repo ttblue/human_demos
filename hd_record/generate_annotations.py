@@ -2,6 +2,7 @@
 import yaml, rosbag
 import argparse
 import os, os.path as osp
+from hd_utils.defaults import demo_files_dir
 
 """
 Voice command meanings:
@@ -104,29 +105,41 @@ def demos_to_annotations(stamps, commands):
 
     return demo           
 
-if __name__=='__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument("demo_type",help="Type of demonstration")
-    parser.add_argument("demo_name",help="Name of demo")
-    args = parser.parse_args()
-
-    data_dir = os.getenv("HD_DATA_DIR")
-    demo_dir = osp.join(data_dir, args.demo_type, args.demo_name)
+def generate_annotation(demo_type, demo_name):
+    demo_dir = osp.join(demo_files_dir, demo_type, demo_name)
     bag = rosbag.Bag(osp.join(demo_dir,'demo.bag'))
     ann_file = osp.join(demo_dir,'ann.yaml')
     
     stamps, commands = extract_segment(bag)
     demos = demos_to_annotations(stamps, commands)
     
-    for (i_seg, seg_info) in enumerate(demo):
+    for (i_seg, seg_info) in enumerate(demos):
         seg_info["name"] = "seg%.2i"%i_seg
         seg_info["description"] = "(no description)"
             
-    demo[-1]["description"] = "final frame"
-    demo[-1]["name"] = "done"
+    demos[-1]["description"] = "final frame"
+    demos[-1]["name"] = "done"
             
     print "writing to %s"%ann_file
     with open(ann_file, "w") as fh:
         yaml.dump(demos, fh)
+
+if __name__=='__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--demo_type",help="Type of demonstration")
+    parser.add_argument("--demo_name",help="Name of demo", default='', type=str)
+    args = parser.parse_args()
+    
+    if args.demo_name != '':
+        generate_annotation(args.demo_type, args.demo_name)
+    else: 
+        # if args.demo_name == '', run generate annotation for all the dmoes in the dir
+        demo_type_dir = osp.join(demo_files_dir, args.demo_type)
+        for name in os.listdir(demo_type_dir):
+            if osp.isdir(os.path.join(demo_type_dir, name)):
+                if "demo" in name:
+                    generate_annotation(args.demo_type, name)
+    
+
     print "done"
     

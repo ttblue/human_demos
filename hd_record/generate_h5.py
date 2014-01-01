@@ -14,10 +14,12 @@ import cPickle as cp
 import cv2
 import shutil
 import argparse
+from hd_utils.defaults import demo_files_dir, calib_files_dir
+
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument("task_file")
+parser.add_argument("demo_type", help="Type of demonstration")
 parser.add_argument("--cloud_proc_func", default="extract_red")
 parser.add_argument("--cloud_proc_mod", default="hd_utils.cloud_proc_funs")
 parser.add_argument("--no_clouds")
@@ -49,68 +51,73 @@ def get_video_frames(video_dir, frame_stamps):
 
 
 # add rgbd for one demonstration
-def add_rgbd_to_hdf(video_dir, annotations, hdfroot, demo_name):
+def add_rgbd_to_hdf(video_dir, annotation, hdfroot, demo_name):
     
-    for (i_demo, demo_annotations) in enumerate(annotations):
+    if demo_name in hdfroot.keys():
+        demo_group = hdfroot[demo_name]
+    else:
+        demo_group = hdfroot.create_group(demo_name)
         
-        demo_group = hdfroot[demo_name + "_%i"%(i_demo)]
+    frame_stamps = [seg_info["look"] for seg_info in annotation]
+    rgb_imgs, depth_imgs= get_video_frames(video_dir, frame_stamps)
+    
+    for (i_seg, seg_info) in enumerate(annotation):
         
-        frame_stamps = [seg_info["look"] for seg_info in demo_annotations]
-        rgb_imgs, depth_imgs= get_video_frames(video_dir, frame_stamps)
-        
-        for (i_seg, seg_info) in enumerate(demo_annotations):
+        if seg_info["name"] in demo_group.keys():
             seg_group = demo_group[seg_info["name"]]
-            seg_group["rgb"] = rgb_imgs[i_seg]
-            seg_group["depth"] = depth_imgs[i_seg]
+        else:
+            seg_group = demo_group.create_group(seg_info["name"])
+        
+        seg_group["rgb"] = rgb_imgs[i_seg]
+        seg_group["depth"] = depth_imgs[i_seg]
         
         
-def add_traj_to_hdf(trajs, annotations, hdfroot, demo_name):
+def add_traj_to_hdf(traj, annotation, hdfroot, demo_name):
     
     # get stamps of the trajectory
-    for (lr, traj) in trajs.items():
-        stamps = traj["stamps"]
+    for (lr, tr) in traj.items():
+        stamps = tr["stamps"]
         break
+                
+    demo_group = hdfroot.create_group(demo_name)
         
-    for (i_demo, demo_annotations) in enumerate(annotations):
-        demo_group = hdfroot.create_group(demo_name + "_%i"%(i_demo))
+    for seg_info in annotation:
+        seg_group = demo_group.create_group(seg_info["name"]) 
         
-        for seg_info in demo_annotations:
-            seg_group = demo_group.create_group(seg_info["name"]) 
+        start = seg_info["start"]
+        stop = seg_info["stop"]
+        
+        [i_start, i_stop] = np.searchsorted(stamps, [start, stop])
+        
+        traj_seg = {}
+        
+        for lr in traj:
+            traj_seg[lr] = {}
+            traj_seg[lr]["tfms"] = traj[lr]["tfms"][i_start:i_stop+1]
+            traj_seg[lr]["tfms_s"] = traj[lr]["tfms_s"][i_start:i_stop+1]
+            traj_seg[lr]["pot_angles"] = traj[lr]["pot_angles"][i_start:i_stop+1]
+            traj_seg[lr]["stamps"] = traj[lr]["stamps"][i_start:i_stop+1]
+                            
             
-            start = seg_info["start"]
-            stop = seg_info["stop"]
-            
-            [i_start, i_stop] = np.searchsorted(stamps, [start, stop])
-            
-            traj_seg = {}
-            
-            for lr in trajs:
-                traj_seg[lr] = {}
-                traj_seg[lr]["tfms"] = trajs[lr]["tfms"][i_start:i_stop+1]
-                traj_seg[lr]["tfms_s"] = trajs[lr]["tfms_s"][i_start:i_stop+1]
-                traj_seg[lr]["pot_angles"] = trajs[lr]["pot_angles"][i_start:i_stop+1]
-                traj_seg[lr]["stamps"] = trajs[lr]["stamps"][i_start:i_stop+1]
-                
-                
-                
-                
-                
-            for lr in trajs:
-                lr_group = seg_group.create_group(lr)
-                lr_group["tfms"] = traj_seg[lr]["tfms"]
-                lr_group["tfms_s"] = traj_seg[lr]["tfms_s"]
-                lr_group["pot_angles"] = traj_seg[lr]["pot_angles"]
-                lr_group["stamps"] = traj_seg[lr]["stamps"]
+        for lr in traj:
+            lr_group = seg_group.create_group(lr)
+            lr_group["tfms"] = traj_seg[lr]["tfms"]
+            lr_group["tfms_s"] = traj_seg[lr]["tfms_s"]
+            lr_group["pot_angles"] = traj_seg[lr]["pot_angles"]
+            lr_group["stamps"] = traj_seg[lr]["stamps"]
         
 
 
+task_dir = osp.join(demo_files_dir, args.demo_type)
+task_file = osp.join(task_dir, "master.yaml")
 
 
-task_dir = osp.dirname(args.task_file)
-
-with open(args.task_file, "r") as fh: task_info = yaml.load(fh)
+with open(task_file, "r") as fh: task_info = yaml.load(fh)
 h5path = osp.join(task_dir, task_info["h5path"].strip())
 
+
+
+demo_type = args.demo_type # should be same as task_info['name']
 
 
 
@@ -121,26 +128,27 @@ else:
         os.unlink(h5path)
     hdf = h5py.File(h5path)
     
-    bag_info = task_info["bags"]
-        
-    bag_file = osp.join(task_dir, bag_info["bag_file"])
-    ann_file = osp.join(task_dir, bag_info["annotation_file"])
-    video_dirs = bag_info["video_dirs"]
-    traj_file = osp.join(task_dir, bag_info["traj_file"])
-    data_file = osp.join(task_dir, bag_info["data_file"])
-            
-    demo_name = bag_info["demo_name"] if "demo_name" in bag_info else "demo%i"%i_bag
-            
-    bag = rosbag.Bag(bag_file)
-    with open(ann_file, "r") as fh: annotations = yaml.load(fh)
-            
-    with open(traj_file, "r") as fh: trajs = cp.load(fh)
-            
-            
-    add_traj_to_hdf(trajs, annotations, hdf, demo_name)    
     
-    # assumes the first camera contains the rgbd info        
-    add_rgbd_to_hdf(osp.join(task_dir, video_dirs[0]), annotations, hdf, demo_name)
+    demos_info = task_info['demos']
+    
+    for demo_info in demos_info:
+        demo_name = demo_info['demo_name']
+        demo_dir = osp.join(task_dir, demo_name)
+        
+        video_dirs = [osp.join(demo_dir, video_dir) for video_dir in demo_info['video_dirs']]
+        # data_file = osp.join(demo_dir, demo_info['data_file'])
+        # bag_file = osp.join(demo_dir, demo_info['bag_file'])
+        calib_file = osp.join(calib_files_dir, demo_info['calib_file'])
+        annotation_file = osp.join(demo_dir, demo_info['annotation_file'])
+        traj_file = osp.join(demo_dir, demo_info['traj_file'])
+        
+        with open(annotation_file, "r") as fh: annotations = yaml.load(fh)
+        with open(traj_file, "r") as fh: traj = cp.load(fh)
+        
+        add_traj_to_hdf(traj, annotations, hdf, demo_name)    
+    
+        # assumes the first camera contains the rgbd info        
+        add_rgbd_to_hdf(video_dirs[0], annotations, hdf, demo_name)
 
     
     
