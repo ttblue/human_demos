@@ -294,9 +294,9 @@ def prepare_kf_data(demo_fname, freq=30.0, rem_outliers=True, tps_correct=True, 
             
             ## get camera streams for the segment in question:
             seg_cam_strms = {}
-            for i,cam in enumerate(cam_strms.keys()):
+            for j,cam in enumerate(cam_strms.keys()):
                 seg_cam_strms[cam] = {'type'   : cam_strms[cam]['type'],
-                                      'stream' : seg_streams[i][2+i]}
+                                      'stream' : seg_streams[i][2+j]}
 
             seg = {'hy_strm'  : seg_streams[i][0],
                    'pot_strm' : seg_streams[i][1],
@@ -306,6 +306,7 @@ def prepare_kf_data(demo_fname, freq=30.0, rem_outliers=True, tps_correct=True, 
         rec_data[lr] = seg_data
 
     return rec_data, time_shifts, demo_fname
+
 
 
 def initialize_KFs(kf_data):
@@ -335,9 +336,6 @@ def initialize_KFs(kf_data):
     return KFs
 
              
-            
-
-
 def run_kf_all_segs():
     """
     This function runs the kalman filter separately for all segments in a demo and
