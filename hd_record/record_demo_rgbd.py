@@ -67,7 +67,7 @@ class voice_alerts ():
     def get_latest_msg (self):
         return self.segment_state
 
-def load_parameters (demo_type, num_cameras):
+def load_parameters (demo_type, num_cameras, calib_file):
     """
     Initialize global variables.
     """
@@ -104,6 +104,7 @@ def load_parameters (demo_type, num_cameras):
     demo_info = {"bag_file": "demo.bag",
                  "video_dirs": str(video_dirs),
                  "annotation_file": "ann.yaml",
+                 "calib_file": calib_file, 
                  "data_file": "demo.data",
                  "traj_file": "demo.traj",
                  "demo_name": ""}
@@ -170,8 +171,8 @@ def record_demo (bag_cmd_demo, camera_commands, use_voice=True):
         
 
         # Change to voice command
+        subprocess.call("espeak -v en 'Recording.'", stdout=devnull, stderr=devnull, shell=True)
         if use_voice:
-            subprocess.call("espeak -v en 'Recording.'", stdout=devnull, stderr=devnull, shell=True)
             while True:
                 status = cmd_checker.get_latest_msg()
                 if  status in ["cancel recording","finish recording"]:
@@ -189,15 +190,15 @@ def record_demo (bag_cmd_demo, camera_commands, use_voice=True):
         cpipe.done()
         if started_bag:
             yellowprint("stopping bag")
-            terminate_process_and_children(bag_handle)
-            #bag_handle.send_signal(signal.SIGINT)
+            #terminate_process_and_children(bag_handle)
+            bag_handle.send_signal(signal.SIGINT)
             bag_handle.wait()
             yellowprint("stopped bag")
         for cam in started_video:
             if started_video[cam]:
                 yellowprint("stopping  video%i"%cam)
-                terminate_process_and_children(video_handles[cam])
-                #video_handles[cam].send_signal(signal.SIGINT)
+                #terminate_process_and_children(video_handles[cam])
+                video_handles[cam].send_signal(signal.SIGINT)
                 video_handles[cam].wait()
                 yellowprint("stopped  video%i"%cam)
         
@@ -224,16 +225,16 @@ def record_pipeline ( demo_type, calib_file = "",
     """
     global cmd_checker, camera_types, demo_type_dir, master_file, demo_num, demo_info, latest_demo_file
 
-    load_parameters(demo_type, num_cameras)
+    load_parameters(demo_type, num_cameras, calib_file)
 
     rospy.init_node("time_to_record")
     sleeper = rospy.Rate(10)
 
     # Load calibration
     cpipe.initialize_calibration(args.num_cameras)
-    calib_file = osp.join(calib_files_dir, calib_file);
-    if osp.isfile(calib_file):
-        cpipe.tfm_pub.load_calibration(calib_file)
+    calib_file_path = osp.join(calib_files_dir, calib_file);
+    if osp.isfile(calib_file_path):
+        cpipe.tfm_pub.load_calibration(calib_file_path)
     else:
         cpipe.run_calibration_sequence()
 
@@ -246,9 +247,10 @@ def record_pipeline ( demo_type, calib_file = "",
     # Start recording demos.
     while True:
         # Check if continuing or stopping
+        subprocess.call("espeak -v en 'Ready.'", stdout=devnull, stderr=devnull, shell=True)
+        print use_voice
         if use_voice:
             time.sleep(1.2)
-            subprocess.call("espeak -v en 'Ready.'", stdout=devnull, stderr=devnull, shell=True)
             while True:
                 status = cmd_checker.get_latest_msg()
                 if  status in ["begin recording","done session"]:
@@ -273,7 +275,7 @@ def record_pipeline ( demo_type, calib_file = "",
         save_demo = record_demo(bag_cmd, camera_commands, use_voice)
         
         if save_demo:
-            demo_info["demo name"] = demo_name
+            demo_info["demo_name"] = demo_name
             with open(master_file, 'a') as fh:
                 for i, item in enumerate(demo_info):
                     fh.write(prefix[i]+item+': '+demo_info[item] + '\n')
@@ -316,16 +318,16 @@ def record_single_demo (demo_type, demo_name, calib_file = "",
     """
     global cmd_checker, camera_types, demo_type_dir, master_file, demo_info
 
-    load_parameters(demo_type, num_cameras)
+    load_parameters(demo_type, num_cameras, calib_file)
 
     rospy.init_node("time_to_record")
     sleeper = rospy.Rate(10)
 
     # Load calibration
     cpipe.initialize_calibration(args.num_cameras)
-    calib_file = osp.join(calib_files_dir, calibration_file);
-    if osp.isfile(calib_file):
-        cpipe.tfm_pub.load_calibration(calib_file)
+    calib_file_path = osp.join(calib_files_dir, calib_file);
+    if osp.isfile(calib_file_path):
+        cpipe.tfm_pub.load_calibration(calib_file_path)
     else:
         cpipe.run_calibration_sequence()
 
@@ -361,7 +363,7 @@ def record_single_demo (demo_type, demo_name, calib_file = "",
     save_demo = record_demo(bag_cmd, camera_commands, use_voice)
 
     if save_demo:
-        demo_info["demo name"] = demo_name
+        demo_info["demo_name"] = demo_name
         with open(master_file, 'a') as fh:
             for i, item in enumerate(demo_info):
                 fh.write(prefix[i]+item+': '+demo_info[item] + '\n')
@@ -374,6 +376,7 @@ def record_single_demo (demo_type, demo_name, calib_file = "",
         
         greenprint("Saved %s"%demo_name)
     else:
+        time.sleep(3)
         if osp.exists(demo_dir):
             print "Removing demo %s"%demo_name 
             shutil.rmtree(demo_dir)
@@ -385,10 +388,10 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("demo_type", help="Type of demonstration.", type=str)
     
-    parser.add_argument("calibration_file", help="Calibration file.", default='')
+    parser.add_argument("calib_file", help="Calibration file.", default='')
     parser.add_argument("num_cameras", help="Number of cameras in setup.", default=2, type=int)
     parser.add_argument("--downsample", help="Downsample rgbd data by factor.", default=1, type=int)
-    parser.add_argument("--use_voice", help="Use voice for recording.", default=True, type=bool)
+    parser.add_argument("--use_voice", help="Use voice for recording.", default=1, type=int)
     
     parser.add_argument("--single_demo", help="Single or multiple demos?", action="store_true", default=False)
     parser.add_argument("--num_demos", help="Number of demos to be recorded.", default=-1, type=int)
@@ -397,11 +400,14 @@ if __name__ == '__main__':
 
     downsample = args.downsample
     
+    use_voice = True if args.use_voice else False
+    print use_voice
+    
     if args.single_demo:
         record_single_demo (demo_type = args.demo_type, demo_name=args.demo_name,
-                            calib_file = args.calibration_file, num_cameras = args.num_cameras, 
-                            use_voice = args.use_voice)
+                            calib_file = args.calib_file, num_cameras = args.num_cameras, 
+                            use_voice = use_voice)
     else:
-        record_pipeline (demo_type = args.demo_type, calib_file = args.calibration_file, 
+        record_pipeline (demo_type = args.demo_type, calib_file = args.calib_file, 
                          num_cameras = args.num_cameras, num_demos = args.num_demos, 
-                         use_voice = args.use_voice)
+                         use_voice = use_voice)
