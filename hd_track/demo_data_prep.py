@@ -39,15 +39,15 @@ def load_data(dat_fname, lr, freq=30.0):
 
     cam_info = {}
     for kname in dat[lr].keys():
+        if 'cam' in kname:
+            tfs = [tt[0] for tt in dat[lr][kname]]
+            ts  = [tt[1] for tt in dat[lr][kname]]
+            ## don't append any empty-streams:
+            if len(ts) > 0:
+                cam_strm = streamize(tfs, ts, freq, avg_transform, tstart=-1./freq)
         
-        tfs = [tt[0] for tt in dat[lr][kname]]
-        ts  = [tt[1] for tt in dat[lr][kname]]
-        ## don't append any empty-streams:
-        if len(ts) > 0:
-            cam_strm = streamize(tfs, ts, freq, avg_transform, tstart=-1./freq)
-        
-            cam_info[kname] = {'type'   : cam_types[kname],
-                               'stream' : cam_strm}
+                cam_info[kname] = {'type'   : cam_types[kname],
+                                   'stream' : cam_strm}
 
     ## hydra data:
     hy_tfs = [tt[0] for tt in dat[lr]['hydra']]     
@@ -191,7 +191,7 @@ def align_tf_streams(hydra_strm, cam_strm, wsize=20):
         dists.append(np.linalg.norm(np.array(hy_xs) - Xs_cam))
 
     shift = xrange(-wsize, wsize+1)[np.argmin(dists)]
-    redprint("\t\t stream time-alignment shift is : %d (= %0.3f seconds)"%(shift,hydra_strm.dt*shift))
+    redprint("\t stream time-alignment shift is : %d (= %0.3f seconds)"%(shift,hydra_strm.dt*shift))
     return shift
 
 
