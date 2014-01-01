@@ -139,7 +139,7 @@ def create_commands_for_demo (demo_dir):
     return bag_cmd_demo, camera_commands
 
 
-def record_demo (bag_cmd_demo, camera_commands, use_voice=True):
+def record_demo (bag_cmd_demo, camera_commands, use_voice):
     """
     Record a single demo.
     Returns True/False depending on whether demo needs to be saved.
@@ -158,9 +158,9 @@ def record_demo (bag_cmd_demo, camera_commands, use_voice=True):
         greenprint(bag_cmd_demo)
         bag_handle = subprocess.Popen(bag_cmd_demo, stdout=devnull, stderr=devnull, shell=True)
         time.sleep(1)
-        poll_result = bag_handle.poll() 
-        if poll_result is not None:
-            print "poll result", poll_result
+        bag_poll_result = bag_handle.poll() 
+        if bag_poll_result is not None:
+            print "bag poll result", bag_poll_result
             raise Exception("problem starting bag recording")
         started_bag = True
 
@@ -168,6 +168,14 @@ def record_demo (bag_cmd_demo, camera_commands, use_voice=True):
             greenprint(camera_commands[cam])
             video_handles[cam] = subprocess.Popen(camera_commands[cam], stdout=devnull, stderr=devnull, shell=True)
             started_video[cam] = True
+            
+        
+        time.sleep(3)
+        cam_poll_results = [handle.poll for handle in video_handles]
+        for (cam, poll_result) in enumerate(cam_poll_results):
+            if poll_result is not None:
+                print "video%i poll result"%(cam), poll_result
+                raise Exception("problem starting video%i recording"%cam) 
         
 
         # Change to voice command
@@ -184,7 +192,7 @@ def record_demo (bag_cmd_demo, camera_commands, use_voice=True):
 
     except Exception as e:
         greenprint(e)#"got control-c")
-        if use_voice: status == "cancel_recording"
+        if use_voice: status = "cancel recording"
     
     finally:
         cpipe.done()
@@ -196,11 +204,11 @@ def record_demo (bag_cmd_demo, camera_commands, use_voice=True):
             yellowprint("stopped bag")
         for cam in started_video:
             if started_video[cam]:
-                yellowprint("stopping  video%i"%cam)
+                yellowprint("stopping video%i"%cam)
                 #terminate_process_and_children(video_handles[cam])
                 video_handles[cam].send_signal(signal.SIGINT)
                 video_handles[cam].wait()
-                yellowprint("stopped  video%i"%cam)
+                yellowprint("stopped video%i"%cam)
         
         if use_voice:
             return status == "finish recording"
@@ -210,12 +218,12 @@ def record_demo (bag_cmd_demo, camera_commands, use_voice=True):
             return False
 
 
-def record_pipeline ( demo_type, calib_file = "", 
-                        num_cameras = 2, num_demos = -1, use_voice = True):
+def record_pipeline ( demo_type, calib_file, 
+                        num_cameras, num_demos, use_voice):
     """
     Either records n demos or until person says he is done.
     @demo_type: type of demo being recorded. specifies directory to save in.
-    @calib_file: file to load calibration from.
+    @calib_file: file to load calibration from. "", -- default -- means using the one in the master file
     @num_cameras: number of cameras being used.
     @num_demos: number of demos to be recorded. -1 -- default -- means until user stops.
     @use_voice: use voice commands to start/stop demo if true. o/w use command line.
@@ -248,7 +256,6 @@ def record_pipeline ( demo_type, calib_file = "",
     while True:
         # Check if continuing or stopping
         subprocess.call("espeak -v en 'Ready.'", stdout=devnull, stderr=devnull, shell=True)
-        print use_voice
         if use_voice:
             time.sleep(1.2)
             while True:
@@ -261,7 +268,7 @@ def record_pipeline ( demo_type, calib_file = "",
 
         if status in ["done session", "q","Q"]:
             greenprint("Done recording for this session.")
-            exit()
+            break
 
 
         # Initialize names and record
@@ -302,16 +309,24 @@ def record_pipeline ( demo_type, calib_file = "",
         if num_demos == 0:
             greenprint("Recorded all demos for session.")
             break
+        
+        
+    if started_voice:
+        yellowprint("stopping voice")
+        #terminate_process_and_children(voice_handle)
+        voice_handle.send_signal(signal.SIGINT)
+        voice_handle.wait()
+        yellowprint("stopped voice") 
 
-def record_single_demo (demo_type, demo_name, calib_file = "", 
-                          num_cameras = 2, use_voice = True):
+def record_single_demo (demo_type, demo_name, calib_file, 
+                          num_cameras, use_voice):
     """
     Records a single demo.
     @demo_type: type of demo being recorded. specifies directory to save in.
     @demo_name: name of demo.
-    @calib_file: file to load calibration from.
+    @calib_file: file to load calibration from. "", -- default -- means using the one in the master file
     @num_demos: number of demos to be recorded. -1 -- default -- means until user stops.
-    @use_voice: use voice commands to start/stop demo if true. o/w use command line.
+    @use_voice: use voice commands to start/stop demo if true. o/w use command line. 
     
     Note: Need to start up all cameras from ar_track_service before recording
           so that the latest camera type mapping/device mapping is stored and ready.  
@@ -381,6 +396,13 @@ def record_single_demo (demo_type, demo_name, calib_file = "",
             print "Removing demo %s"%demo_name 
             shutil.rmtree(demo_dir)
             print "Done"
+            
+    if started_voice:
+        yellowprint("stopping voice")
+        #terminate_process_and_children(voice_handle)
+        voice_handle.send_signal(signal.SIGINT)
+        voice_handle.wait()
+        yellowprint("stopped voice") 
 
 if __name__ == '__main__':
     global downsample

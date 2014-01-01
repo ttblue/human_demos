@@ -123,8 +123,6 @@ def generate_annotation(demo_type, demo_name):
     print "writing to %s"%ann_file
     with open(ann_file, "w") as fh:
         yaml.dump(demos, fh)
-        
-    fh.close()
 
 if __name__=='__main__':
     parser = argparse.ArgumentParser()
