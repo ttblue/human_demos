@@ -3,7 +3,7 @@ Code to prepare the recorded demo-data so that it can be
 visualized/ fed to the kalman filter etc.
 """
 import numpy as np
-import math
+import math, sys
 import cPickle as cp
 import scipy.interpolate as si
 import yaml
@@ -45,18 +45,23 @@ def load_data(dat_fname, lr, freq=30.0):
             ## don't append any empty-streams:
             if len(ts) > 0:
                 cam_strm = streamize(tfs, ts, freq, avg_transform, tstart=-1./freq)
-        
                 cam_info[kname] = {'type'   : cam_types[kname],
                                    'stream' : cam_strm}
 
     ## hydra data:
     hy_tfs = [tt[0] for tt in dat[lr]['hydra']]     
-    hy_ts  = np.array([tt[1] for tt in dat[lr]['hydra']])  
+    hy_ts  = np.array([tt[1] for tt in dat[lr]['hydra']])
+    if len(hy_ts) <= 0:
+        redprint("ERROR : No hydra data found in : %s"%dat_fname)
+        sys.exit(-1)
     hy_strm = streamize(hy_tfs, hy_ts, freq, avg_transform, tstart=-1./freq)
 
     ## potentiometer angles:
     pot_vals = np.array([tt[0] for tt in dat[lr]['pot_angles']])
     pot_ts   = np.array([tt[1] for tt in dat[lr]['pot_angles']])
+    if len(pot_ts) <= 0:
+        redprint("ERROR : No potentiometer data found in : %s"%dat_fname)
+        sys.exit(-1)
     pot_strm = streamize(pot_vals, pot_ts, freq, np.mean, tstart=-1./freq)
 
     return (T_cam2hbase, cam_info, hy_strm, pot_strm)
@@ -85,6 +90,7 @@ def segment_streams(strms, time_shifts, demo_dir, base_stream='camera1'):
     n_segs = len(ann_dat)
     start_times = np.array([seg_info['start']+time_shifts[base_stream] for seg_info in ann_dat])
     stop_times  = np.array([seg_info['stop']+time_shifts[base_stream] for seg_info in ann_dat])
+    nsteps      = (stop_times - start_times) / strms[0].dt 
     
     strm_segs = []
     for strm in strms:
@@ -97,7 +103,7 @@ def segment_streams(strms, time_shifts, demo_dir, base_stream='camera1'):
             si.append(strm_segs[n][i])
         out_segs.append(si)
     
-    return out_segs
+    return out_segs, nsteps
 
 
 def relative_time_streams(strms, freq):
@@ -229,54 +235,6 @@ def align_tf_streams(hydra_strm, cam_strm, wsize=20):
     shift = xrange(-wsize, wsize+1)[np.argmin(dists)]
     redprint("\t stream time-alignment shift is : %d (= %0.3f seconds)"%(shift,hydra_strm.dt*shift))
     return shift
-
-
-def align_all_streams(hy_strm, cam_streams, wsize=20):
-    """
-    Time aligns all-streams to camera1 stream.
-    
-    hy_strm     : The hydra-transforms stream. Assumes that hydra stream is full (no missing data).
-    cam_streams : A list of camera-data streams.
-                  The first stream is assumed to be camera1 stream.
-                  All streams are aligned with camera1 (i.e. camera1 stream is not changed).
-    Also returns the shifts applied to each camera/ hydra stream.
-    """
-    n_streams = len(cam_streams)
-    tmin, tmax = float('inf'), float('-inf')
-    strm_dt  = hy_strm.dt
-    
-    hy_shift, cam_shifts = None, [0] ## no shift for the first-camera!
-    
-    if n_streams >= 1:
-        
-        blueprint("\t aligning hydra with camera1")
-        shift_hydra   = align_tf_streams(hy_strm, cam_streams[0], wsize)
-        hy_shift      = -strm_dt*shift_hydra
-        hy_aligned    = time_shift_stream(hy_strm, hy_shift)
-
-        tmin = min(tmin, np.min(hy_aligned.ts))
-        tmax = max(tmax, np.max(hy_aligned.ts))
-
-        aligned_streams = [cam_streams[0]]
-        for i in xrange(1, n_streams):
-            blueprint("\t aligning camera%d with camera1"%(i+1))
-            shift_strm = align_tf_streams(hy_aligned, cam_streams[i], wsize)
-            cam_shift  = strm_dt*shift_strm
-            cam_shifts.append(cam_shift)
-            shifted_stream = time_shift_stream(cam_streams[i], cam_shift)
-
-            tmin = min(tmin, np.min(shifted_stream.ts))
-            tmax = max(tmax, np.max(shifted_stream.ts))
-
-            aligned_streams.append(shifted_stream)
-
-        ## shift the start-times such that all the streams start at the minimum time:
-        hy_aligned.set_start_time(hy_aligned.get_start_time() - tmin)
-        for strm in aligned_streams:
-            strm.set_start_time(strm.get_start_time() - tmin)
-
-        nsteps = (tmax-tmin)/hy_aligned.dt
-        return (tmin, tmax, nsteps, hy_aligned, hy_shift, aligned_streams, cam_shifts)
 
 
 def reject_outliers_tf_stream(strm, n_window=10, v_th=[0.35,0.35,0.25]):
