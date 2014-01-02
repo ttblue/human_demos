@@ -133,7 +133,8 @@ def load_demo_data(demo_fname, freq=30.0, rem_outliers=True, tps_correct=True, t
 
     T_cam2hbase, cam_dat['l'], hy_dat['l'], pot_dat['l'] = load_data(demo_fname, 'l', freq)
     T_cam2hbase, cam_dat['r'], hy_dat['r'], pot_dat['r'] = load_data(demo_fname, 'r', freq)
-
+    
+    
     ## collect all camera streams in a list:
     all_cam_names = set()
     for lr in 'lr':
@@ -151,19 +152,17 @@ def load_demo_data(demo_fname, freq=30.0, rem_outliers=True, tps_correct=True, t
     tmin, _, _ = relative_time_streams(hy_dat.values() + pot_dat.values() + all_cam_strms, freq)
     tshift1 = -tmin
 
-
     ## remove outliers in the camera streams
     if rem_outliers:
         blueprint("Rejecting TF outliers in camera-data..")
         for lr in 'lr':
             for cam in cam_dat[lr].keys():
                 strm_in = reject_outliers_tf_stream(cam_dat[lr][cam]['stream'])
-                if plot and False:
+                if plot:
                     blueprint("\t Plotting outlier rejection..")
                     cam_name = cam+'_'+lr
                     plot_tf_streams([cam_dat[lr][cam]['stream'], strm_in], strm_labels=[cam_name, cam_name+'_in'], styles=['.','-'], block=False)
                 cam_dat[lr][cam]['stream'] = strm_in
-
 
 
     ## do time-alignment (with the respective l/r hydra-streams):
@@ -188,7 +187,7 @@ def load_demo_data(demo_fname, freq=30.0, rem_outliers=True, tps_correct=True, t
         for cam in cam_dat[lr].keys():
             aligned_cam_strms.append( time_shift_stream(cam_dat[lr][cam]['stream'], time_shifts[cam]) )
 
-        if plot and False:
+        if plot:
             unaligned_cam_streams = []
             for cam in cam_dat[lr].values():
                 unaligned_cam_streams.append(cam['stream'])
@@ -429,6 +428,6 @@ def filter_traj(demo_fname, tps_model_fname=None, save_tps=False, do_smooth=True
 
 
 if __name__=='__main__':
-    demo_fname = '../hd_data/demos/overhand/demo00001/demo.data'
+    demo_fname = '../hd_data/demos/overhand/demo00003/demo.data'
     filter_traj(demo_fname, tps_model_fname=None, save_tps=True, do_smooth=True, plot=True)
 
