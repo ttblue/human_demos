@@ -1,7 +1,7 @@
 '''
 Script to extract data from rgbd+rosbag demonstration
 '''
-from hd_track import extract_data as ed
+from hd_extract import extract_data as ed
 import rosbag as rb
 import argparse
 import os, os.path as osp

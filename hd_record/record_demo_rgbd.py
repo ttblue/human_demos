@@ -170,12 +170,13 @@ def record_demo (bag_cmd_demo, camera_commands, use_voice):
             started_video[cam] = True
             
         
-        time.sleep(3)
-        cam_poll_results = [handle.poll for handle in video_handles]
-        for (cam, poll_result) in enumerate(cam_poll_results):
-            if poll_result is not None:
-                print "video%i poll result"%(cam), poll_result
-                raise Exception("problem starting video%i recording"%cam) 
+#         time.sleep(2)
+#         cam_poll_results = [video_handles[i].poll() for i in video_handles]
+#         for (cam, poll_result) in enumerate(cam_poll_results):
+#             if poll_result is not None:
+#                 print "video%i poll result"%(cam), poll_result
+#                 raise Exception("problem starting video%i recording"%cam) 
+#             started_video[cam] = True
         
 
         # Change to voice command

@@ -13,7 +13,7 @@ br = CvBridge()
 
 rospy.init_node("test_image_service")
 
-mPos = rospy.ServiceProxy("getImageMarkers    ", MarkerImagePositions)
+mPos = rospy.ServiceProxy("getImageMarkers", MarkerImagePositions)
 
 req = MarkerImagePositionsRequest ()
 req.img = br.cv_to_imgmsg(cv.LoadImage("/home/sibi/Downloads/artags.png"))

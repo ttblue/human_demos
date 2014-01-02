@@ -40,10 +40,14 @@ def get_rgbd_names_times (video_dir, depth=True):
     
     video_stamps = np.loadtxt(osp.join(video_dir,"stamps.txt"))
     rgbnames = glob(osp.join(video_dir, "rgb*.jpg"))
-    ind2rgbfname = dict([(int(osp.splitext(osp.basename(fname))[0][3:]), fname) for fname in rgbnames])
+    #inds_rgb = [int(osp.splitext(osp.basename(fname))[0][3:]) for fname in rgbnames]
+    min_ind_rgb = 0#min(inds_rgb)
+    ind2rgbfname = dict([(int(osp.splitext(osp.basename(fname))[0][3:])-min_ind_rgb, fname) for fname in rgbnames])
     
     if depth:
         depthnames = glob(osp.join(video_dir, "depth*.png"))
-        ind2depthfname = dict([(int(osp.splitext(osp.basename(fname))[0][5:]), fname) for fname in depthnames])
+        #inds_d = [int(osp.splitext(osp.basename(fname))[0][3:]) for fname in depthnames]
+        min_ind_d = 0#min(inds_d)
+        ind2depthfname = dict([(int(osp.splitext(osp.basename(fname))[0][5:])-min_ind_d, fname) for fname in depthnames])
         return ind2rgbfname, ind2depthfname, video_stamps
     else: return ind2rgbfname, video_stamps
