@@ -311,7 +311,8 @@ def prepare_kf_data(demo_fname, ann_fname, freq, rem_outliers, tps_correct, tps_
                 seg_cam_strms[cam] = {'type'   : cam_strms[cam]['type'],
                                       'stream' : seg_streams[i][2+j]}
 
-            seg = {'hydra_strm'  : seg_streams[i][0],
+            seg = {'name': ann_dat[i]['name'],
+                   'hydra_strm'  : seg_streams[i][0],
                    'pot_strm' : seg_streams[i][1],
                    'cam_dat'  : seg_cam_strms,
                    'nsteps'   : nsteps[i],
@@ -422,6 +423,8 @@ def filter_traj(demo_fname, ann_fname, tps_model_fname, save_tps, do_smooth, plo
                                                        tps_correct=True, tps_model_fname=tps_model_fname,
                                                        plot=plot,
                                                        block=block)
+    
+    print time_shifts
 
     _, rgb_covar, rgbd_covar, hydra_covar =  initialize_covariances(freq)
 
@@ -429,7 +432,7 @@ def filter_traj(demo_fname, ann_fname, tps_model_fname, save_tps, do_smooth, plo
     traj = {'l' : None, 'r':None}
 
     for lr in 'lr':
-        lr_trajs = []
+        lr_trajs = {}
         for iseg in xrange(n_segs):
             KF = KFs[lr][iseg]
             hydra_strm  = rec_data[lr][iseg]['hydra_strm']
@@ -441,17 +444,30 @@ def filter_traj(demo_fname, ann_fname, tps_model_fname, save_tps, do_smooth, plo
                                                                   hydra_strm, cam_dat,
                                                                   hydra_covar, rgb_covar, rgbd_covar,
                                                                   do_smooth, plot, block)
+            
+            for i in range(len(ts)):
+                ts[i] -= time_shifts['camera1']
+                                
             Ts_kf, Ts_smthr = state_to_hmat(xs_kf), state_to_hmat(xs_smthr)
             
             pot_angles = [x for x in pot_strm]
+            
+            '''''
+            Dirty hack!!!!!!!!!!!!!!!!!!!!!!!!!
+            '''''
+            for i in xrange(len(pot_angles)):
+                if pot_angles[i] == None:
+                    pot_angles[i] = 0
 
-            traj = {"stamps"  : ts,
-                    "tfms"    : Ts_kf,
-                    "covars"  : covars_kf,
-                    "tfms_s"  : Ts_smthr,
-                    "covars_s": covars_smthr,
-                    "pot_angles": pot_angles}
-            lr_trajs.append(traj)
+            seg_traj = {"stamps"  : ts,
+                        "tfms"    : Ts_kf,
+                        "covars"  : covars_kf,
+                        "tfms_s"  : Ts_smthr,
+                        "covars_s": covars_smthr,
+                        "pot_angles": pot_angles}
+            
+            seg_name = rec_data[lr][iseg]["name"]
+            lr_trajs[seg_name] = seg_traj
 
         traj[lr] = lr_trajs
 
@@ -496,6 +512,6 @@ if __name__=='__main__':
                 filter_traj(demo_fname, ann_fname, tps_model_fname=args.tps_fname, save_tps=args.save_tps, do_smooth=args.do_smooth, plot=args.plotting, block=args.block)
                 
                 
-    if args.block==False:
+    if args.plotting == True and args.block == False:
         raw_input()
 
