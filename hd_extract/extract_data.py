@@ -100,7 +100,6 @@ def save_observations_rgbd(demo_type, demo_name, calib_file, num_cameras, for_gp
     with open(calib_file_path,'r') as fh: calib_data = cPickle.load(fh)
     bag = rosbag.Bag(bag_file)
     
-    flip = {1:1,2:3,3:2}
     for tfm in calib_data['transforms']:
         if tfm['parent'] == c_frames[1] or tfm['parent'] == '/' + c_frames[1]:
             if tfm['child'] == hydra_frame or tfm['child'] == '/' + hydra_frame:
@@ -108,9 +107,7 @@ def save_observations_rgbd(demo_type, demo_name, calib_file, num_cameras, for_gp
             else:
                 for i in range(2, num_cameras+1):
                     if tfm['child'] == c_frames[i] or tfm['child'] == '/' + c_frames[i]:
-                        tfm_c1[flip[i]] = nlg.inv(tfm_link_rof).dot(tfm['tfm']).dot(tfm_link_rof)
-
-    print tfm_c1
+                        tfm_c1[i] = nlg.inv(tfm_link_rof).dot(tfm['tfm']).dot(tfm_link_rof)
 
     if tfm_c1_h is None or not all([tfm_c1[s] != None for s in tfm_c1]):
         redprint("Calibration does not have required transforms")

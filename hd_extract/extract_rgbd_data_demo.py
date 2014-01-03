@@ -5,23 +5,32 @@ from hd_extract import extract_data as ed
 import rosbag as rb
 import argparse
 import os, os.path as osp
+import yaml
+from hd_utils.defaults import demo_files_dir
 
 
-data_dir = os.getenv('HD_DATA_DIR')
 
 if __name__ == "__main__":
     
     parser = argparse.ArgumentParser()
     parser.add_argument("-dtype", help="type of demonstration", action='store', dest='demo_type', type=str)
-    parser.add_argument("-dname", help="name of demonstration", action='store', dest='demo_name', type=str)
-    parser.add_argument("-clib", help="name of calibration file", action='store', dest='calib_fname', type=str)
-    parser.add_argument("-cnum", help="number of cameras", action='store', dest="num_cameras", type=int, default=2)
-    parser.add_argument("-sname", help="name of save file", action='store', dest='save_fname', default='', type=str)
-    vals = parser.parse_args()
+    parser.add_argument("-dname", help="name of demonstration", action='store', dest='demo_name', type=str, default='')
+    args = parser.parse_args()
 
-    calib_fname = osp.join(data_dir, 'calib', vals.calib_fname)
-        
-    if vals.save_fname == '':
-        ed.save_observations_rgbd(vals.demo_type, vals.demo_name, calib_fname, vals.num_cameras)
+
+    demo_type_dir = osp.join(demo_files_dir, args.demo_type)
+    demo_master_file = osp.join(demo_type_dir, "master.yaml")
+    
+    with open(demo_master_file, 'r') as fh:
+        demos_info = yaml.load(fh)
+            
+    if args.demo_name == '':
+        for demo_info in demos_info["demos"]:
+            ed.save_observations_rgbd(args.demo_type, demo_info["demo_name"], demo_info["calib_file"], len(demo_info["video_dirs"]))
     else:
-        ed.save_observations_rgbd(vals.demo_type, vals.demo_name, calib_fname, vals.num_cameras, vals.save_fname)
+        for demo_info in demos_info["demos"]:
+            if args.demo_name == demo_info["demo_name"]:
+                ed.save_observations_rgbd(args.demo_type, demo_info["demo_name"], demo_info["calib_file"], len(demo_info["video_dirs"]))
+                break;
+            
+    print "done extraction data"

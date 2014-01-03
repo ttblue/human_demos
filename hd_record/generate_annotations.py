@@ -133,13 +133,16 @@ if __name__=='__main__':
     if args.demo_name != '':
         generate_annotation(args.demo_type, args.demo_name)
     else: 
-        # if args.demo_name == '', run generate annotation for all the dmoes in the dir
+        # if args.demo_name == '', run generate annotation for all the demos in the directory
         demo_type_dir = osp.join(demo_files_dir, args.demo_type)
-        for name in os.listdir(demo_type_dir):
-            if osp.isdir(os.path.join(demo_type_dir, name)):
-                if "demo" in name:
-                    generate_annotation(args.demo_type, name)
-    
+        demo_master_file = osp.join(demo_type_dir, "master.yaml")
+        
+        with open(demo_master_file, 'r') as fh:
+            demos_info = yaml.load(fh)
 
-    print "done"
+        for demo_info in demos_info["demos"]:
+            generate_annotation(args.demo_type, demo_info["demo_name"])
+        
+
+    print "done annotation generation"
     
