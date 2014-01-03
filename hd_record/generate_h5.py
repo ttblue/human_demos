@@ -14,7 +14,7 @@ import cPickle as cp
 import cv2
 import shutil
 import argparse
-from hd_utils.defaults import demo_files_dir, calib_files_dir
+from hd_utils.defaults import demo_files_dir
 
 
 
@@ -138,7 +138,8 @@ else:
         video_dirs = [osp.join(demo_dir, video_dir) for video_dir in demo_info['video_dirs']]
         # data_file = osp.join(demo_dir, demo_info['data_file'])
         # bag_file = osp.join(demo_dir, demo_info['bag_file'])
-        calib_file = osp.join(calib_files_dir, demo_info['calib_file'])
+        #calib_file = osp.join(calib_files_dir, demo_info['calib_file'])
+        calib_file = osp.join(demo_dir, 'calib')
         annotation_file = osp.join(demo_dir, demo_info['annotation_file'])
         traj_file = osp.join(demo_dir, demo_info['traj_file'])
         

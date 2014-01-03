@@ -37,6 +37,7 @@ np.set_printoptions(precision=5, suppress=True)
 # Global variables
 cameras = None
 tfm_pub = None
+pot_pub = None
 
 # Camera defaults
 NUM_CAMERAS = 2
@@ -78,8 +79,8 @@ class CalibratedTransformPublisher(Thread):
         self.rate = 30.0
         self.tf_broadcaster = tf.TransformBroadcaster()
 
-        self.langle_pub = rospy.Publisher('l_pot_angle', Float32)
-        self.rangle_pub = rospy.Publisher('r_pot_angle', Float32)
+#         self.langle_pub = rospy.Publisher('l_pot_angle', Float32)
+#         self.rangle_pub = rospy.Publisher('r_pot_angle', Float32)
 
         self.cameras = cameras
         self.publish_grippers = False
@@ -154,8 +155,8 @@ class CalibratedTransformPublisher(Thread):
     def publish_gripper_tfms(self):
         marker_tfms = self.cameras.get_ar_markers()
 
-        self.langle_pub.publish(gmt.get_pot_angle('l'))
-        self.rangle_pub.publish(gmt.get_pot_angle('r'))
+#         self.langle_pub.publish(gmt.get_pot_angle('l'))
+#         self.rangle_pub.publish(gmt.get_pot_angle('r'))
 
         transforms = []
         for gr in self.grippers.values():
@@ -291,6 +292,29 @@ class CalibratedTransformPublisher(Thread):
         file_name = osp.join(calib_files_dir, file)
         with open(file_name, 'w') as fh:
             cPickle.dump(calib_data, fh)
+
+
+class PublishPotAngles(Thread):
+    
+    def __init__(self, cameras=None):
+        Thread.__init__(self, rate=60.0)
+
+        if rospy.get_name() == '/unnamed':
+            rospy.init_node('pot_angle_node')
+
+        self.rate = rate
+        
+        self.langle_pub = rospy.Publisher('l_pot_angle', Float32)
+        self.rangle_pub = rospy.Publisher('r_pot_angle', Float32)
+
+    def run(self):
+        """
+        Publishes the pot angles.
+        """
+        while True and not finished:
+            self.langle_pub.publish(gmt.get_pot_angle('l'))
+            self.rangle_pub.publish(gmt.get_pot_angle('r'))
+            time.sleep(1 / self.rate)
 
 
 def calibrate_potentiometer(lr='l'):
@@ -456,10 +480,12 @@ def initialize_calibration(num_cams=NUM_CAMERAS):
         rospy.init_node('calibration', anonymous=True)
     cameras = RosCameras(num_cameras=num_cams)
     tfm_pub = CalibratedTransformPublisher(cameras)
-
+    pot_pub = PublishPotAngles()
+    
     # tfm_pub.fake_initialize()
 
     tfm_pub.start()
+    pot_pub.start()
 
 
 def run_calibration_sequence(spin=False):

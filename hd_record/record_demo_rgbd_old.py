@@ -16,32 +16,31 @@ import threading
 roslib.load_manifest('pocketsphinx')
 from pocketsphinx.msg import Segment
 
-roslib.load_manifest('record_rgbd_service')
-from record_rgbd_service.srv import SaveImage, SaveImageRequest, SaveImageResponse
-
 from hd_calib import calibration_pipeline as cpipe
 from hd_utils.colorize import *
 from hd_utils.yes_or_no import yes_or_no
 
+from generate_webcam_timestamps import gen_timestamps
 from hd_utils.defaults import demo_files_dir, calib_files_dir, data_dir
 
 devnull = open(os.devnull, 'wb')
 # Some global variables
 map_dir = os.getenv("CAMERA_MAPPING_DIR")
 
-save_image_services = {}
-cam_save_requests = {}
-cam_stop_request = None
-
 demo_type_dir = None
 latest_demo_file = None
 cmd_checker = None
 camera_types = None
-camera_models = {}
+demo_info = None
+prefix = None
 demo_num = 0
 
 bag_cmd = "rosbag record -O %s /l_pot_angle /r_pot_angle /segment /tf"
 kinect_cmd = "record_rgbd_video --out=%s --downsample=%i --device_id=#%i"
+webcam_cmd =  "date +%%s.%%N > %s/stamps_init.txt; " + \
+"gst-launch -m v4l2src device=/dev/video%i ! video/x-raw-yuv,width=1280,framerate=30/1 \
+! ffmpegcolorspace ! jpegenc \
+! multifilesink post-messages=true location=\"%s/rgb%%05d.jpg\" > %s/stamps_info.txt"
 voice_cmd = "roslaunch pocketsphinx demo_recording.launch"
 
 def terminate_process_and_children(p):
@@ -68,13 +67,11 @@ class voice_alerts ():
     def get_latest_msg (self):
         return self.segment_state
 
-def load_parameters (demo_type, num_cameras):
+def load_parameters (demo_type, num_cameras, calib_file):
     """
     Initialize global variables.
     """
-    global camera_types, demo_type_dir, master_file, demo_num, demo_info,\
-           latest_demo_file, cam_stop_request
-
+    global camera_types, demo_type_dir, master_file, demo_num, demo_info, latest_demo_file, prefix
     demo_type_dir = osp.join(demo_files_dir, demo_type)
     if not osp.isdir(demo_type_dir):
         os.mkdir(demo_type_dir)
@@ -90,16 +87,7 @@ def load_parameters (demo_type, num_cameras):
     camera_types = {(i+1):None for i in range(num_cameras)}
     for cam in camera_types:
         with open(osp.join(data_dir,'camera_types','camera%i'%cam),'r') as fh: camera_types[cam] = fh.read()
-        save_image_services[cam] = rospy.ServiceProxy("saveImagescamera%i"%cam, SaveImage)
-        cam_save_requests[cam] = SaveImageRequest()
-        cam_save_requests[cam].start = True 
-
-        if camera_types[cam] == "rgb":
-            with open(osp.join(data_dir,'camera_types','camera%i_model'%cam),'r') as fh: camera_models[cam] = fh.read()
-            
-    cam_stop_request = SaveImageRequest()
-    cam_stop_request.start = False
-            
+    
     # Get number of latest demo recorded
     latest_demo_file = osp.join(demo_type_dir, 'latest_demo.txt')     
     if osp.isfile(latest_demo_file):
@@ -108,23 +96,50 @@ def load_parameters (demo_type, num_cameras):
                 demo_num = int(fh.read()) + 1
         except: demo_num = 1
     else: demo_num = 1
-
                                                                                                                                                         
-def ready_service_for_demo (demo_dir):
+    video_dirs = []
+    for i in range(1,num_cameras+1):
+        video_dirs.append("camera_#%s"%(i))
+        
+    demo_info = {"bag_file": "demo.bag",
+                 "video_dirs": str(video_dirs),
+                 "annotation_file": "ann.yaml",
+                 "calib_file": calib_file, 
+                 "data_file": "demo.data",
+                 "traj_file": "demo.traj",
+                 "demo_name": ""}
+    prefix = ["  " for _ in demo_info]
+    prefix[0] = "- "
+
+def create_commands_for_demo (demo_dir):
     """
     Creates the command for recording bag files and demos given demo_dir.
     """
-    global camera_types, camera_save_requests
+    global camera_types
     
+    bag_cmd_demo = bag_cmd%(osp.join(demo_dir,'demo'))
+    camera_commands = {}
+    dev_id = 1
     for cam in camera_types:
-        cam_dir = osp.join(demo_dir,'camera_#%i'%(cam))
-        if osp.isdir(cam_dir):
-            shutil.rmtree(cam_dir)
-        os.mkdir(cam_dir)
-        cam_save_requests[cam].folder_name = demo_dir
+        if camera_types[cam] == 'rgbd':
+            cam_dir = osp.join(demo_dir, 'camera_')
+            camera_commands[cam] = kinect_cmd%(cam_dir, downsample, dev_id) 
+            dev_id += 1
+        else:
+            with open(osp.join(map_dir,'camera%i'%cam),'r') as fh: dev_video = int(fh.read())
+            webcam_dir = osp.join(demo_dir,'camera_#%i'%(cam))
+            try:
+                os.mkdir(webcam_dir)
+            except:
+                print "Directory %s already exists."%webcam_dir
+
+            webcam_cmd_demo = webcam_cmd%(webcam_dir, dev_video, webcam_dir, webcam_dir) 
+            camera_commands[cam] = webcam_cmd_demo
+
+    return bag_cmd_demo, camera_commands
 
 
-def record_demo (bag_cmd_demo, use_voice):
+def record_demo (bag_cmd_demo, camera_commands, use_voice):
     """
     Record a single demo.
     Returns True/False depending on whether demo needs to be saved.
@@ -137,7 +152,8 @@ def record_demo (bag_cmd_demo, use_voice):
     sleeper = rospy.Rate(10)
     try:
         started_bag = False
-        started_video = {cam:False for cam in camera_types}
+        started_video = {}
+        video_handles= {}
 
         greenprint(bag_cmd_demo)
         bag_handle = subprocess.Popen(bag_cmd_demo, stdout=devnull, stderr=devnull, shell=True)
@@ -148,11 +164,21 @@ def record_demo (bag_cmd_demo, use_voice):
             raise Exception("problem starting bag recording")
         started_bag = True
 
-        for cam in camera_types:
-            greenprint("Calling saveImagecamera%i service."%cam)
-            save_image_services[cam](cam_save_requests[cam])
+        for cam in camera_commands:
+            greenprint(camera_commands[cam])
+            video_handles[cam] = subprocess.Popen(camera_commands[cam], stdout=devnull, stderr=devnull, shell=True)
             started_video[cam] = True
+            
         
+#         time.sleep(2)
+#         cam_poll_results = [video_handles[i].poll() for i in video_handles]
+#         for (cam, poll_result) in enumerate(cam_poll_results):
+#             if poll_result is not None:
+#                 print "video%i poll result"%(cam), poll_result
+#                 raise Exception("problem starting video%i recording"%cam) 
+#             started_video[cam] = True
+        
+
         # Change to voice command
         subprocess.call("espeak -v en 'Recording.'", stdout=devnull, stderr=devnull, shell=True)
         if use_voice:
@@ -171,18 +197,19 @@ def record_demo (bag_cmd_demo, use_voice):
     
     finally:
         cpipe.done()
-        for cam in started_video:
-            if started_video[cam]:
-                yellowprint("stopping video%i"%cam)
-                save_image_services[cam](cam_stop_request)
-                yellowprint("stopped video%i"%cam)
         if started_bag:
             yellowprint("stopping bag")
             #terminate_process_and_children(bag_handle)
             bag_handle.send_signal(signal.SIGINT)
             bag_handle.wait()
             yellowprint("stopped bag")
-
+        for cam in started_video:
+            if started_video[cam]:
+                yellowprint("stopping video%i"%cam)
+                #terminate_process_and_children(video_handles[cam])
+                video_handles[cam].send_signal(signal.SIGINT)
+                video_handles[cam].wait()
+                yellowprint("stopped video%i"%cam)
         
         if use_voice:
             return status == "finish recording"
@@ -201,10 +228,13 @@ def record_pipeline ( demo_type, calib_file,
     @num_cameras: number of cameras being used.
     @num_demos: number of demos to be recorded. -1 -- default -- means until user stops.
     @use_voice: use voice commands to start/stop demo if true. o/w use command line.
+    
+    Note: Need to start up all cameras from ar_track_service before recording
+          so that the latest camera type mapping/device mapping is stored and ready.  
     """
-    global cmd_checker, camera_types, demo_type_dir, master_file, demo_num, latest_demo_file
+    global cmd_checker, camera_types, demo_type_dir, master_file, demo_num, demo_info, latest_demo_file
 
-    load_parameters(demo_type, num_cameras)
+    load_parameters(demo_type, num_cameras, calib_file)
 
     rospy.init_node("time_to_record")
     sleeper = rospy.Rate(10)
@@ -243,28 +273,30 @@ def record_pipeline ( demo_type, calib_file,
 
 
         # Initialize names and record
-        demo_name = "demo%05d"%(demo_num)
+        demo_name = "demo%05d"%(demo_num)        
         demo_dir = osp.join(demo_type_dir, demo_name)
         if not osp.exists(demo_dir): os.mkdir(demo_dir)
 
-        bag_cmd_demo = bag_cmd%(osp.join(demo_dir,'demo'))
-        ready_service_for_demo (demo_dir)
+        bag_cmd, camera_commands = create_commands_for_demo (demo_dir)
 
         greenprint("Recording %s."%demo_name)
-        save_demo = record_demo(bag_cmd_demo, use_voice)
+        save_demo = record_demo(bag_cmd, camera_commands, use_voice)
         
         if save_demo:
-            with open(master_file, 'a') as fh: fh.write('- demo_name: %s\n'%demo_name)
-            
+            demo_info["demo_name"] = demo_name
+            with open(master_file, 'a') as fh:
+                for i, item in enumerate(demo_info):
+                    fh.write(prefix[i]+item+': '+demo_info[item] + '\n')
+
             cam_type_file = osp.join(demo_dir, 'camera_types.yaml')
             with open(cam_type_file,"w") as fh: yaml.dump(camera_types, fh)
-            cam_model_file = osp.join(demo_dir, 'camera_models.yaml')
-            with open(cam_model_file,"w") as fh: yaml.dump(camera_models, fh)
             
+            for cam in camera_types:
+                if camera_types[cam] == "rgb":
+                    gen_timestamps(osp.join(demo_dir, 'camera_#%i'%cam))
+
             with open(latest_demo_file,'w') as fh: fh.write(str(demo_num))
             demo_num += 1
-            
-            shutil.copyfile(calib_file_path, osp.join(demo_dir,'calib'))
             
             if num_demos > 0:
                 num_demos -= 1
@@ -279,14 +311,13 @@ def record_pipeline ( demo_type, calib_file,
             greenprint("Recorded all demos for session.")
             break
         
+        
     if started_voice:
         yellowprint("stopping voice")
         #terminate_process_and_children(voice_handle)
         voice_handle.send_signal(signal.SIGINT)
         voice_handle.wait()
-        yellowprint("stopped voice")
-        
-    cpipe.done() 
+        yellowprint("stopped voice") 
 
 def record_single_demo (demo_type, demo_name, calib_file, 
                           num_cameras, use_voice):
@@ -296,11 +327,14 @@ def record_single_demo (demo_type, demo_name, calib_file,
     @demo_name: name of demo.
     @calib_file: file to load calibration from. "", -- default -- means using the one in the master file
     @num_demos: number of demos to be recorded. -1 -- default -- means until user stops.
-    @use_voice: use voice commands to start/stop demo if true. o/w use command line.   
+    @use_voice: use voice commands to start/stop demo if true. o/w use command line. 
+    
+    Note: Need to start up all cameras from ar_track_service before recording
+          so that the latest camera type mapping/device mapping is stored and ready.  
     """
-    global cmd_checker, camera_types, demo_type_dir, master_file
+    global cmd_checker, camera_types, demo_type_dir, master_file, demo_info
 
-    load_parameters(demo_type, num_cameras)
+    load_parameters(demo_type, num_cameras, calib_file)
 
     rospy.init_node("time_to_record")
     sleeper = rospy.Rate(10)
@@ -320,9 +354,9 @@ def record_single_demo (demo_type, demo_name, calib_file,
     cmd_checker = voice_alerts()
 
     # Check if continuing or stopping
-    subprocess.call("espeak -v en 'Ready.'", stdout=devnull, stderr=devnull, shell=True)
     if use_voice:
-        time.sleep(1.2)        
+
+        subprocess.call("espeak -v en 'Ready.'", stdout=devnull, stderr=devnull, shell=True)
         while True:
             status = cmd_checker.get_latest_msg()
             if  status in ["begin recording","done session"]:
@@ -339,21 +373,22 @@ def record_single_demo (demo_type, demo_name, calib_file,
     demo_dir = osp.join(demo_type_dir, demo_name)
     if not osp.exists(demo_dir): os.mkdir(demo_dir)
 
-    bag_cmd_demo = bag_cmd%(osp.join(demo_dir,'demo'))
-    ready_service_for_demo (demo_dir)
+    bag_cmd, camera_commands = create_commands_for_demo (demo_dir)
 
     greenprint("Recording %s."%demo_name)
-    save_demo = record_demo(bag_cmd_demo, use_voice)
+    save_demo = record_demo(bag_cmd, camera_commands, use_voice)
 
     if save_demo:
-        with open(master_file, 'a') as fh: fh.write('- demo_name: %s\n'%demo_name)
-        
+        demo_info["demo_name"] = demo_name
+        with open(master_file, 'a') as fh:
+            for i, item in enumerate(demo_info):
+                fh.write(prefix[i]+item+': '+demo_info[item] + '\n')
+                
+        for cam in camera_types:
+            if camera_types[cam] == "rgb":
+                gen_timestamps(osp.join(demo_dir, 'camera_#%i'%cam))
         cam_type_file = osp.join(demo_dir, 'camera_types.yaml')
         with open(cam_type_file,"w") as fh: yaml.dump(camera_types, fh)
-        cam_model_file = osp.join(demo_dir, 'camera_models.yaml')
-        with open(cam_model_file,"w") as fh: yaml.dump(camera_models, fh)
-
-        shutil.copyfile(calib_file_path, osp.join(demo_dir,'calib'))
         
         greenprint("Saved %s"%demo_name)
     else:
@@ -368,9 +403,7 @@ def record_single_demo (demo_type, demo_name, calib_file,
         #terminate_process_and_children(voice_handle)
         voice_handle.send_signal(signal.SIGINT)
         voice_handle.wait()
-        yellowprint("stopped voice")
-        
-    cpipe.done()
+        yellowprint("stopped voice") 
 
 if __name__ == '__main__':
     global downsample

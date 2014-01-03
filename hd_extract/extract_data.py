@@ -23,7 +23,7 @@ from hd_utils.colorize import *
 from hd_utils import ros_utils as ru, clouds, conversions, extraction_utils as eu
 
 from hd_calib import gripper_calibration, gripper, gripper_lite
-from hd_utils.defaults import calib_files_dir, demo_files_dir
+from hd_utils.defaults import demo_files_dir
 from hd_calib.calibration_pipeline import gripper_marker_id, gripper_trans_marker_tooltip
 
 getMarkersPC = None
@@ -79,7 +79,7 @@ def get_ar_marker_poses (msg, ar_markers = None, use_pc_service=True):
 def save_observations_rgbd(demo_type, demo_name, calib_file, num_cameras, for_gpr=False, save_file=None):
     
     demo_dir        = osp.join(demo_files_dir, demo_type, demo_name)
-    calib_file_path = osp.join(calib_files_dir, calib_file)
+    calib_file_path = osp.join(demo_dir,"calib")
     bag_file        = osp.join(demo_dir, 'demo.bag')
     
     with open(osp.join(demo_dir, "camera_types.yaml")) as fh:
