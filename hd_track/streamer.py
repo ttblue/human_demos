@@ -159,16 +159,23 @@ def segment_stream(strm, start_times, stop_times):
     START/STOP_times : np arrays of start/stop times of the segments.
     """
     dat, ts = strm.get_data()
-    n_segs  = len(time_edges)
+    
+    n_segs = len(start_times)
     
     start_inds  = np.searchsorted(ts, start_times)
-    stop_inds   = np.searchsorted(ts, end_times)
+    stop_inds   = np.searchsorted(ts, stop_times)
 
     seg_streams = []
     for i in xrange(n_segs):
         i_start, i_stop = start_inds[i], stop_inds[i]
-        sstrm = streamize(dat[i_start:i_stop], ts[i_start:i_stop], 1./strm.dt, strm.favg, start_times[i]-strm.dt)
+                
+        if i == n_segs - 1:
+            sstrm = streamize(dat[i_start:], ts[i_start:], 1./strm.dt, strm.favg, start_times[i]-strm.dt)
+        else:
+            sstrm = streamize(dat[i_start:i_stop], ts[i_start:i_stop], 1./strm.dt, strm.favg, start_times[i]-strm.dt)
+            
         seg_streams.append(sstrm)
+        
     return seg_streams
 
 

@@ -9,7 +9,7 @@ import scipy.interpolate as si
 import yaml
 import os.path as osp
 
-from hd_track.streamer import streamize, time_shift_stream
+from hd_track.streamer import streamize, time_shift_stream, segment_stream
 from hd_utils.utils import avg_transform
 import hd_utils.transformations as tfms
 from   hd_track.kalman import closer_angle
@@ -49,12 +49,13 @@ def load_data(dat_fname, lr, freq=30.0):
                                    'stream' : cam_strm}
 
     ## hydra data:
-    hy_tfs = [tt[0] for tt in dat[lr]['hydra']]     
-    hy_ts  = np.array([tt[1] for tt in dat[lr]['hydra']])
-    if len(hy_ts) <= 0:
+    hydra_tfs = [tt[0] for tt in dat[lr]['hydra']]     
+    hydra_ts  = np.array([tt[1] for tt in dat[lr]['hydra']])
+
+    if len(hydra_ts) <= 0:
         redprint("ERROR : No hydra data found in : %s"%dat_fname)
         sys.exit(-1)
-    hy_strm = streamize(hy_tfs, hy_ts, freq, avg_transform, tstart=-1./freq)
+    hydra_strm = streamize(hydra_tfs, hydra_ts, freq, avg_transform, tstart=-1./freq)
 
     ## potentiometer angles:
     pot_vals = np.array([tt[0] for tt in dat[lr]['pot_angles']])
@@ -64,11 +65,9 @@ def load_data(dat_fname, lr, freq=30.0):
         sys.exit(-1)
     pot_strm = streamize(pot_vals, pot_ts, freq, np.mean, tstart=-1./freq)
 
-    return (T_cam2hbase, cam_info, hy_strm, pot_strm)
-    
+    return (T_cam2hbase, cam_info, hydra_strm, pot_strm)
 
-
-def segment_streams(strms, time_shifts, demo_dir, base_stream='camera1'):
+def segment_streams(ann_dat, strms, time_shifts, demo_dir, base_stream='camera1'):
     """
     Segments a list of streams based on the timings in the annotation file
     and the time-shift data.
@@ -79,18 +78,16 @@ def segment_streams(strms, time_shifts, demo_dir, base_stream='camera1'):
     BASE_STRM  : The stream relative to which the annotation times are specified
 
     RETURNS : a list of list of streams. len(list) == number of segments
+              start_times: the shifted segment start times
     """
     if base_stream not in time_shifts.keys():
         redprint("Cannot segment streams. Base time shift data is missing for : %s"%base_stream)
 
-    ann_fname = osp.join(demo_dir, 'ann.yaml')
-    with open(ann_fname) as f:
-        ann_dat = yaml.load(f)
-
     n_segs = len(ann_dat)
-    start_times = np.array([seg_info['start']+time_shifts[base_stream] for seg_info in ann_dat])
+    start_times = np.array([seg_info['look']+time_shifts[base_stream] for seg_info in ann_dat])
     stop_times  = np.array([seg_info['stop']+time_shifts[base_stream] for seg_info in ann_dat])
-    nsteps      = (stop_times - start_times) / strms[0].dt 
+    nsteps      = map(int, (stop_times - start_times) / strms[0].dt) 
+    print nsteps
     
     strm_segs = []
     for strm in strms:
@@ -99,11 +96,11 @@ def segment_streams(strms, time_shifts, demo_dir, base_stream='camera1'):
     out_segs = []
     for i in xrange(n_segs):
         si = []
-        for n in len(strms):
+        for n in xrange(len(strms)):
             si.append(strm_segs[n][i])
         out_segs.append(si)
     
-    return out_segs, nsteps
+    return out_segs, nsteps, start_times
 
 
 def relative_time_streams(strms, freq):
@@ -186,7 +183,7 @@ def fit_spline_to_tf_stream(strm, new_freq, deg=3):
     return streamize(smooth_tfms, new_ts, new_freq, strm.favg, tstart)
 
 
-def align_tf_streams(hydra_strm, cam_strm, wsize=20):
+def align_tf_streams(hydra_strm, cam_strm, wsize=0):
     """
     Calculates the time-offset b/w the camera and hydra transform streams.
     It uses a hydra-stream because it is full -- it has no missing data-points.
@@ -196,7 +193,7 @@ def align_tf_streams(hydra_strm, cam_strm, wsize=20):
 
     WSIZE : is the window-size to search in : 
             This function gives the:
-                argmin_{s \in [-wsize, ..,0,..., wsize]} dist(hy_stream, cam_stream(t+s))
+                argmin_{s \in [-wsize, ..,0,..., wsize]} dist(hydra_stream, cam_stream(t+s))
                 where, dist is the euclidean norm (l2 norm).
 
     NOTE : (1) It uses only the position variables for distance calculations.
@@ -217,8 +214,8 @@ def align_tf_streams(hydra_strm, cam_strm, wsize=20):
             cam_inds.append(idx)
         idx += 1
 
-    for hy_tfm in hydra_strm:   
-        Xs_hy.append(hy_tfm[0,3])
+    for hydra_tfm in hydra_strm:   
+        Xs_hy.append(hydra_tfm[0,3])
 
     ## chop-off wsized data from the start and end of the camera-data:
     start_idx, end_idx = 0, len(Xs_cam)-1
@@ -229,8 +226,8 @@ def align_tf_streams(hydra_strm, cam_strm, wsize=20):
     cam_inds = cam_inds[start_idx:end_idx+1]
     Xs_cam   = np.array(Xs_cam[start_idx:end_idx+1])
     for shift in xrange(-wsize, wsize+1):
-        hy_xs = [Xs_hy[idx + shift] for idx in cam_inds]
-        dists.append(np.linalg.norm(np.array(hy_xs) - Xs_cam))
+        hydra_xs = [Xs_hy[idx + shift] for idx in cam_inds]
+        dists.append(np.linalg.norm(np.array(hydra_xs) - Xs_cam))
 
     shift = xrange(-wsize, wsize+1)[np.argmin(dists)]
     redprint("\t stream time-alignment shift is : %d (= %0.3f seconds)"%(shift,hydra_strm.dt*shift))

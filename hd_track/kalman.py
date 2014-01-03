@@ -109,7 +109,7 @@ class kalman:
         self.obs_mat[3:6, 6:9] = np.eye(3)
 
    
-    def __canonicalize_obs__(self, T_obs):
+    def canonicalize_obs(self, T_obs):
         """
         Returns the position and translation from T_obs (4x4 mat).
         Puts the rotation in a form which makes it closer to filter's
@@ -139,7 +139,7 @@ class kalman:
         self.motion_covar    = motion_covar
 
 
-    def get_motion_covar(self, dt=1./30.):
+    def get_motion_covar(self, dt):
         """
         Returns the noise covariance for the motion model.
         Assumes a diagonal structure for now.
@@ -205,7 +205,7 @@ class kalman:
         return (x_n, S_n)
 
 
-    def register_tf_observation(self, obs_tf, Q_obs, t=None, do_control_update=False):
+    def register_tf_observation(self, obs_tf, is_hydra, Q_obs, t=None, do_control_update=False):
         """
         This function updates the filter with an observation.
         OBS_TF   : is the observed transform.
@@ -224,7 +224,7 @@ class kalman:
             return
 
         pos, rpy     = self.canonicalize_obs(obs_tf)
-        C, Q         = self.get_obs_mats(is_hydra)
+        C_obs = self.get_obs_mat(is_hydra)
         z_obs = np.c_['0,2', pos, rpy]
-        self.x_filt, self.S_filt = self.measurement_update(z_obs, C, Q, self.x_filt, self.S_filt)
+        self.x_filt, self.S_filt = self.measurement_update(z_obs, C_obs, Q_obs, self.x_filt, self.S_filt)
 

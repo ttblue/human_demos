@@ -10,8 +10,8 @@ from hd_utils.defaults import tfm_link_rof, asus_xtion_pro_f
 from cameras import RosCameras
 import get_marker_transforms as gmt
 
-import roslib; roslib.load_manifest('icp_service')
-from icp_service.srv import ICPTransform, ICPTransformRequest, ICPTransformResponse
+#import roslib; roslib.load_manifest('icp_service')
+#from icp_service.srv import ICPTransform, ICPTransformRequest, ICPTransformResponse
 
 WIN_NAME = 'cv_test'
 chessboard_rows = 3
@@ -408,40 +408,40 @@ class CameraCalibrator:
             cam_transform['child'] = 'camera%d_link' % (c2 + 1)
             cam_transform['tfm'] = tfm_link_rof.dot(tfm).dot(np.linalg.inv(tfm_link_rof))
 
-            if use_icp:
-                if self.icpService is None:
-                    self.icpService = rospy.ServiceProxy("icpTransform", ICPTransform)
-                
-                
-                greenprint("Refining calibration with ICP.")
-                req = ICPTransformRequest()
-                
-                
-                # Interchange pc1 and pc2 or use inv(cam_transform) as guess.
-                raw_input(colorize("Cover camera %i and hit enter!" % (c2 + 1), 'yellow', True))
-                pc2 = self.cameras.get_pointcloud(c1)
-                pc2_points = ru.pc2xyz(pc2)
-                pc2_points = np.reshape(pc2_points, (640 * 480, 3), order='F')
-                pc2_points = pc2_points[np.bitwise_not(np.isnan(pc2_points).any(axis=1)), :]
-                req.pc2 = ru.xyz2pc(pc2_points, pc2.header.frame_id)
-    
-                raw_input(colorize("Cover camera %i and hit enter!" % (c1 + 1), 'yellow', True))
-                pc1 = self.cameras.get_pointcloud(c2)
-                pc1_points = ru.pc2xyz(pc1)
-                pc1_points = np.reshape(pc1_points, (640 * 480, 3), order='F')
-                pc1_points = pc1_points[np.bitwise_not(np.isnan(pc1_points).any(axis=1)), :]
-                pc1_points = (np.c_[pc1_points, np.ones((pc1_points.shape[0], 1))].dot(tfm.T))[:, 0:3]
-                req.pc1 = ru.xyz2pc(pc1_points, pc1.header.frame_id)
-    
-                req.guess = conversions.hmat_to_pose(np.eye(4))
-    
-                try:
-                    res = self.icpService(req)
-                    print res
-                    res_tfm = conversions.pose_to_hmat(res.pose)
-                    cam_transform['tfm'] = tfm_link_rof.dot(res_tfm.dot(tfm)).dot(np.linalg.inv(tfm_link_rof))
-                except:
-                    redprint("ICP failed. Using AR-only calibration.")
+#             if use_icp:
+#                 if self.icpService is None:
+#                     self.icpService = rospy.ServiceProxy("icpTransform", ICPTransform)
+#                 
+#                 
+#                 greenprint("Refining calibration with ICP.")
+#                 req = ICPTransformRequest()
+#                 
+#                 
+#                 # Interchange pc1 and pc2 or use inv(cam_transform) as guess.
+#                 raw_input(colorize("Cover camera %i and hit enter!" % (c2 + 1), 'yellow', True))
+#                 pc2 = self.cameras.get_pointcloud(c1)
+#                 pc2_points = ru.pc2xyz(pc2)
+#                 pc2_points = np.reshape(pc2_points, (640 * 480, 3), order='F')
+#                 pc2_points = pc2_points[np.bitwise_not(np.isnan(pc2_points).any(axis=1)), :]
+#                 req.pc2 = ru.xyz2pc(pc2_points, pc2.header.frame_id)
+#     
+#                 raw_input(colorize("Cover camera %i and hit enter!" % (c1 + 1), 'yellow', True))
+#                 pc1 = self.cameras.get_pointcloud(c2)
+#                 pc1_points = ru.pc2xyz(pc1)
+#                 pc1_points = np.reshape(pc1_points, (640 * 480, 3), order='F')
+#                 pc1_points = pc1_points[np.bitwise_not(np.isnan(pc1_points).any(axis=1)), :]
+#                 pc1_points = (np.c_[pc1_points, np.ones((pc1_points.shape[0], 1))].dot(tfm.T))[:, 0:3]
+#                 req.pc1 = ru.xyz2pc(pc1_points, pc1.header.frame_id)
+#     
+#                 req.guess = conversions.hmat_to_pose(np.eye(4))
+#     
+#                 try:
+#                     res = self.icpService(req)
+#                     print res
+#                     res_tfm = conversions.pose_to_hmat(res.pose)
+#                     cam_transform['tfm'] = tfm_link_rof.dot(res_tfm.dot(tfm)).dot(np.linalg.inv(tfm_link_rof))
+#                 except:
+#                     redprint("ICP failed. Using AR-only calibration.")
                 
             self.camera_transforms[c1, c2] = cam_transform
         

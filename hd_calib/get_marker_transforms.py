@@ -9,7 +9,6 @@ import time
 
 from hd_utils import clouds, ros_utils as ru, conversions, utils
 from hd_utils.defaults import asus_xtion_pro_f
-from cyni_cameras import cyni_cameras
 
 import read_arduino 
 
@@ -26,6 +25,7 @@ hydra_initialized = False
 tf_initialized = False
 pot_initialized = False
 
+'''
 def get_ar_marker_poses (rgb, depth, pc = None):
     """
     In order to run this, ar_marker_service needs to be running.
@@ -88,7 +88,7 @@ def get_ar_markers_from_cameras (cameras, parent_frame = None, cams = None, mark
         return ar_markers
     else:
         return {marker:ar_markers[marker] for marker in ar_markers if marker in markers}
-
+'''
 
 def get_hydra_transforms(parent_frame, hydras = None):
     """

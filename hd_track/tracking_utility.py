@@ -20,7 +20,7 @@ from hd_utils.utils import *
 from hd_utils.defaults import tfm_link_rof
 
 
-from hd_track.kalman import kalman, closer_angle
+from hd_track.kalman_jia import kalman, closer_angle
 from hd_track.kalman import smoother
 
 
@@ -632,10 +632,7 @@ def traj_kalman_lr(data_file, calib_file, lr, freq, use_spline, customized_shift
     T_smoother = state_to_hmat(list(X_kf.T))
     
     ## load the potentiometer-angle stream:
-    if lr == None:
-        pot_data = cp.load(open(data_file))['pot_angles']
-    else:
-        pot_data = cp.load(open(data_file))[lr]['pot_angles']
+    pot_data = cp.load(open(data_file))[lr]['pot_angles']
     
     ang_ts   = np.array([tt[1] for tt in pot_data])  ## time-stamps
     ang_vals = [open_frac(tt[0]) for tt in pot_data]  ## angles
@@ -667,13 +664,11 @@ def traj_kalman_lr(data_file, calib_file, lr, freq, use_spline, customized_shift
 def traj_kalman(data_file, calib_file, freq, use_spline=False, customized_shift=None, single_camera=False):
     traj = {}
     data = cp.load(open(data_file))
-    if data.has_key('pot_angles'):
-        traj['l'] = traj_kalman_lr(data_file, calib_file, None, freq, use_spline, customized_shift, single_camera)
-    else:
-        if data.has_key('l'):
-            traj['l'] = traj_kalman_lr(data_file, calib_file, 'l', freq, use_spline, customized_shift, single_camera)
-        if data.has_key('r'):
-            traj['r'] = traj_kalman_lr(data_file, calib_file, 'r', freq, use_spline, customized_shift, single_camera)
+
+    if data.has_key('l'):
+        traj['l'] = traj_kalman_lr(data_file, calib_file, 'l', freq, use_spline, customized_shift, single_camera)
+    if data.has_key('r'):
+        traj['r'] = traj_kalman_lr(data_file, calib_file, 'r', freq, use_spline, customized_shift, single_camera)
 
     return traj
 

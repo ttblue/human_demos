@@ -72,39 +72,63 @@ def add_rgbd_to_hdf(video_dir, annotation, hdfroot, demo_name):
         seg_group["depth"] = depth_imgs[i_seg]
         
         
-def add_traj_to_hdf(traj, annotation, hdfroot, demo_name):
-    
+def add_traj_to_hdf_full_demo(traj, annotation, hdfroot, demo_name):
+    '''
+    add traj from kalman filter (for full demo, using old kf)
+    '''
+     
     # get stamps of the trajectory
     for (lr, tr) in traj.items():
         stamps = tr["stamps"]
         break
-                
+                 
     demo_group = hdfroot.create_group(demo_name)
-        
+         
     for seg_info in annotation:
         seg_group = demo_group.create_group(seg_info["name"]) 
-        
+         
         start = seg_info["start"]
         stop = seg_info["stop"]
-        
+         
         [i_start, i_stop] = np.searchsorted(stamps, [start, stop])
-        
+         
         traj_seg = {}
-        
+         
         for lr in traj:
             traj_seg[lr] = {}
             traj_seg[lr]["tfms"] = traj[lr]["tfms"][i_start:i_stop+1]
             traj_seg[lr]["tfms_s"] = traj[lr]["tfms_s"][i_start:i_stop+1]
             traj_seg[lr]["pot_angles"] = traj[lr]["pot_angles"][i_start:i_stop+1]
             traj_seg[lr]["stamps"] = traj[lr]["stamps"][i_start:i_stop+1]
-                            
-            
+                             
+             
         for lr in traj:
             lr_group = seg_group.create_group(lr)
             lr_group["tfms"] = traj_seg[lr]["tfms"]
             lr_group["tfms_s"] = traj_seg[lr]["tfms_s"]
             lr_group["pot_angles"] = traj_seg[lr]["pot_angles"]
             lr_group["stamps"] = traj_seg[lr]["stamps"]
+            
+def add_traj_to_hdf(traj, annotation, hdfroot, demo_name):
+    '''
+    add segmented traj from kalman filter (using new kf)
+    '''
+    
+    demo_group = hdfroot.create_group(demo_name)
+    
+    for seg_info in annotation:
+        seg_name = seg_info["name"]
+        seg_group = demo_group.create_group(seg_name)
+        
+        for lr in traj:
+            lr_group = seg_group.create_group(lr)
+            
+            lr_group["tfms"] = traj[lr][seg_name]["tfms"]
+            lr_group["tfms_s"] = traj[lr][seg_name]["tfms_s"]
+            lr_group["pot_angles"] = traj[lr][seg_name]["pot_angles"]
+            lr_group["stamps"] = traj[lr][seg_name]["stamps"]
+            lr_group["covars"] = traj[lr][seg_name]["covars"]
+            lr_group["covars_s"] = traj[lr][seg_name]["covars_s"]
         
 
 
@@ -136,12 +160,9 @@ else:
         demo_dir = osp.join(task_dir, demo_name)
         
         video_dirs = [osp.join(demo_dir, video_dir) for video_dir in demo_info['video_dirs']]
-        # data_file = osp.join(demo_dir, demo_info['data_file'])
-        # bag_file = osp.join(demo_dir, demo_info['bag_file'])
-        #calib_file = osp.join(calib_files_dir, demo_info['calib_file'])
-        calib_file = osp.join(demo_dir, 'calib')
-        annotation_file = osp.join(demo_dir, demo_info['annotation_file'])
-        traj_file = osp.join(demo_dir, demo_info['traj_file'])
+
+        annotation_file = osp.join(demo_dir,"ann.yaml")
+        traj_file = osp.join(demo_dir, "demo.traj")
         
         with open(annotation_file, "r") as fh: annotations = yaml.load(fh)
         with open(traj_file, "r") as fh: traj = cp.load(fh)

@@ -14,13 +14,17 @@ from hd_utils.utils import *
 from hd_track.kalman import kalman, smoother
 from hd_track.kalman_tuning import state_from_tfms_no_velocity
 
-from hd_track.streamer import streamize, soft_next, get_corresponding_data
+from hd_track.streamer import streamize, get_corresponding_data, stream_soft_next
 
 from hd_track.demo_data_prep import *
 from hd_track.tps_correct    import *
 
+import argparse 
+from hd_utils.defaults import demo_files_dir
 
-def initialize_covariances(freq=30.0):
+
+
+def initialize_covariances(freq):
     """
     Initialize empirical estimates of covariances:
     
@@ -52,10 +56,10 @@ def initialize_covariances(freq=30.0):
                                       np.square(motion_rpy_std)*I3,
                                       np.square(motion_vth_std)*I3  )
 
-    return (motion_covar, rgb_covar, rgbd_cavar, hydra_covar)
+    return (motion_covar, rgb_covar, rgbd_covar, hydra_covar)
 
 
-def get_first_state(tf_streams, freq=30.):
+def get_first_state(tf_streams, freq, start_time):
     """
     Returns the first state and covariance given :
      - TF_STREAMS : a list of streams of transform data.
@@ -68,8 +72,9 @@ def get_first_state(tf_streams, freq=30.):
     for i in xrange(n_streams):
         tfs, ts = tf_streams[i].get_data()
         for ti, t in enumerate(ts):
-            if t <= dt:
+            if t <= dt + start_time:
                 tfs0.append(tfs[ti])
+                
 
     if len(tfs0)==0:
         redprint("Cannot find initial state for KF: no data found within dT in all streams")    
@@ -123,16 +128,16 @@ def plot_tf_streams(tf_strms, strm_labels, styles=None, title=None, block=True):
 
 
 
-def load_demo_data(demo_fname, freq=30.0, rem_outliers=True, tps_correct=True, tps_model_fname=None, plot=False):
+def load_demo_data(demo_fname, freq, rem_outliers, tps_correct, tps_model_fname, plot, block):
     cam_dat = {}
-    hy_dat  = {}
+    hydra_dat  = {}
     pot_dat = {}
     dt      = 1./freq
     demo_dir  = osp.dirname(demo_fname)
     lr_full   = {'l': 'left', 'r':'right'}
 
-    T_cam2hbase, cam_dat['l'], hy_dat['l'], pot_dat['l'] = load_data(demo_fname, 'l', freq)
-    T_cam2hbase, cam_dat['r'], hy_dat['r'], pot_dat['r'] = load_data(demo_fname, 'r', freq)
+    T_cam2hbase, cam_dat['l'], hydra_dat['l'], pot_dat['l'] = load_data(demo_fname, 'l', freq)
+    T_cam2hbase, cam_dat['r'], hydra_dat['r'], pot_dat['r'] = load_data(demo_fname, 'r', freq)
     
     
     ## collect all camera streams in a list:
@@ -149,8 +154,9 @@ def load_demo_data(demo_fname, freq=30.0, rem_outliers=True, tps_correct=True, t
     for lr in 'lr':
         for cam in cam_dat[lr].keys():
             all_cam_strms.append(cam_dat[lr][cam]['stream'])
-    tmin, _, _ = relative_time_streams(hy_dat.values() + pot_dat.values() + all_cam_strms, freq)
+    tmin, _, _ = relative_time_streams(hydra_dat.values() + pot_dat.values() + all_cam_strms, freq)
     tshift1 = -tmin
+    
 
     ## remove outliers in the camera streams
     if rem_outliers:
@@ -161,7 +167,7 @@ def load_demo_data(demo_fname, freq=30.0, rem_outliers=True, tps_correct=True, t
                 if plot:
                     blueprint("\t Plotting outlier rejection..")
                     cam_name = cam+'_'+lr
-                    plot_tf_streams([cam_dat[lr][cam]['stream'], strm_in], strm_labels=[cam_name, cam_name+'_in'], styles=['.','-'], block=False)
+                    plot_tf_streams([cam_dat[lr][cam]['stream'], strm_in], strm_labels=[cam_name, cam_name+'_in'], styles=['.','-'], block=block)
                 cam_dat[lr][cam]['stream'] = strm_in
 
 
@@ -175,7 +181,7 @@ def load_demo_data(demo_fname, freq=30.0, rem_outliers=True, tps_correct=True, t
                 ndat[lr] = len(cam_dat[lr][cam]['stream'].get_data()[0])
        
         lr_align = ndat.keys()[np.argmax(ndat.values())]
-        time_shifts[cam] = dt* align_tf_streams(hy_dat[lr_align], cam_dat[lr_align][cam]['stream'])
+        time_shifts[cam] = dt* align_tf_streams(hydra_dat[lr_align], cam_dat[lr_align][cam]['stream'])
 
     greenprint("Time-shifts found : %s"%str(time_shifts))
     
@@ -193,9 +199,9 @@ def load_demo_data(demo_fname, freq=30.0, rem_outliers=True, tps_correct=True, t
                 unaligned_cam_streams.append(cam['stream'])
             
             blueprint("\t plotting unaligned TF streams...")
-            plot_tf_streams(unaligned_cam_streams + [hy_dat[lr]], cam_dat[lr].keys()+['hydra'], title='UNALIGNED CAMERA-streams (%s)'%lr_full[lr], block=False)
+            plot_tf_streams(unaligned_cam_streams + [hydra_dat[lr]], cam_dat[lr].keys()+['hydra'], title='UNALIGNED CAMERA-streams (%s)'%lr_full[lr], block=block)
             blueprint("\t plotting aligned TF streams...")
-            plot_tf_streams(aligned_cam_strms+[hy_dat[lr]], cam_dat[lr].keys()+['hydra'], title='ALIGNED CAMERA-streams (%s)'%lr_full[lr], block=False)
+            plot_tf_streams(aligned_cam_strms+[hydra_dat[lr]], cam_dat[lr].keys()+['hydra'], title='ALIGNED CAMERA-streams (%s)'%lr_full[lr], block=block)
             
         for i,cam in enumerate(cam_dat[lr].keys()):
             cam_dat[lr][cam]['stream'] = aligned_cam_strms[i]
@@ -203,14 +209,14 @@ def load_demo_data(demo_fname, freq=30.0, rem_outliers=True, tps_correct=True, t
 
     ## put the aligned-streams again on the same time-scale: 
     blueprint("Re-aligning the TF-streams after TF based time-shifts..")
-    tmin, tmax, nsteps = relative_time_streams(hy_dat.values() + pot_dat.values() + all_cam_strms, freq)
+    tmin, tmax, nsteps = relative_time_streams(hydra_dat.values() + pot_dat.values() + all_cam_strms, freq)
     tshift2 = -tmin
     greenprint("TOTAL TIME-SHIFT : (%0.3f + %0.3f) = %0.3f"%(tshift1, tshift2, tshift1+tshift2))
 
     ## TPS-correct the hydra-data:
     if tps_correct:
         tps_models = {'l':None, 'r':None}
-        if tps_model_fname == None:
+        if tps_model_fname == '':
             blueprint("\t Fitting TPS model to demo data..")
             for lr in 'lr':
                 blueprint("\t TPS fitting for %s"%lr_full[lr])
@@ -218,8 +224,8 @@ def load_demo_data(demo_fname, freq=30.0, rem_outliers=True, tps_correct=True, t
                     redprint("\t\t camera1 not in the data for %s gripper -- Cannot do tps-fit. Skipping.."%lr_full[lr])
                     continue
 
-                _, hy_tfs, cam1_tfs = get_corresponding_data(hy_dat[lr], cam_dat[lr]['camera1']['stream'])
-                f_tps = fit_tps_on_tf_data(hy_tfs, cam1_tfs, plot=False) ## <<< mayavi plotter has some issues with multiple insantiations..
+                _, hydra_tfs, cam1_tfs = get_corresponding_data(hydra_dat[lr], cam_dat[lr]['camera1']['stream'])
+                f_tps = fit_tps_on_tf_data(hydra_tfs, cam1_tfs, plot=False) ## <<< mayavi plotter has some issues with multiple insantiations..
                 T_cam2hbase_train = T_cam2hbase
                 tps_models[lr]    = f_tps
 
@@ -234,17 +240,17 @@ def load_demo_data(demo_fname, freq=30.0, rem_outliers=True, tps_correct=True, t
         blueprint("TPS-correcting hydra-data..")
         for lr in 'lr':
             if tps_models[lr] != None:
-                hy_tfs, hy_ts  = hy_dat[lr].get_data()
-                hy_tfs_aligned = correct_hydra(hy_tfs, T_cam2hbase, tps_models[lr], T_cam2hbase_train)
-                hy_strm_aligned = streamize(hy_tfs_aligned, hy_ts, 1./hy_dat[lr].dt, hy_dat[lr].favg, hy_dat[lr].tstart)
+                hydra_tfs, hydra_ts  = hydra_dat[lr].get_data()
+                hydra_tfs_aligned = correct_hydra(hydra_tfs, T_cam2hbase, tps_models[lr], T_cam2hbase_train)
+                hydra_strm_aligned = streamize(hydra_tfs_aligned, hydra_ts, 1./hydra_dat[lr].dt, hydra_dat[lr].favg, hydra_dat[lr].tstart)
 
                 if plot:
                     if tps_model_fname!=None:
-                        plot_tf_streams([hy_dat[lr], hy_strm_aligned], ['hy-old', 'hy-corr'], title='hydra-correction %s'%lr_full[lr], block=False)
+                        plot_tf_streams([hydra_dat[lr], hydra_strm_aligned], ['hydra-old', 'hydra-corr'], title='hydra-correction %s'%lr_full[lr], block=block)
                     else:
-                        plot_tf_streams([hy_dat[lr], hy_strm_aligned, cam_dat[lr]['camera1']['stream']], ['hy-old', 'hy-corr', 'cam1'], title='hydra-correction', block=True)
+                        plot_tf_streams([hydra_dat[lr], hydra_strm_aligned, cam_dat[lr]['camera1']['stream']], ['hydra-old', 'hydra-corr', 'cam1'], title='hydra-correction', block=block)
 
-                hy_dat[lr] = hy_strm_aligned
+                hydra_dat[lr] = hydra_strm_aligned
 
     ## return the data:
     filter_data = {'demo_dir': demo_dir,
@@ -252,19 +258,31 @@ def load_demo_data(demo_fname, freq=30.0, rem_outliers=True, tps_correct=True, t
                    'tmin'   : tmin,
                    'tmax'   : tmax,
                    'pot_dat': pot_dat,
-                   'hy_dat': hy_dat,
+                   'hydra_dat': hydra_dat,
                    'cam_dat': cam_dat,
                    't_shift': tshift1+tshift2,
                    'cam_shifts': time_shifts}
     return filter_data
 
 
-def prepare_kf_data(demo_fname, freq=30.0, rem_outliers=True, tps_correct=True, tps_model_fname=None, plot=False):
+def prepare_kf_data(demo_fname, ann_fname, freq, rem_outliers, tps_correct, tps_model_fname, plot, block):
+    '''
+    freq: default 30
+    rem_outlier: default True
+    tps_correct: default True
+    tps_model_fname: default None
+    plot default False
+    
+    '''
     filter_data = load_demo_data(demo_fname, freq,
                                  rem_outliers,
                                  tps_correct,
                                  tps_model_fname,
-                                 plot)
+                                 plot,
+                                 block)
+    
+    with open(ann_fname) as f:
+        ann_dat = yaml.load(f)
 
     time_shifts = filter_data['cam_shifts']
     for strm_name in time_shifts.keys():
@@ -272,15 +290,16 @@ def prepare_kf_data(demo_fname, freq=30.0, rem_outliers=True, tps_correct=True, 
 
     rec_data = {'l':None, 'r':None}
     for lr in 'lr':
-        hy_strm   = filter_data['hy_dat'][lr]
+        hydra_strm   = filter_data['hydra_dat'][lr]
         cam_strms = filter_data['cam_dat'][lr]
         pot_strm  = filter_data['pot_dat'][lr]
         
-        strms = [hy_strm, pot_strm]
+        strms = [hydra_strm, pot_strm]
         for cam in cam_strms.keys():
             strms.append(cam_strms[cam]['stream'])
 
-        seg_streams, nsteps  = segment_streams(strms, time_shifts, filter_data['demo_dir'], base_stream='camera1')
+        seg_streams, nsteps, shifted_seg_start_times = segment_streams(ann_dat, strms, time_shifts, filter_data['demo_dir'], base_stream='camera1')
+
         n_segs = len(seg_streams)
     
         seg_data = []
@@ -292,10 +311,12 @@ def prepare_kf_data(demo_fname, freq=30.0, rem_outliers=True, tps_correct=True, 
                 seg_cam_strms[cam] = {'type'   : cam_strms[cam]['type'],
                                       'stream' : seg_streams[i][2+j]}
 
-            seg = {'hy_strm'  : seg_streams[i][0],
+            seg = {'name': ann_dat[i]['name'],
+                   'hydra_strm'  : seg_streams[i][0],
                    'pot_strm' : seg_streams[i][1],
                    'cam_dat'  : seg_cam_strms,
-                   'nsteps'   : nsteps[i]}
+                   'nsteps'   : nsteps[i],
+                   'shifted_seg_start_times': shifted_seg_start_times[i]}
 
             seg_data.append(seg)
 
@@ -304,7 +325,7 @@ def prepare_kf_data(demo_fname, freq=30.0, rem_outliers=True, tps_correct=True, 
     return rec_data, time_shifts, demo_fname, n_segs
 
 
-def initialize_KFs(kf_data):
+def initialize_KFs(kf_data, freq):
     """
     Initializes the Kalman filters (one-each for left/right x segment).
     KF_DATA : Data as returned by prepare_kf_data function above. 
@@ -316,109 +337,137 @@ def initialize_KFs(kf_data):
     for lr in 'lr':
         KF_lr = []
         for i in xrange(n_segs):
-            hy_strm   = kf_data[lr][i]['hy_strm']
+            hydra_strm   = kf_data[lr][i]['hydra_strm']
             cam_dat   = kf_data[lr][i]['cam_dat']
             cam_strms= []
-            for cinfo in cam_data.values():
+            for cinfo in cam_dat.values():
                 cam_strms.append(cinfo['stream'])
+                
+#             print "initialize_KF"
+#             print hydra_strm.get_start_time(), cam_strms[0].get_start_time(), cam_strms[1].get_start_time(), cam_strms[2].get_start_time()
+#             print hydra_strm.get_data()[1][0], cam_strms[0].get_data()[1][0], cam_strms[1].get_data()[1][0], cam_strms[2].get_data()[1][0] 
 
-            x0, S0 = get_first_state(cam_strms + [hy_strm], freq=1./hy_strm.dt)
+            x0, S0 = get_first_state(cam_strms + [hydra_strm], freq=1./hydra_strm.dt, start_time=kf_data[lr][i]['shifted_seg_start_times'])
 
             KF = kalman()
-            kf_tstart = hy_strm.get_start_time()
+            kf_tstart = hydra_strm.get_start_time()
             KF.init_filter(kf_tstart, x0, S0, motion_covar)
             KF_lr.append(KF)
         KFs[lr] = KF_lr
     return KFs
 
 
-def run_KF(KF, nsteps, hy_strm, cam_dat, hy_covar, rgb_covar, rgbd_covar, do_smooth=True, plot=False):
+def run_KF(KF, nsteps, freq, hydra_strm, cam_dat, hydra_covar, rgb_covar, rgbd_covar, do_smooth, plot, block):
     """
     Runs the Kalman filter/smoother for NSTEPS using
     {hydra/rgb/rgbd}_covar as the measurement covariances.
     
-    HY_STRM   : TF stream from hydra
-    CAM_DAT   : Dicionary of camera streams 
+    HYDRA_STRM   : TF stream from hydra
+    CAM_DAT   : Dictionary of camera streams 
+    do_smooth: default true
+    plot: default true
     """ 
+    
+    dt = 1./freq
+    
     ## place holders for kalman filter's output:
     xs_kf, covars_kf, ts_kf = [KF.x_filt],[KF.S_filt],[KF.t_filt]
 
-    hy_snext  = stream_soft_next(hy_strm)
+    hydra_snext  = stream_soft_next(hydra_strm)
 
     cam_strms = [cinfo['stream'] for cinfo in cam_dat.values()]
     cam_types = [cinfo['type'] for cinfo in cam_dat.values()]
     cam_snext = [stream_soft_next(cstrm) for cstrm in cam_strms]
     
     for i in xrange(nsteps):
-        KF.register_tf_observation(hy_snext(), KF.hy_covar, do_control_update=True)
+        KF.register_tf_observation(hydra_snext(), True, hydra_covar, do_control_update=True)
 
         for i in xrange(len(cam_types)):
             cam_covar = rgbd_covar
             if cam_types[i]=='rgb':
                 cam_covar = rgb_covar
-            KF.register_tf_observation(cam_snext[i](), cam_covar, do_control_update=False)
+            KF.register_tf_observation(cam_snext[i](), False, cam_covar, do_control_update=False)
 
         xs_kf.append(KF.x_filt)
         covars_kf.append(KF.S_filt)
         ts_kf.append(KF.t_filt)
 
     if do_smooth:
-        A,R  = KF.get_motion_mats()
-        xs_smthr, covars_smthr = smoother(A, R, xs_ks, S_kf)
+        A,R  = KF.get_motion_mats(dt)
+        xs_smthr, covars_smthr = smoother(A, R, xs_kf, covars_kf)
         
         if plot:
-            kf_strm   = streamize(state_to_hmat(xs_kf), np.array(ts_kf), 1./hy_strm.dt, hy_strm.favg)
-            sm_strm   = streamize(state_to_hmat(xs_smthr), np.array(ts_kf), 1./hy_strm.dt, hy_strm.favg)
-            plot_tf_strms([kf_strm, sm_strm, hy_strm]+cam_strms, ['kf', 'smoother', 'hydra']+cam_dat.keys())
+            kf_strm   = streamize(state_to_hmat(xs_kf), np.array(ts_kf), 1./hydra_strm.dt, hydra_strm.favg)
+            sm_strm   = streamize(state_to_hmat(xs_smthr), np.array(ts_kf), 1./hydra_strm.dt, hydra_strm.favg)
+            plot_tf_streams([kf_strm, sm_strm, hydra_strm]+cam_strms, ['kf', 'smoother', 'hydra']+cam_dat.keys(), block=block)
         
         return (ts_kf, xs_kf, covars_kf, xs_smthr, covars_smthr)
     else:
         if plot:
-            kf_strm   = streamize(state_to_hmat(xs_kf), np.array(ts_kf), 1./hy_strm.dt, hy_strm.favg)
-            plot_tf_strms([kf_strm, hy_strm]+cam_strms, ['kf', 'hydra']+cam_dat.keys())
+            kf_strm   = streamize(state_to_hmat(xs_kf), np.array(ts_kf), 1./hydra_strm.dt, hydra_strm.favg)
+            plot_tf_streams([kf_strm, hydra_strm]+cam_strms, ['kf', 'hydra']+cam_dat.keys(), block=block)
         return (ts_kf, xs_kf, covars_kf, None, None)
 
 
 
-def filter_traj(demo_fname, tps_model_fname=None, save_tps=False, do_smooth=True, plot=False):
+def filter_traj(demo_fname, ann_fname, tps_model_fname, save_tps, do_smooth, plot, block):
     """
     Runs the kalman filter for BOTH the grippers and writes the demo.traj file.
     TPS_MODEL_FNAME : The name of the file to load the tps-model from
     """
-    rec_data, time_shifts, _, n_segs = prepare_kf_data(demo_fname, freq=30.0,
-                                               rem_outliers=True,
-                                               tps_correct=True, tps_model_fname=tps_model_fname,
-                                               plot=plot)
+    
+    freq = 30.0
+    
+    rec_data, time_shifts, _, n_segs = prepare_kf_data(demo_fname, ann_fname, freq=freq,
+                                                       rem_outliers=True,
+                                                       tps_correct=True, tps_model_fname=tps_model_fname,
+                                                       plot=plot,
+                                                       block=block)
+    
+    print time_shifts
 
-    _, rgb_covar, rgbd_cavar, hydra_covar =  initialize_covariances()
+    _, rgb_covar, rgbd_covar, hydra_covar =  initialize_covariances(freq)
 
-    KFs  = initialize_KFs(rec_data)
+    KFs  = initialize_KFs(rec_data, freq)
     traj = {'l' : None, 'r':None}
 
     for lr in 'lr':
-        lr_trajs = []
+        lr_trajs = {}
         for iseg in xrange(n_segs):
             KF = KFs[lr][iseg]
-            hy_strm  = rec_data[lr][iseg]['hy_strm']
+            hydra_strm  = rec_data[lr][iseg]['hydra_strm']
             pot_strm = rec_data[lr][iseg]['pot_strm']
             cam_dat  = rec_data[lr][iseg]['cam_dat']
             nsteps   = rec_data[lr][iseg]['nsteps']
 
-            ts, xs_kf, covars_kf, xs_smthr, covars_smthr = run_KF(KF, nsteps,
-                                                                  hy_strm, cam_dat,
-                                                                  hy_covar, rgb_covar, rgbd_covar,
-                                                                  do_smooth, plot)
+            ts, xs_kf, covars_kf, xs_smthr, covars_smthr = run_KF(KF, nsteps, freq,
+                                                                  hydra_strm, cam_dat,
+                                                                  hydra_covar, rgb_covar, rgbd_covar,
+                                                                  do_smooth, plot, block)
+            
+            for i in range(len(ts)):
+                ts[i] -= time_shifts['camera1']
+                                
             Ts_kf, Ts_smthr = state_to_hmat(xs_kf), state_to_hmat(xs_smthr)
             
             pot_angles = [x for x in pot_strm]
+            
+            '''''
+            Dirty hack!!!!!!!!!!!!!!!!!!!!!!!!!
+            '''''
+            for i in xrange(len(pot_angles)):
+                if pot_angles[i] == None:
+                    pot_angles[i] = 0
 
-            traj = {"stamps"  : ts,
-                    "tfms"    : Ts_kf,
-                    "covars"  : covars_kf,
-                    "tfms_s"  : Ts_smthr,
-                    "covars_s": covars_smthr,
-                    "pot_angles": pot_angles}
-            lr_trajs.append(traj)
+            seg_traj = {"stamps"  : ts,
+                        "tfms"    : Ts_kf,
+                        "covars"  : covars_kf,
+                        "tfms_s"  : Ts_smthr,
+                        "covars_s": covars_smthr,
+                        "pot_angles": pot_angles}
+            
+            seg_name = rec_data[lr][iseg]["name"]
+            lr_trajs[seg_name] = seg_traj
 
         traj[lr] = lr_trajs
 
@@ -428,6 +477,41 @@ def filter_traj(demo_fname, tps_model_fname=None, save_tps=False, do_smooth=True
 
 
 if __name__=='__main__':
-    demo_fname = '../hd_data/demos/overhand/demo00003/demo.data'
-    filter_traj(demo_fname, tps_model_fname=None, save_tps=True, do_smooth=True, plot=True)
+    
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--demo_type", help="Type of demonstration")
+    parser.add_argument("--demo_name", help="Name of demo", default='', type=str)
+    parser.add_argument("--save_tps", help="Save tpf correction file", action='store_false', default=True)
+    parser.add_argument("--rem_outline", help="remove outlines", action='store_false', default=True)
+    parser.add_argument("--do_smooth", help="perform smoothing", action='store_false', default=True)
+    parser.add_argument("--plotting", help="plot results", action='store_true', default=False)
+    parser.add_argument("--tps_fname", help="tps file name to be used", default='', type=str)
+    parser.add_argument("--block", help="block plotting", action='store_true', default=False)
+    
+    args = parser.parse_args()
+    
+    
+    demo_type_dir = osp.join(demo_files_dir, args.demo_type)
+    demo_master_file = osp.join(demo_type_dir, "master.yaml")
+    
+    with open(demo_master_file, 'r') as fh:
+        demos_info = yaml.load(fh)
+        
+        
+   
+    if args.demo_name == '':
+        for demo_info in demos_info["demos"]:
+            demo_fname = osp.join(demo_type_dir, demo_info["demo_name"], demo_info["data_file"])
+            ann_fname = osp.join(demo_type_dir, demo_info["demo_name"], demo_info["annotation_file"])
+            filter_traj(demo_fname, ann_fname, tps_model_fname=args.tps_fname, save_tps=args.save_tps, do_smooth=args.do_smooth, plot=args.plotting, block=args.block)
+    else:
+        for demo_info in demos_info["demos"]:
+            if demo_info["demo_name"] == args.demo_name:
+                demo_fname = osp.join(demo_type_dir, demo_info["demo_name"], demo_info["data_file"])
+                ann_fname = osp.join(demo_type_dir, demo_info["demo_name"], demo_info["annotation_file"])
+                filter_traj(demo_fname, ann_fname, tps_model_fname=args.tps_fname, save_tps=args.save_tps, do_smooth=args.do_smooth, plot=args.plotting, block=args.block)
+                
+                
+    if args.plotting == True and args.block == False:
+        raw_input()
 
