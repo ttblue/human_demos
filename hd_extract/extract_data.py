@@ -11,7 +11,8 @@ import roslib
 from sensor_msgs.msg import Image
 roslib.load_manifest('ar_track_service')
 from ar_track_service.srv import MarkerPositions, MarkerPositionsRequest, MarkerPositionsResponse,\
-                MarkerImagePositions, MarkerImagePositionsRequest, MarkerImagePositionsResponse
+                MarkerImagePositions, MarkerImagePositionsRequest, MarkerImagePositionsResponse,\
+                SetCalibInfo, SetCalibInfoRequest, SetCalibInfoResponse
 from ar_track_alvar.msg import AlvarMarkers
 roslib.load_manifest('cv_bridge')
 from cv_bridge import CvBridge, CvBridgeError
@@ -27,8 +28,10 @@ from hd_calib.calibration_pipeline import gripper_marker_id, gripper_trans_marke
 
 getMarkersPC = None
 getImageMarkers = None
+setCalib = None
 reqPC = MarkerPositionsRequest()
 reqImage = MarkerImagePositionsRequest()
+reqCalib = SetCalibInfoRequest()
 bridge = None
 
 def get_ar_marker_poses (msg, ar_markers = None, use_pc_service=True):
@@ -81,7 +84,9 @@ def save_observations_rgbd(demo_type, demo_name, calib_file, num_cameras, for_gp
     
     with open(osp.join(demo_dir, "camera_types.yaml")) as fh:
         camera_types = yaml.load(fh)
-
+    with open(osp.join(demo_dir, "camera_models.yaml")) as fh:
+        camera_models = yaml.load(fh)
+    
 
     video_dirs = {}
     for i in range(1, num_cameras + 1):
@@ -163,6 +168,12 @@ def save_observations_rgbd(demo_type, demo_name, calib_file, num_cameras, for_gp
                         tt_tfm = gr.get_tooltip_transform(ar, np.asarray(ar_tfms[ar]))
                         data[lr]['camera%i'%i].append((tfm_c1[i].dot(tt_tfm),stamps[ind]))
         else:
+            if setCalib is None: 
+                setCalib = rospy.ServiceProxy("setCalibInfo", SetCalibInfo)
+            reqCalib.camera_model = camera_models[i]
+            setCalib(reqCalib)
+            yellowprint("Changed camera calibration parameters to model %s"%camera_model[cam])
+
             for ind in range(len(stamps)):
                 rgb = cv.LoadImage(rgb_fnames[ind])
                 cv.ShowImage(winname, rgb)
