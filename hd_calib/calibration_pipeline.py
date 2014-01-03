@@ -90,6 +90,7 @@ class CalibratedTransformPublisher(Thread):
         """
         Publishes the transforms stored.
         """
+        global finished
         while True and not finished:
             if self.ready:
                 for parent, child in self.transforms:
