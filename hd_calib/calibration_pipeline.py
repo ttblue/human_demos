@@ -315,6 +315,7 @@ class PublishPotAngles(Thread):
         """
         Publishes the pot angles.
         """
+        global finished
         while True and not finished:
             self.langle_pub.publish(gmt.get_pot_angle('l'))
             self.rangle_pub.publish(gmt.get_pot_angle('r'))

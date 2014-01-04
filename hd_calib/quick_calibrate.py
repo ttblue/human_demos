@@ -68,16 +68,15 @@ def quick_calibrate(NUM_CAM, N_AVG):
                     tfm_pub.sendTransform(trans, rot,
                                           rospy.Time.now(),
                                           child, parent)
-                    
-                    print child, parent, trans, rot
-                sleeper.sleep()
+
+            sleeper.sleep()
 
     except KeyboardInterrupt:
         print "got ctrl-c"
     
 if __name__=='__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument("--num_cameras", help="number of cameras", default=2, type=int)
+    parser.add_argument("--num_cameras", help="number of cameras", default=3, type=int)
     parser.add_argument("--num_average", help="number of avg operations", default=5, type=int)
     args = parser.parse_args()
 
