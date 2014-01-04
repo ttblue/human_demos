@@ -59,7 +59,7 @@ def demos_to_annotations(stamps, commands):
                     #  should never reach cancel recording.
                     "done session": ["finish recording", "cancel recording", "all start"]} #not relevant, should not reach here.
 
-    state = "all start"
+    state = "begin recording"
     demo = []
     subseq = {}
     for (stamp, command) in zip(stamps, commands):

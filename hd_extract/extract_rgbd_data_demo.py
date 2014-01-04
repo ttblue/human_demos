@@ -6,7 +6,7 @@ import rosbag as rb
 import argparse
 import os, os.path as osp
 import yaml
-from hd_utils.defaults import demo_files_dir
+from hd_utils.defaults import demo_files_dir, demo_names, master_name
 
 
 
@@ -19,18 +19,20 @@ if __name__ == "__main__":
 
 
     demo_type_dir = osp.join(demo_files_dir, args.demo_type)
-    demo_master_file = osp.join(demo_type_dir, "master.yaml")
+    demo_master_file = osp.join(demo_type_dir, master_name)
     
     with open(demo_master_file, 'r') as fh:
         demos_info = yaml.load(fh)
             
     if args.demo_name == '':
-        for demo_info in demos_info["demos"]:
-            ed.save_observations_rgbd(args.demo_type, demo_info["demo_name"], demo_info["calib_file"], len(demo_info["video_dirs"]))
+        for demo in demos_info["demos"]:
+            demo_dir = osp.join(demo_type_dir, demo["demo_name"])
+            with open(osp.join(demo_dir, demo_names.demo_camera_types_name)) as fh: cam_types = yaml.load(fh)
+            ed.save_observations_rgbd(args.demo_type, demo["demo_name"], demo_names.demo_calib_name, len(cam_types))
     else:
-        for demo_info in demos_info["demos"]:
-            if args.demo_name == demo_info["demo_name"]:
-                ed.save_observations_rgbd(args.demo_type, demo_info["demo_name"], demo_info["calib_file"], len(demo_info["video_dirs"]))
-                break;
+        if args.demo_name in (demo["demo_name"] for demo in demos_info["demos"]):
+            demo_dir = osp.join(demo_type_dir, args.demo_name)
+            with open(osp.join(demo_dir, demo_names.demo_camera_types_name)) as fh: cam_types = yaml.load(fh)
+            ed.save_observations_rgbd(args.demo_type, args.demo_name, demo_names.demo_calib_name, len(cam_types))
             
-    print "done extraction data"
+    print "Done extracting data."

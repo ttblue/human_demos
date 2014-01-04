@@ -34,6 +34,9 @@ reqImage = MarkerImagePositionsRequest()
 reqCalib = SetCalibInfoRequest()
 bridge = None
 
+displayImages = False
+verbose = True
+
 def get_ar_marker_poses (msg, ar_markers = None, use_pc_service=True):
     '''
     get poses according to ar_markers
@@ -70,13 +73,13 @@ def get_ar_marker_poses (msg, ar_markers = None, use_pc_service=True):
         if ar_markers == None or marker.id in ar_markers:
             marker_tfm[marker.id] = conversions.pose_to_hmat(marker.pose.pose).tolist()
     
-    #print "Marker ids found: ", marker_tfm.keys()
-    print marker_tfm
     return marker_tfm
 
 
 
 def save_observations_rgbd(demo_type, demo_name, calib_file, num_cameras, for_gpr=False, save_file=None):
+    
+    global setCalib
     
     demo_dir        = osp.join(demo_files_dir, demo_type, demo_name)
     calib_file_path = osp.join(demo_dir,"calib")
@@ -140,7 +143,8 @@ def save_observations_rgbd(demo_type, demo_name, calib_file, num_cameras, for_gp
     winname = 'cam_image'    
     cam_counts = []
     for i in range(1,num_cameras+1):
-        yellowprint('Camera%i'%i)
+        if verbose:
+            yellowprint('Camera%i'%i)
         if camera_types[i] == "rgbd":
             rgb_fnames, depth_fnames, stamps = eu.get_rgbd_names_times(video_dirs[i])
         else:
@@ -151,8 +155,11 @@ def save_observations_rgbd(demo_type, demo_name, calib_file, num_cameras, for_gp
         if camera_types[i] == "rgbd":
             for ind in rgb_fnames:
                 rgb = cv2.imread(rgb_fnames[ind])
-                cv2.imshow(winname, rgb)
-                cv2.waitKey(1)
+                
+                if displayImages:
+                    cv2.imshow(winname, rgb)
+                    cv2.waitKey(1)
+
                 assert rgb is not None
                 depth = cv2.imread(depth_fnames[ind],2)
                 assert depth is not None
@@ -160,38 +167,40 @@ def save_observations_rgbd(demo_type, demo_name, calib_file, num_cameras, for_gp
                 pc = ru.xyzrgb2pc(xyz, rgb, frame_id='', use_time_now=False)
                 ar_tfms = get_ar_marker_poses(pc)
                 if ar_tfms:
-                    blueprint("Got markers " + str(ar_tfms.keys()) + " at time %f"%stamps[ind])
+                    if verbose:
+                        blueprint("Got markers " + str(ar_tfms.keys()) + " at time %f"%stamps[ind])
 
-                for lr,gr in grippers.items():
-                    ar = gr.get_ar_marker() 
-                    if ar in ar_tfms:
-                        tt_tfm = gr.get_tooltip_transform(ar, np.asarray(ar_tfms[ar]))
-                        data[lr]['camera%i'%i].append((tfm_c1[i].dot(tt_tfm),stamps[ind]))
+                    for lr,gr in grippers.items():
+                        ar = gr.get_ar_marker() 
+                        if ar in ar_tfms:
+                            tt_tfm = gr.get_tooltip_transform(ar, np.asarray(ar_tfms[ar]))
+                            data[lr]['camera%i'%i].append((tfm_c1[i].dot(tt_tfm),stamps[ind]))
         else:
             if setCalib is None: 
                 setCalib = rospy.ServiceProxy("setCalibInfo", SetCalibInfo)
             reqCalib.camera_model = camera_models[i]
             setCalib(reqCalib)
-            yellowprint("Changed camera calibration parameters to model %s"%camera_model[cam])
+            if verbose:
+                yellowprint("Changed camera calibration parameters to model %s"%camera_models[i])
 
             for ind in range(len(stamps)):
                 rgb = cv.LoadImage(rgb_fnames[ind])
-                cv.ShowImage(winname, rgb)
-                cv.WaitKey(1)
-#                 rgb = cv2.imread(rgb_fnames[ind])
-#                 cv2.imshow(winname, rgb)
-#                 cv2.waitKey(1)
+                
+                if displayImages:
+                    cv.ShowImage(winname, rgb)
+                    cv.WaitKey(1)
+
                 assert rgb is not None
                 ar_tfms = get_ar_marker_poses(rgb,use_pc_service=False)
                 if ar_tfms:
-                    blueprint("Got markers " + str(ar_tfms.keys()) + " at time %f"%stamps[ind])
+                    if verbose:
+                        blueprint("Got markers " + str(ar_tfms.keys()) + " at time %f"%stamps[ind])
     
-                for lr,gr in grippers.items():
-                    ar = gr.get_ar_marker() 
-                    if ar in ar_tfms:
-                        tt_tfm = gr.get_tooltip_transform(ar, np.asarray(ar_tfms[ar]))
-                        data[lr]['camera%i'%i].append((tfm_c1[i].dot(tt_tfm),stamps[ind]))
-                        print tfm_c1[i].dot(tt_tfm)
+                    for lr,gr in grippers.items():
+                        ar = gr.get_ar_marker() 
+                        if ar in ar_tfms:
+                            tt_tfm = gr.get_tooltip_transform(ar, np.asarray(ar_tfms[ar]))
+                            data[lr]['camera%i'%i].append((tfm_c1[i].dot(tt_tfm),stamps[ind]))
 
     yellowprint('Hydra')
     lr_long = {'l':'left','r':'right'}
@@ -213,26 +222,28 @@ def save_observations_rgbd(demo_type, demo_name, calib_file, num_cameras, for_gp
                     tt_tfm = grippers[lr].get_tooltip_transform(lr_long[lr], hyd_tfm)
                     data[lr]['hydra'].append((tt_tfm, stamp))
                     found += lr
-        if found:
+        if found and verbose:
             blueprint("Got hydra readings %s at time %f"%(found,stamp))
 
 
-
-    yellowprint('Potentiometer readings')
+    if verbose:
+        yellowprint('Potentiometer readings')
     for lr in grippers:
         for (_, msg, ts) in bag.read_messages(topics=['/%s_pot_angle'%lr]):
             angle = msg.data
             stamp = ts.to_sec()
             data[lr]['pot_angles'].append((angle, stamp))
-            blueprint("Got a %s potentiometer angle of %f at time %f"%(lr,angle, stamp))
+            if verbose: 
+                blueprint("Got a %s potentiometer angle of %f at time %f"%(lr,angle, stamp))
 
-    for lr in 'lr':
-        yellowprint("Gripper %s:"%lr)
-        for i in range(num_cameras):
-            yellowprint("Found %i transforms out of %i point clouds from camera%i"%(len(data[lr]['camera%i'%(i+1)]), cam_counts[i], i+1))
-        
-        yellowprint("Found %i transforms from hydra"%len(data[lr]['hydra']))
-        yellowprint("Found %i potentiometer readings"%len(data[lr]['pot_angles']))
+    if verbose:
+        for lr in 'lr':
+            yellowprint("Gripper %s:"%lr)
+            for i in range(num_cameras):
+                yellowprint("Found %i transforms out of %i point clouds from camera%i"%(len(data[lr]['camera%i'%(i+1)]), cam_counts[i], i+1))
+            
+            yellowprint("Found %i transforms from hydra"%len(data[lr]['hydra']))
+            yellowprint("Found %i potentiometer readings"%len(data[lr]['pot_angles']))
 
     if save_file is None:
         save_file = "demo.data"
