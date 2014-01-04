@@ -6,6 +6,9 @@ usage="""
 Run in simulation with a translation and a rotation of fake data:
 ./do_task.py demo_full/demo_full.h5 --fake_data_demo=demo_full_0 --fake_data_segment=seg00 --execution=0  --animation=1 --select_manual --fake_data_transform .1 .1 .1 .1 .1 .1
 
+./do_task.py overhand/overhand.h5 --fake_data_demo=demo00001 --fake_data_segment=seg00 --execution=0  --animation=1 --select_manual --fake_data_transform .1 .1 .1 .1 .1 .1
+
+
 Run in simulation choosing the closest demo, single threaded
 ./do_task.py demo_full/demo_full.h5 --fake_data_demo=demo_full_0 --fake_data_segment=seg00 --execution=0  --animation=1 --parallel=0
 
@@ -14,7 +17,7 @@ Actually run on the robot without pausing or animating
 
 """
 parser = argparse.ArgumentParser(usage=usage)
-parser.add_argument("h5file", type=str)
+parser.add_argument("--demo_type", type=str)
 parser.add_argument("--cloud_proc_func", default="extract_red")
 parser.add_argument("--cloud_proc_mod", default="hd_utils.cloud_proc_funs")
     
@@ -67,6 +70,8 @@ from rapprentice import registration, berkeley_pr2, \
 from rapprentice import math_utils as mu
 from hd_utils import yes_or_no
 from hd_utils.colorize import *
+from hd_utils.defaults import demo_files_dir
+
 
 try:
     from rapprentice import pr2_trajectories, PR2
@@ -265,10 +270,10 @@ def unif_resample(traj, max_diff, wt = None):
     
 def main():
     
-    demofile = h5py.File(args.h5file, 'r')
-    demo_dirname = osp.dirname(args.h5file)
-    
-    print demo_dirname
+    demo_dirname = osp.join(demo_files_dir, args.demo_type)
+    h5file = osp.join(demo_dirname, args.demo_type+".h5")
+    print h5file
+    demofile = h5py.File(h5file, 'r')    
     
     trajoptpy.SetInteractive(args.interactive)
     
