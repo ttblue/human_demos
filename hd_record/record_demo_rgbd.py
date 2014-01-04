@@ -63,6 +63,7 @@ class voice_alerts ():
         
     def segment_cb (self, msg):
         self.segment_state = msg.command
+        blueprint(self.segment_state)
     
     def get_latest_msg (self):
         return self.segment_state
@@ -113,7 +114,17 @@ def load_parameters (demo_type, num_cameras):
     topic_writer = TopicWriter(topics=topics, topic_types=topic_types)
     yellowprint("Started listening to the different topics.")
 
-                                                                                                                                                        
+
+def stop_camera_saving ():
+    for cam in camera_types:
+        try:
+            save_image_services[cam](cam_stop_request)
+        except:
+            redprint("Something wrong with camera%i."%cam)
+    greenprint("Stopped cameras")
+    
+
+
 def ready_service_for_demo (demo_dir):
     """
     Creates the command for recording bag files and demos given demo_dir.
@@ -144,46 +155,48 @@ def record_demo (demo_dir, use_voice):
     started_bag = False
     started_video = {cam:False for cam in camera_types}
 
-    greenprint("Starting bag file recording.")
+    print
+    yellowprint("Starting bag file recording.")
     bag_file = osp.join(demo_dir,demo_names.demo_bag_name)
     topic_writer.start_saving(bag_file)
     started_bag = True
 
     for cam in camera_types:
-        greenprint("Calling saveImagecamera%i service."%cam)
+        yellowprint("Calling saveImagecamera%i service."%cam)
         save_image_services[cam](cam_save_requests[cam])
         started_video[cam] = True
     
     # Change to voice command
+    time.sleep(1.2)
     subprocess.call("espeak -v en 'Recording.'", stdout=devnull, stderr=devnull, shell=True)
     if use_voice:
         while True:
             status = cmd_checker.get_latest_msg()
-            if  status in ["cancel recording","finish recording"]:
+            if  status in ["cancel recording","finish recording","stop recording"]:
                 break
             sleeper.sleep()
     else:
         raw_input(colorize("Press any key when done.",'y',True))
 
-    
-    cpipe.done()
     for cam in started_video:
         if started_video[cam]:
-            yellowprint("stopping video%i"%cam)
             save_image_services[cam](cam_stop_request)
-            yellowprint("stopped video%i"%cam)
+            yellowprint("Stopped video%i."%cam)
     if started_bag:
-        yellowprint("stopping bag")
         topic_writer.stop_saving()
-        yellowprint("stopped bag")
-
+        yellowprint("Stopped bag.")
         
-        if use_voice:
-            return status == "finish recording"
-        elif yes_or_no("save demo?"):
-            return True
-        else:
-            return False
+    print
+
+    if use_voice:
+        while status == "stop recording":
+            sleeper.sleep()
+            status = cmd_checker.get_latest_msg()
+        return status == "finish recording"
+    elif yes_or_no("Save demo?"):
+        return True
+    else:
+        return False
 
 
 def record_pipeline ( demo_type, calib_file, 
@@ -220,6 +233,9 @@ def record_pipeline ( demo_type, calib_file,
     # Start recording demos.
     while True:
         # Check if continuing or stopping
+        print '\n\n'
+        time.sleep(1.2)
+        greenprint("Ready.")
         subprocess.call("espeak -v en 'Ready.'", stdout=devnull, stderr=devnull, shell=True)
         if use_voice:
             time.sleep(1.2)
@@ -262,25 +278,23 @@ def record_pipeline ( demo_type, calib_file,
             if num_demos > 0:
                 num_demos -= 1
                 
-            greenprint("Saved %s"%demo_name)
+            greenprint("Saved %s."%demo_name)
         else:
             if osp.exists(demo_dir):
-                print "Removing %s dir"%demo_name 
                 shutil.rmtree(demo_dir)
-                print "Done"
+                yellowprint("Removed %s dir."%demo_name)
         if num_demos == 0:
             greenprint("Recorded all demos for session.")
             break
         
     if started_voice:
-        yellowprint("stopping voice")
-        #terminate_process_and_children(voice_handle)
-        voice_handle.send_signal(signal.SIGINT)
+        terminate_process_and_children(voice_handle)
         voice_handle.wait()
-        yellowprint("stopped voice")
-        
+        yellowprint("Stopped voice.")
+    
+    stop_camera_saving()    
     cpipe.done() 
-    topic_writer.done()
+    topic_writer.done_session()
 
 def record_single_demo (demo_type, demo_name, calib_file, 
                           num_cameras, use_voice):
@@ -314,6 +328,7 @@ def record_single_demo (demo_type, demo_name, calib_file,
     cmd_checker = voice_alerts()
 
     # Check if continuing or stopping
+    greenprint("Ready.")
     subprocess.call("espeak -v en 'Ready.'", stdout=devnull, stderr=devnull, shell=True)
     if use_voice:
         time.sleep(1.2)        
@@ -348,23 +363,22 @@ def record_single_demo (demo_type, demo_name, calib_file,
 
         shutil.copyfile(calib_file_path, osp.join(demo_dir,demo_names.demo_calib_name))
         
-        greenprint("Saved %s"%demo_name)
+        greenprint("Saved %s."%demo_name)
     else:
         time.sleep(3)
         if osp.exists(demo_dir):
-            print "Removing demo %s"%demo_name 
+            yellowprint("Removing demo %s"%demo_name) 
             shutil.rmtree(demo_dir)
-            print "Done"
+            yellowprint("Done")
             
     if started_voice:
-        yellowprint("stopping voice")
         terminate_process_and_children(voice_handle)
-        #voice_handle.send_signal(signal.SIGINT)
         voice_handle.wait()
         yellowprint("stopped voice")
         
+    stop_camera_saving()
     cpipe.done()
-    topic_writer.done()
+    topic_writer.done_session()
 
 if __name__ == '__main__':
     global downsample

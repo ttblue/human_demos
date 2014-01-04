@@ -65,11 +65,13 @@ finished = False
 def done():
     global finished
     finished = True
+    read_arduino.get_arduino().done()
 
 class CalibratedTransformPublisher(Thread):
 
     def __init__(self, cameras=None):
         Thread.__init__(self)
+        self.daemon = True
 
         if rospy.get_name() == '/unnamed':
             rospy.init_node('calibration_node')
@@ -101,6 +103,7 @@ class CalibratedTransformPublisher(Thread):
                 if self.publish_grippers:
                     self.publish_gripper_tfms()
             time.sleep(1 / self.rate)
+        yellowprint("CalibratedTransformPublisher thread has finished running.")
 
     def add_transforms(self, transforms):
         """
@@ -298,6 +301,7 @@ class PublishPotAngles(Thread):
     
     def __init__(self, rate=60.0):
         Thread.__init__(self)
+        self.daemon = True
 
         if rospy.get_name() == '/unnamed':
             rospy.init_node('pot_angle_node')
@@ -315,6 +319,8 @@ class PublishPotAngles(Thread):
             self.langle_pub.publish(gmt.get_pot_angle('l'))
             self.rangle_pub.publish(gmt.get_pot_angle('r'))
             time.sleep(1 / self.rate)
+            
+        yellowprint("PublishPotAngles thread has finished running.")
 
 
 def calibrate_potentiometer(lr='l'):

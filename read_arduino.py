@@ -12,6 +12,7 @@ class Arduino:
     """
 
     def __init__(self):
+        self.finished = False
         devices = glob.glob("/dev/ttyACM*")
         if len(devices) ==0:
             raise RuntimeError(colorize( "Arduino not connected.", 'red', True))
@@ -37,6 +38,7 @@ class Arduino:
             raise RuntimeError(colorize("Error opening serial port '{}': {}".format(arduino, e), "red", True))
 
         self.poll_thread = Thread(target=self.poll_arduino)
+        self.poll_thread.daemon = True
         self.poll_thread.start()
         
         time.sleep(0.1)
@@ -49,7 +51,7 @@ class Arduino:
         Gives old reading until valid new reading is found.
         """
         buffer = ''
-        while True:
+        while True and not self.finished:
             new_reading = self.ser.readline()
             
             try:
@@ -61,7 +63,8 @@ class Arduino:
             except:
                 pass
                     
-
+    def done (self):
+        self.finished = True
 
     def get_reading(self, idx=1):
         """
