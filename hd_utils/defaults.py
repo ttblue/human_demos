@@ -31,6 +31,21 @@ data_dir = osp.join(hd_path, 'hd_data')
 calib_files_dir = osp.join(data_dir, 'calib')
 demo_files_dir =  osp.join(data_dir, 'demos')
 
+
+'''
+Default names for files inside each demo directory.
+'''
+master_name = 'master.yaml'
+class demo_names:
+    demo_base_name = 'demo%05d'
+    demo_bag_name = 'demo.bag'
+    demo_ann_name = 'ann.yaml'
+    demo_calib_name = 'calib'
+    demo_data_name = 'demo.data'
+    demo_traj_name = 'demo.traj'
+    demo_camera_types_name = 'camera_types.yaml'
+    demo_camera_models_name = 'camera_models.yaml'
+
 '''
 Transform from head to kinect
 '''

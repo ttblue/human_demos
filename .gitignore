@@ -79,3 +79,7 @@ nosetests.xml
 # camera mapping and types
 *camera_mapping
 *camera_types
+
+# demos
+hd_data/demos/*
+hd_data/calib/cc*

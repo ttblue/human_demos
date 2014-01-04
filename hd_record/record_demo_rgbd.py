@@ -15,6 +15,9 @@ import threading
 
 roslib.load_manifest('pocketsphinx')
 from pocketsphinx.msg import Segment
+from std_msgs.msg import Float32
+roslib.load_manifest('tf')
+from tf.msg import tfMessage    
 
 roslib.load_manifest('record_rgbd_service')
 from record_rgbd_service.srv import SaveImage, SaveImageRequest, SaveImageResponse
@@ -23,11 +26,16 @@ from hd_calib import calibration_pipeline as cpipe
 from hd_utils.colorize import *
 from hd_utils.yes_or_no import yes_or_no
 
-from hd_utils.defaults import demo_files_dir, calib_files_dir, data_dir
+from hd_utils.defaults import demo_files_dir, calib_files_dir, data_dir, \
+                              demo_names, master_name
+
+from rosbag_service import TopicWriter
 
 devnull = open(os.devnull, 'wb')
 # Some global variables
 map_dir = os.getenv("CAMERA_MAPPING_DIR")
+
+topic_writer = None
 
 save_image_services = {}
 cam_save_requests = {}
@@ -40,18 +48,7 @@ camera_types = None
 camera_models = {}
 demo_num = 0
 
-bag_cmd = "rosbag record -O %s /l_pot_angle /r_pot_angle /segment /tf"
-kinect_cmd = "record_rgbd_video --out=%s --downsample=%i --device_id=#%i"
 voice_cmd = "roslaunch pocketsphinx demo_recording.launch"
-
-def terminate_process_and_children(p):
-    ps_command = subprocess.Popen("ps -o pid --ppid %d --noheaders" % p.pid, shell=True, stdout=subprocess.PIPE)
-    ps_output = ps_command.stdout.read()
-    retcode = ps_command.wait()
-    assert retcode == 0, "ps command returned %d" % retcode
-    for pid_str in ps_output.split("\n")[:-1]:
-            os.kill(int(pid_str), signal.SIGINT)
-    p.terminate()
 
 class voice_alerts ():
     """
@@ -80,7 +77,7 @@ def load_parameters (demo_type, num_cameras):
         os.mkdir(demo_type_dir)
 
     # Taken care of outside.
-    master_file = osp.join(demo_type_dir,'master.yaml')
+    master_file = osp.join(demo_type_dir, master_name)
     if not osp.isfile(master_file):
         with open(master_file, "w") as f:
             f.write("name: %s\n"%demo_type)
@@ -108,6 +105,11 @@ def load_parameters (demo_type, num_cameras):
                 demo_num = int(fh.read()) + 1
         except: demo_num = 1
     else: demo_num = 1
+    
+    topics = ['/l_pot_angle', '/r_pot_angle','/segment','/tf']
+    topic_types = [Float32, Float32, Segment, tfMessage]
+    topic_writer = TopicWriter(topics=topics, topic_types=topic_types)
+    yellowprint("Started listening to the different topics.")
 
                                                                                                                                                         
 def ready_service_for_demo (demo_dir):
@@ -124,64 +126,54 @@ def ready_service_for_demo (demo_dir):
         cam_save_requests[cam].folder_name = demo_dir
 
 
-def record_demo (bag_cmd_demo, use_voice):
+def record_demo (demo_dir, use_voice):
     """
     Record a single demo.
     Returns True/False depending on whether demo needs to be saved.
     
-    @bag_command and @camera_commands are the commands to be called for recording.
+    @demo_dir: directory where demo is recorded.
+    @use_voice: bool on whether to use voice for demo or not.
     """
-    global cmd_checker
+    global cmd_checker, topic_writers
     # Start here. Change to voice command.
 
-    sleeper = rospy.Rate(10)
-    try:
-        started_bag = False
-        started_video = {cam:False for cam in camera_types}
+    sleeper = rospy.Rate(30)
 
-        greenprint(bag_cmd_demo)
-        bag_handle = subprocess.Popen(bag_cmd_demo, stdout=devnull, stderr=devnull, shell=True)
-        time.sleep(1)
-        bag_poll_result = bag_handle.poll() 
-        if bag_poll_result is not None:
-            print "bag poll result", bag_poll_result
-            raise Exception("problem starting bag recording")
-        started_bag = True
+    started_bag = False
+    started_video = {cam:False for cam in camera_types}
 
-        for cam in camera_types:
-            greenprint("Calling saveImagecamera%i service."%cam)
-            save_image_services[cam](cam_save_requests[cam])
-            started_video[cam] = True
-        
-        # Change to voice command
-        subprocess.call("espeak -v en 'Recording.'", stdout=devnull, stderr=devnull, shell=True)
-        if use_voice:
-            while True:
-                status = cmd_checker.get_latest_msg()
-                if  status in ["cancel recording","finish recording"]:
-                    break
-                sleeper.sleep()
-        else:
-            yellowprint("Press ctrl-c when done. ")
-            time.sleep(9999)
+    greenprint("Starting bag file recording.")
+    bag_file = osp.join(demo_dir,demo_names.demo_bag_name)
+    topic_writer.start_saving(bag_file)
+    started_bag = True
 
-    except Exception as e:
-        greenprint(e)#"got control-c")
-        if use_voice: status = "cancel recording"
+    for cam in camera_types:
+        greenprint("Calling saveImagecamera%i service."%cam)
+        save_image_services[cam](cam_save_requests[cam])
+        started_video[cam] = True
     
-    finally:
-        cpipe.done()
-        for cam in started_video:
-            if started_video[cam]:
-                yellowprint("stopping video%i"%cam)
-                save_image_services[cam](cam_stop_request)
-                yellowprint("stopped video%i"%cam)
-        if started_bag:
-            yellowprint("stopping bag")
-            #terminate_process_and_children(bag_handle)
-            bag_handle.send_signal(signal.SIGINT)
-            bag_handle.wait()
-            yellowprint("stopped bag")
+    # Change to voice command
+    subprocess.call("espeak -v en 'Recording.'", stdout=devnull, stderr=devnull, shell=True)
+    if use_voice:
+        while True:
+            status = cmd_checker.get_latest_msg()
+            if  status in ["cancel recording","finish recording"]:
+                break
+            sleeper.sleep()
+    else:
+        raw_input(colorize("Press any key when done.",'y',True))
+
+    
+    cpipe.done()
+    for cam in started_video:
+        if started_video[cam]:
+            yellowprint("stopping video%i"%cam)
+            save_image_services[cam](cam_stop_request)
+            yellowprint("stopped video%i"%cam)
+    if started_bag:
+        yellowprint("stopping bag")
+        topic_writer.stop_saving()
+        yellowprint("stopped bag")
 
         
         if use_voice:
@@ -202,7 +194,7 @@ def record_pipeline ( demo_type, calib_file,
     @num_demos: number of demos to be recorded. -1 -- default -- means until user stops.
     @use_voice: use voice commands to start/stop demo if true. o/w use command line.
     """
-    global cmd_checker, camera_types, demo_type_dir, master_file, demo_num, latest_demo_file
+    global cmd_checker, camera_types, demo_type_dir, master_file, demo_num, latest_demo_file, topic_writer
 
     load_parameters(demo_type, num_cameras)
 
@@ -243,28 +235,27 @@ def record_pipeline ( demo_type, calib_file,
 
 
         # Initialize names and record
-        demo_name = "demo%05d"%(demo_num)
+        demo_name = demo_names.demo_base_name%(demo_num)
         demo_dir = osp.join(demo_type_dir, demo_name)
         if not osp.exists(demo_dir): os.mkdir(demo_dir)
 
-        bag_cmd_demo = bag_cmd%(osp.join(demo_dir,'demo'))
         ready_service_for_demo (demo_dir)
 
         greenprint("Recording %s."%demo_name)
-        save_demo = record_demo(bag_cmd_demo, use_voice)
+        save_demo = record_demo(demo_dir, use_voice)
         
         if save_demo:
             with open(master_file, 'a') as fh: fh.write('- demo_name: %s\n'%demo_name)
             
-            cam_type_file = osp.join(demo_dir, 'camera_types.yaml')
+            cam_type_file = osp.join(demo_dir, demo_names.demo_camera_types_name)
             with open(cam_type_file,"w") as fh: yaml.dump(camera_types, fh)
-            cam_model_file = osp.join(demo_dir, 'camera_models.yaml')
+            cam_model_file = osp.join(demo_dir, demo_names.demo_camera_models_name)
             with open(cam_model_file,"w") as fh: yaml.dump(camera_models, fh)
             
             with open(latest_demo_file,'w') as fh: fh.write(str(demo_num))
             demo_num += 1
             
-            shutil.copyfile(calib_file_path, osp.join(demo_dir,'calib'))
+            shutil.copyfile(calib_file_path, osp.join(demo_dir,demo_names.demo_calib_name))
             
             if num_demos > 0:
                 num_demos -= 1
@@ -287,6 +278,7 @@ def record_pipeline ( demo_type, calib_file,
         yellowprint("stopped voice")
         
     cpipe.done() 
+    topic_writer.done()
 
 def record_single_demo (demo_type, demo_name, calib_file, 
                           num_cameras, use_voice):
@@ -298,7 +290,7 @@ def record_single_demo (demo_type, demo_name, calib_file,
     @num_demos: number of demos to be recorded. -1 -- default -- means until user stops.
     @use_voice: use voice commands to start/stop demo if true. o/w use command line.   
     """
-    global cmd_checker, camera_types, demo_type_dir, master_file
+    global cmd_checker, camera_types, demo_type_dir, master_file, topic_writer
 
     load_parameters(demo_type, num_cameras)
 
@@ -339,21 +331,20 @@ def record_single_demo (demo_type, demo_name, calib_file,
     demo_dir = osp.join(demo_type_dir, demo_name)
     if not osp.exists(demo_dir): os.mkdir(demo_dir)
 
-    bag_cmd_demo = bag_cmd%(osp.join(demo_dir,'demo'))
     ready_service_for_demo (demo_dir)
 
     greenprint("Recording %s."%demo_name)
-    save_demo = record_demo(bag_cmd_demo, use_voice)
+    save_demo = record_demo(demo_dir, use_voice)
 
     if save_demo:
         with open(master_file, 'a') as fh: fh.write('- demo_name: %s\n'%demo_name)
         
-        cam_type_file = osp.join(demo_dir, 'camera_types.yaml')
+        cam_type_file = osp.join(demo_dir, demo_names.demo_camera_types_name)
         with open(cam_type_file,"w") as fh: yaml.dump(camera_types, fh)
-        cam_model_file = osp.join(demo_dir, 'camera_models.yaml')
+        cam_model_file = osp.join(demo_dir, demo_names.demo_camera_models_name)
         with open(cam_model_file,"w") as fh: yaml.dump(camera_models, fh)
 
-        shutil.copyfile(calib_file_path, osp.join(demo_dir,'calib'))
+        shutil.copyfile(calib_file_path, osp.join(demo_dir,demo_names.demo_calib_name))
         
         greenprint("Saved %s"%demo_name)
     else:
@@ -371,6 +362,7 @@ def record_single_demo (demo_type, demo_name, calib_file,
         yellowprint("stopped voice")
         
     cpipe.done()
+    topic_writer.done()
 
 if __name__ == '__main__':
     global downsample
