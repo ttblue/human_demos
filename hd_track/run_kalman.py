@@ -455,10 +455,52 @@ def filter_traj(demo_fname, ann_fname, tps_model_fname, save_tps, do_smooth, plo
             '''''
             Dirty hack!!!!!!!!!!!!!!!!!!!!!!!!!
             '''''
-            for i in xrange(len(pot_angles)):
+            n_pot_angles = len(pot_angles)
+            if pot_angles[0] == None:
+                # find the first non None
+                for i in xrange(n_pot_angles):
+                    if pot_angles[i] != None:
+                        first_non_none_id = i
+                        break
+                for i in xrange(first_non_none_id):
+                    pot_angles[i] = pot_angles[first_non_none_id]
+                    
+            if pot_angles[n_pot_angles - 1] == None:
+                for i in xrange(n_pot_angles - 1, -1, -1):
+                    if pot_angles[i] != None:
+                        last_non_none_id = i
+                        break
+                for i in xrange(last_non_none_id+1, n_pot_angles):
+                    pot_angles[i] = pot_angles[last_non_none_id]
+                    
+        
+            # then linear interpolation between non-None elements
+            i = 0
+            while i < n_pot_angles:
                 if pot_angles[i] == None:
-                    pot_angles[i] = 0
-
+                    non_none_id_0 = i - 1
+                    
+                    for j in xrange(i+1, n_pot_angles):
+                        if pot_angles[j] != None:
+                            non_none_id_1 = j
+                            break
+                    
+                    delta = (pot_angles[non_none_id_1] - pot_angles[non_none_id_0]) / (non_none_id_1 - non_none_id_0)   
+                    for j in xrange(non_none_id_0 +1, non_none_id_1):
+                        pot_angles[j] = (j - non_none_id_0) * delta + pot_angles[non_none_id_0]
+                        
+                    #print pot_angles[non_none_id_0: non_none_id_1+1]
+                    
+                    i = non_none_id_1 + 1
+                else:
+                    i += 1
+            '''
+            Finish dirty hack
+            '''        
+                    
+                    
+                    
+            
             seg_traj = {"stamps"  : ts,
                         "tfms"    : Ts_kf,
                         "covars"  : covars_kf,
