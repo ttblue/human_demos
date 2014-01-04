@@ -17,7 +17,7 @@ roslib.load_manifest('pocketsphinx')
 from pocketsphinx.msg import Segment
 from std_msgs.msg import Float32
 roslib.load_manifest('tf')
-from tf.msg import tfMessage    
+from tf.msg import tfMessage
 
 roslib.load_manifest('record_rgbd_service')
 from record_rgbd_service.srv import SaveImage, SaveImageRequest, SaveImageResponse
@@ -28,6 +28,8 @@ from hd_utils.yes_or_no import yes_or_no
 
 from hd_utils.defaults import demo_files_dir, calib_files_dir, data_dir, \
                               demo_names, master_name
+
+from hd_utils.utils import terminate_process_and_children
 
 from rosbag_service import TopicWriter
 
@@ -70,7 +72,7 @@ def load_parameters (demo_type, num_cameras):
     Initialize global variables.
     """
     global camera_types, demo_type_dir, master_file, demo_num, demo_info,\
-           latest_demo_file, cam_stop_request
+           latest_demo_file, cam_stop_request, topic_writer
 
     demo_type_dir = osp.join(demo_files_dir, demo_type)
     if not osp.isdir(demo_type_dir):
@@ -134,7 +136,7 @@ def record_demo (demo_dir, use_voice):
     @demo_dir: directory where demo is recorded.
     @use_voice: bool on whether to use voice for demo or not.
     """
-    global cmd_checker, topic_writers
+    global cmd_checker, topic_writer
     # Start here. Change to voice command.
 
     sleeper = rospy.Rate(30)
@@ -196,10 +198,10 @@ def record_pipeline ( demo_type, calib_file,
     """
     global cmd_checker, camera_types, demo_type_dir, master_file, demo_num, latest_demo_file, topic_writer
 
-    load_parameters(demo_type, num_cameras)
-
     rospy.init_node("time_to_record")
     sleeper = rospy.Rate(10)
+    
+    load_parameters(demo_type, num_cameras)
 
     # Load calibration
     cpipe.initialize_calibration(args.num_cameras)
@@ -292,10 +294,10 @@ def record_single_demo (demo_type, demo_name, calib_file,
     """
     global cmd_checker, camera_types, demo_type_dir, master_file, topic_writer
 
-    load_parameters(demo_type, num_cameras)
-
     rospy.init_node("time_to_record")
     sleeper = rospy.Rate(10)
+    
+    load_parameters(demo_type, num_cameras)
 
     # Load calibration
     cpipe.initialize_calibration(args.num_cameras)
@@ -356,8 +358,8 @@ def record_single_demo (demo_type, demo_name, calib_file,
             
     if started_voice:
         yellowprint("stopping voice")
-        #terminate_process_and_children(voice_handle)
-        voice_handle.send_signal(signal.SIGINT)
+        terminate_process_and_children(voice_handle)
+        #voice_handle.send_signal(signal.SIGINT)
         voice_handle.wait()
         yellowprint("stopped voice")
         
@@ -383,7 +385,6 @@ if __name__ == '__main__':
     downsample = args.downsample
     
     use_voice = True if args.use_voice else False
-    print use_voice
     
     if args.single_demo:
         record_single_demo (demo_type = args.demo_type, demo_name=args.demo_name,
