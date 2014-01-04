@@ -1,7 +1,10 @@
+import subprocess, os, signal
+
 import numpy as np
 import conversions
 from colorize import redprint
 import transformations as tfms
+
 
 def avg_quaternions(qs):
     """
@@ -61,3 +64,13 @@ def state_to_hmat(Xs):
         T[0:3,3] = np.reshape(trans, 3)
         Ts.append(T)
     return Ts
+
+
+def terminate_process_and_children(p):
+    ps_command = subprocess.Popen("ps -o pid --ppid %d --noheaders" % p.pid, shell=True, stdout=subprocess.PIPE)
+    ps_output = ps_command.stdout.read()
+    retcode = ps_command.wait()
+    assert retcode == 0, "ps command returned %d" % retcode
+    for pid_str in ps_output.split("\n")[:-1]:
+            os.kill(int(pid_str), signal.SIGINT)
+    p.terminate()

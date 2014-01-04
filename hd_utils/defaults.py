@@ -27,6 +27,7 @@ asus_xtion_pro_f = 544.260779961
 
 
 hd_path = os.getenv('HD_DIR')
+data_dir = os.getenv('HD_DATA_DIR')
 calib_files_dir = osp.join(data_dir, 'calib')
 demo_files_dir =  osp.join(data_dir, 'demos')
 

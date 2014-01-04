@@ -296,16 +296,16 @@ class CalibratedTransformPublisher(Thread):
 
 class PublishPotAngles(Thread):
     
-    def __init__(self, cameras=None):
-        Thread.__init__(self, rate=60.0)
+    def __init__(self, rate=60.0):
+        Thread.__init__(self)
 
         if rospy.get_name() == '/unnamed':
             rospy.init_node('pot_angle_node')
 
         self.rate = rate
         
-        self.langle_pub = rospy.Publisher('l_pot_angle', Float32)
-        self.rangle_pub = rospy.Publisher('r_pot_angle', Float32)
+        self.langle_pub = rospy.Publisher('/l_pot_angle', Float32)
+        self.rangle_pub = rospy.Publisher('/r_pot_angle', Float32)
 
     def run(self):
         """

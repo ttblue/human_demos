@@ -49,12 +49,14 @@ class TopicWriter (Thread):
         if isinstance(topics, list):
             for topic,topic_type in zip(topics,topic_types):
                 if topic not in self.topics:
+                    self.topics.append(topic)
                     self.topic_lists[topic] = []
                     self.counters[topic] = 0
                     self.topic_subs[topic] = \
                     rospy.Subscriber(topic, topic_type, callback=self.callback, callback_args=topic)
         else:
             if topics not in self.topics:
+                self.topics.append(topics)
                 self.topic_lists[topics] = []
                 self.counters[topics] = 0
                 self.topic_subs[topics] = \
@@ -116,7 +118,7 @@ class TopicWriter (Thread):
         """
         Reset the lists.
         """
-        for topic in self.topics:
+        for topic in self.topic_lists:
             self.topic_lists[topic] = []
             self.counters[topic] = 0
     
