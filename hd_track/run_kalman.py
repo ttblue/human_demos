@@ -20,7 +20,7 @@ from hd_track.demo_data_prep import *
 from hd_track.tps_correct    import *
 
 import argparse 
-from hd_utils.defaults import demo_files_dir
+from hd_utils.defaults import demo_files_dir, demo_names, master_name
 
 
 
@@ -93,7 +93,7 @@ def plot_tf_streams(tf_strms, strm_labels, styles=None, title=None, block=True):
     if styles!=None:
         assert len(tf_strms)==len(styles)
     else:
-        styles = ['-']*len(tf_strms)
+        styles = ['.']*len(tf_strms)
 
     plt.figure()
     ylabels = ['x', 'y', 'z', 'r', 'p', 'y']
@@ -534,7 +534,7 @@ if __name__=='__main__':
     
     
     demo_type_dir = osp.join(demo_files_dir, args.demo_type)
-    demo_master_file = osp.join(demo_type_dir, "master.yaml")
+    demo_master_file = osp.join(demo_type_dir, master_name)
     
     with open(demo_master_file, 'r') as fh:
         demos_info = yaml.load(fh)
@@ -542,16 +542,15 @@ if __name__=='__main__':
         
    
     if args.demo_name == '':
-        for demo_info in demos_info["demos"]:
-            demo_fname = osp.join(demo_type_dir, demo_info["demo_name"], demo_info["data_file"])
-            ann_fname = osp.join(demo_type_dir, demo_info["demo_name"], demo_info["annotation_file"])
+        for demo in demos_info["demos"]:
+            demo_fname = osp.join(demo_type_dir, demo["demo_name"], demo_names.demo_data_name)
+            ann_fname = osp.join(demo_type_dir, demo["demo_name"], demo_names.demo_ann_name)
             filter_traj(demo_fname, ann_fname, tps_model_fname=args.tps_fname, save_tps=args.save_tps, do_smooth=args.do_smooth, plot=args.plotting, block=args.block)
     else:
-        for demo_info in demos_info["demos"]:
-            if demo_info["demo_name"] == args.demo_name:
-                demo_fname = osp.join(demo_type_dir, demo_info["demo_name"], demo_info["data_file"])
-                ann_fname = osp.join(demo_type_dir, demo_info["demo_name"], demo_info["annotation_file"])
-                filter_traj(demo_fname, ann_fname, tps_model_fname=args.tps_fname, save_tps=args.save_tps, do_smooth=args.do_smooth, plot=args.plotting, block=args.block)
+        if args.demo_name in (demo["demo_name"] for demo in demos_info["demos"]):
+            demo_fname = osp.join(demo_type_dir, args.demo_name, demo_names.demo_data_name)
+            ann_fname = osp.join(demo_type_dir, args.demo_name, demo_names.demo_ann_name)
+            filter_traj(demo_fname, ann_fname, tps_model_fname=args.tps_fname, save_tps=args.save_tps, do_smooth=args.do_smooth, plot=args.plotting, block=args.block)
                 
                 
     if args.plotting == True and args.block == False:

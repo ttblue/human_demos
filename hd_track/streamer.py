@@ -64,7 +64,7 @@ class streamize():
             self.idx = tidx
             self.t  += self.dt
             
-            return self.favg(cands) if cands else None
+            return self.favg(cands) if cands is not None else None
         
     def get_data(self):
         return (self.objs, self.ts)
