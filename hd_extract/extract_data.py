@@ -37,7 +37,7 @@ bridge = None
 displayImages = False
 verbose = True
 
-def get_ar_marker_poses (msg, ar_markers = None, use_pc_service=True):
+def get_ar_marker_poses (msg, ar_markers = None, use_pc_service=True, track=False):
     '''
     get poses according to ar_markers
     if ar_markers == None, then for all ar markers appeared in the point cloud
@@ -51,6 +51,7 @@ def get_ar_marker_poses (msg, ar_markers = None, use_pc_service=True):
         if getMarkersPC is None:
             getMarkersPC = rospy.ServiceProxy("getMarkers", MarkerPositions)
         reqPC.pc = msg
+        reqPC.track = track
         res = getMarkersPC(reqPC)
     else:
         if getImageMarkers is None:
@@ -60,6 +61,7 @@ def get_ar_marker_poses (msg, ar_markers = None, use_pc_service=True):
     
         img = bridge.cv_to_imgmsg(msg)
         reqImage.img = img
+        reqImage.track = track
         try:
             res = getImageMarkers(reqImage)
         except Exception as e:
@@ -165,7 +167,7 @@ def save_observations_rgbd(demo_type, demo_name, calib_file, num_cameras, for_gp
                 assert depth is not None
                 xyz = clouds.depth_to_xyz(depth, asus_xtion_pro_f)
                 pc = ru.xyzrgb2pc(xyz, rgb, frame_id='', use_time_now=False)
-                ar_tfms = get_ar_marker_poses(pc)
+                ar_tfms = get_ar_marker_poses(pc,track=True)
                 if ar_tfms:
                     if verbose:
                         blueprint("Got markers " + str(ar_tfms.keys()) + " at time %f"%stamps[ind])
@@ -180,10 +182,11 @@ def save_observations_rgbd(demo_type, demo_name, calib_file, num_cameras, for_gp
                 setCalib = rospy.ServiceProxy("setCalibInfo", SetCalibInfo)
             reqCalib.camera_model = camera_models[i]
             setCalib(reqCalib)
+            
             if verbose:
                 yellowprint("Changed camera calibration parameters to model %s"%camera_models[i])
 
-            for ind in range(len(stamps)):
+            for ind in rgb_fnames:                
                 rgb = cv.LoadImage(rgb_fnames[ind])
                 
                 if displayImages:
@@ -191,7 +194,8 @@ def save_observations_rgbd(demo_type, demo_name, calib_file, num_cameras, for_gp
                     cv.WaitKey(1)
 
                 assert rgb is not None
-                ar_tfms = get_ar_marker_poses(rgb,use_pc_service=False)
+                ar_tfms = get_ar_marker_poses(rgb,use_pc_service=False,track=True)
+
                 if ar_tfms:
                     if verbose:
                         blueprint("Got markers " + str(ar_tfms.keys()) + " at time %f"%stamps[ind])
