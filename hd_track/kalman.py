@@ -1,8 +1,9 @@
 from __future__ import division
-import hd_utils.transformations as tfm
-from hd_utils.colorize import colorize
 import numpy as np
 import scipy.linalg as scl
+
+import hd_utils.transformations as tfm
+from hd_utils.colorize import colorize
 
 def put_in_range(x):
     """

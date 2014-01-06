@@ -1,6 +1,7 @@
 # A simple class to return a time-stamped list of transforms in a serialized manner.
 from __future__ import division
 import numpy as np
+
 from hd_utils.colorize import colorize
 
 class streamize():

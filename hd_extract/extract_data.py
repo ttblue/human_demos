@@ -18,12 +18,12 @@ roslib.load_manifest('cv_bridge')
 from cv_bridge import CvBridge, CvBridgeError
 
 
-from hd_utils.defaults import tfm_link_rof, asus_xtion_pro_f, demo_files_dir
+from hd_utils.defaults import tfm_link_rof, asus_xtion_pro_f, demo_files_dir, master_name, demo_names
 from hd_utils.colorize import *
 from hd_utils import ros_utils as ru, clouds, conversions, extraction_utils as eu
 
 from hd_calib import gripper_calibration, gripper, gripper_lite
-from hd_utils.defaults import demo_files_dir
+from hd_utils.defaults import demo_files_dir, demo_names
 from hd_calib.calibration_pipeline import gripper_marker_id, gripper_trans_marker_tooltip
 
 getMarkersPC = None
@@ -79,28 +79,27 @@ def get_ar_marker_poses (msg, ar_markers = None, use_pc_service=True, track=Fals
 
 
 
-def save_observations_rgbd(demo_type, demo_name, calib_file, num_cameras, for_gpr=False, save_file=None):
+def save_observations_rgbd(demo_type, demo_name, calib_file, num_cameras, save_file=None):
     
     global setCalib
     
     demo_dir        = osp.join(demo_files_dir, demo_type, demo_name)
-    calib_file_path = osp.join(demo_dir,"calib")
-    bag_file        = osp.join(demo_dir, 'demo.bag')
+    calib_file_path = osp.join(demo_dir, demo_names.calib_name)
+    bag_file        = osp.join(demo_dir, demo_names.bag_name)
     
-    with open(osp.join(demo_dir, "camera_types.yaml")) as fh:
+    with open(osp.join(demo_dir, demo_names.camera_types_name)) as fh:
         camera_types = yaml.load(fh)
-    with open(osp.join(demo_dir, "camera_models.yaml")) as fh:
+    with open(osp.join(demo_dir, demo_names.camera_models_name)) as fh:
         camera_models = yaml.load(fh)
     
 
     video_dirs = {}
     for i in range(1, num_cameras + 1):
-        video_dirs[i] = osp.join(demo_dir, 'camera_#%i'%(i))
+        video_dirs[i] = osp.join(demo_dir, demo_names.video_dir%i)
 
     c_frames = {}
     for i in range(1, num_cameras + 1):
         c_frames[i]= 'camera%i_link'%(i)
-
     hydra_frame = 'hydra_base'
     
     tfm_c1 = {i:None for i in range (1,num_cameras+1)}
@@ -250,7 +249,7 @@ def save_observations_rgbd(demo_type, demo_name, calib_file, num_cameras, for_gp
             yellowprint("Found %i potentiometer readings"%len(data[lr]['pot_angles']))
 
     if save_file is None:
-        save_file = "demo.data"
+        save_file = demo_names.data_name
     save_filename = osp.join(demo_dir, save_file)
 
     with open(save_filename, 'w') as sfh: cPickle.dump(data, sfh)

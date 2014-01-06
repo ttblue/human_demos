@@ -157,7 +157,7 @@ def record_demo (demo_dir, use_voice):
 
     print
     yellowprint("Starting bag file recording.")
-    bag_file = osp.join(demo_dir,demo_names.demo_bag_name)
+    bag_file = osp.join(demo_dir,demo_names.bag_name)
     topic_writer.start_saving(bag_file)
     started_bag = True
 
@@ -253,7 +253,7 @@ def record_pipeline ( demo_type, calib_file,
 
 
         # Initialize names and record
-        demo_name = demo_names.demo_base_name%(demo_num)
+        demo_name = demo_names.base_name%(demo_num)
         demo_dir = osp.join(demo_type_dir, demo_name)
         if not osp.exists(demo_dir): os.mkdir(demo_dir)
 
@@ -265,15 +265,15 @@ def record_pipeline ( demo_type, calib_file,
         if save_demo:
             with open(master_file, 'a') as fh: fh.write('- demo_name: %s\n'%demo_name)
             
-            cam_type_file = osp.join(demo_dir, demo_names.demo_camera_types_name)
+            cam_type_file = osp.join(demo_dir, demo_names.camera_types_name)
             with open(cam_type_file,"w") as fh: yaml.dump(camera_types, fh)
-            cam_model_file = osp.join(demo_dir, demo_names.demo_camera_models_name)
+            cam_model_file = osp.join(demo_dir, demo_names.camera_models_name)
             with open(cam_model_file,"w") as fh: yaml.dump(camera_models, fh)
             
             with open(latest_demo_file,'w') as fh: fh.write(str(demo_num))
             demo_num += 1
             
-            shutil.copyfile(calib_file_path, osp.join(demo_dir,demo_names.demo_calib_name))
+            shutil.copyfile(calib_file_path, osp.join(demo_dir,demo_names.calib_name))
             
             if num_demos > 0:
                 num_demos -= 1
@@ -356,12 +356,12 @@ def record_single_demo (demo_type, demo_name, calib_file,
     if save_demo:
         with open(master_file, 'a') as fh: fh.write('- demo_name: %s\n'%demo_name)
         
-        cam_type_file = osp.join(demo_dir, demo_names.demo_camera_types_name)
+        cam_type_file = osp.join(demo_dir, demo_names.camera_types_name)
         with open(cam_type_file,"w") as fh: yaml.dump(camera_types, fh)
-        cam_model_file = osp.join(demo_dir, demo_names.demo_camera_models_name)
+        cam_model_file = osp.join(demo_dir, demo_names.camera_models_name)
         with open(cam_model_file,"w") as fh: yaml.dump(camera_models, fh)
 
-        shutil.copyfile(calib_file_path, osp.join(demo_dir,demo_names.demo_calib_name))
+        shutil.copyfile(calib_file_path, osp.join(demo_dir,demo_names.calib_name))
         
         greenprint("Saved %s."%demo_name)
     else:

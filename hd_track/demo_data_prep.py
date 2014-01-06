@@ -9,15 +9,16 @@ import scipy.interpolate as si
 import yaml
 import os.path as osp
 
-from hd_track.streamer import streamize, time_shift_stream, segment_stream
 from hd_utils.utils import avg_transform
 import hd_utils.transformations as tfms
-from   hd_track.kalman import closer_angle
 from hd_utils.colorize import blueprint, redprint
+from hd_utils.defaults import demo_names
 
+from hd_track.kalman import closer_angle
+from hd_track.streamer import streamize, time_shift_stream, segment_stream
 
 def get_cam_types(demo_dir):
-    cam_type_fname = osp.join(demo_dir, 'camera_types.yaml')
+    cam_type_fname = osp.join(demo_dir, demo_names.camera_types_name)
     with open(cam_type_fname, 'r') as f:
         cam_types_raw = yaml.load(f)
 
@@ -28,12 +29,12 @@ def get_cam_types(demo_dir):
     return cam_types
 
 
-def load_data(dat_fname, lr, freq=30.0):
+def load_data(data_file, lr, freq=30.0):
 
-    with open(dat_fname, 'r') as f:
+    with open(data_file, 'r') as f:
         dat = cp.load(f)
 
-    demo_dir    = osp.dirname(dat_fname)
+    demo_dir    = osp.dirname(data_file)
     cam_types   = get_cam_types(demo_dir)
     T_cam2hbase = dat['T_cam2hbase']
 

@@ -5,13 +5,13 @@ from __future__ import division
 import cPickle
 import openravepy as rave
 import numpy as np
-from hd_track.kalman import kalman
-from hd_utils import transformations as tfms
 import argparse
 import matplotlib.pylab as plt
 
-hd_path = '/home/henrylu/henry_sandbox/human_demos'
+from hd_utils.defaults import hd_path
+from hd_utils import transformations as tfms
 
+from hd_track.kalman import kalman
 
 def put_in_range(x):
     """

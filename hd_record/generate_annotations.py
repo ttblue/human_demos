@@ -2,8 +2,7 @@
 import yaml, rosbag
 import argparse
 import os, os.path as osp
-from hd_utils.defaults import demo_files_dir
-
+from hd_utils.defaults import demo_files_dir, demo_names, master_name
 """
 Voice command meanings:
 
@@ -107,8 +106,8 @@ def demos_to_annotations(stamps, commands):
 
 def generate_annotation(demo_type, demo_name):
     demo_dir = osp.join(demo_files_dir, demo_type, demo_name)
-    bag = rosbag.Bag(osp.join(demo_dir,'demo.bag'))
-    ann_file = osp.join(demo_dir,'ann.yaml')
+    bag = rosbag.Bag(osp.join(demo_dir,demo_names.bag_name))
+    ann_file = osp.join(demo_dir,demo_names.ann_name)
     
     stamps, commands = extract_segment(bag)
     demos = demos_to_annotations(stamps, commands)
@@ -135,13 +134,13 @@ if __name__=='__main__':
     else: 
         # if args.demo_name == '', run generate annotation for all the demos in the directory
         demo_type_dir = osp.join(demo_files_dir, args.demo_type)
-        demo_master_file = osp.join(demo_type_dir, "master.yaml")
+        demo_master_file = osp.join(demo_type_dir, master_name)
         
         with open(demo_master_file, 'r') as fh:
             demos_info = yaml.load(fh)
 
-        for demo_info in demos_info["demos"]:
-            generate_annotation(args.demo_type, demo_info["demo_name"])
+        for demo in demos_info["demos"]:
+            generate_annotation(args.demo_type, demo["demo_name"])
         
 
     print "done annotation generation"

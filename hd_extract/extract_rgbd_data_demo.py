@@ -13,8 +13,8 @@ from hd_utils.defaults import demo_files_dir, demo_names, master_name
 if __name__ == "__main__":
     
     parser = argparse.ArgumentParser()
-    parser.add_argument("-dtype", help="type of demonstration", action='store', dest='demo_type', type=str)
-    parser.add_argument("-dname", help="name of demonstration", action='store', dest='demo_name', type=str, default='')
+    parser.add_argument("-demo_type", help="type of demonstration", action='store', dest='demo_type', type=str)
+    parser.add_argument("-demo_name", help="name of demonstration", action='store', dest='demo_name', type=str, default='')
     args = parser.parse_args()
 
 
@@ -27,12 +27,12 @@ if __name__ == "__main__":
     if args.demo_name == '':
         for demo in demos_info["demos"]:
             demo_dir = osp.join(demo_type_dir, demo["demo_name"])
-            with open(osp.join(demo_dir, demo_names.demo_camera_types_name)) as fh: cam_types = yaml.load(fh)
-            ed.save_observations_rgbd(args.demo_type, demo["demo_name"], demo_names.demo_calib_name, len(cam_types))
+            with open(osp.join(demo_dir, demo_names.camera_types_name)) as fh: cam_types = yaml.load(fh)
+            ed.save_observations_rgbd(args.demo_type, demo["demo_name"], demo_names.calib_name, len(cam_types))
     else:
         if args.demo_name in (demo["demo_name"] for demo in demos_info["demos"]):
             demo_dir = osp.join(demo_type_dir, args.demo_name)
-            with open(osp.join(demo_dir, demo_names.demo_camera_types_name)) as fh: cam_types = yaml.load(fh)
-            ed.save_observations_rgbd(args.demo_type, args.demo_name, demo_names.demo_calib_name, len(cam_types))
+            with open(osp.join(demo_dir, demo_names.camera_types_name)) as fh: cam_types = yaml.load(fh)
+            ed.save_observations_rgbd(args.demo_type, args.demo_name, demo_names.calib_name, len(cam_types))
             
     print "Done extracting data."

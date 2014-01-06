@@ -5,22 +5,19 @@ import os, os.path as osp
 import cPickle as cp
 import scipy.linalg as scl
 import math, sys
+import argparse 
 import matplotlib.pylab as plt
 
 from hd_utils.colorize import *
 from hd_utils.conversions import *
 from hd_utils.utils import *
+from hd_utils.defaults import demo_files_dir, demo_names, master_name
 
 from hd_track.kalman import kalman, smoother
 from hd_track.kalman_tuning import state_from_tfms_no_velocity
-
 from hd_track.streamer import streamize, get_corresponding_data, stream_soft_next
-
 from hd_track.demo_data_prep import *
 from hd_track.tps_correct    import *
-
-import argparse 
-from hd_utils.defaults import demo_files_dir, demo_names, master_name
 
 
 
@@ -128,16 +125,17 @@ def plot_tf_streams(tf_strms, strm_labels, styles=None, title=None, block=True):
 
 
 
-def load_demo_data(demo_fname, freq, rem_outliers, tps_correct, tps_model_fname, plot, block):
+def load_demo_data(demo_dir, freq, rem_outliers, tps_correct, tps_model_fname, plot, block):
     cam_dat = {}
     hydra_dat  = {}
     pot_dat = {}
     dt      = 1./freq
-    demo_dir  = osp.dirname(demo_fname)
     lr_full   = {'l': 'left', 'r':'right'}
 
-    T_cam2hbase, cam_dat['l'], hydra_dat['l'], pot_dat['l'] = load_data(demo_fname, 'l', freq)
-    T_cam2hbase, cam_dat['r'], hydra_dat['r'], pot_dat['r'] = load_data(demo_fname, 'r', freq)
+    data_file = osp.join(demo_dir, demo_names.data_name)
+
+    T_cam2hbase, cam_dat['l'], hydra_dat['l'], pot_dat['l'] = load_data(data_file, 'l', freq)
+    T_cam2hbase, cam_dat['r'], hydra_dat['r'], pot_dat['r'] = load_data(data_file, 'r', freq)
     
     
     ## collect all camera streams in a list:
@@ -265,7 +263,7 @@ def load_demo_data(demo_fname, freq, rem_outliers, tps_correct, tps_model_fname,
     return filter_data
 
 
-def prepare_kf_data(demo_fname, ann_fname, freq, rem_outliers, tps_correct, tps_model_fname, plot, block):
+def prepare_kf_data(demo_dir, freq, rem_outliers, tps_correct, tps_model_fname, plot, block):
     '''
     freq: default 30
     rem_outlier: default True
@@ -274,14 +272,16 @@ def prepare_kf_data(demo_fname, ann_fname, freq, rem_outliers, tps_correct, tps_
     plot default False
     
     '''
-    filter_data = load_demo_data(demo_fname, freq,
+    filter_data = load_demo_data(demo_dir, 
+                                 freq,
                                  rem_outliers,
                                  tps_correct,
                                  tps_model_fname,
                                  plot,
                                  block)
     
-    with open(ann_fname) as f:
+    ann_file = osp.join(demo_dir, demo_names.ann_name) 
+    with open(ann_file) as f:
         ann_dat = yaml.load(f)
 
     time_shifts = filter_data['cam_shifts']
@@ -301,10 +301,10 @@ def prepare_kf_data(demo_fname, ann_fname, freq, rem_outliers, tps_correct, tps_
         seg_streams, nsteps, shifted_seg_start_times = segment_streams(ann_dat, strms, time_shifts, filter_data['demo_dir'], base_stream='camera1')
 
         n_segs = len(seg_streams)
-    
+
         seg_data = []
         for i in xrange(n_segs):
-            
+
             ## get camera streams for the segment in question:
             seg_cam_strms = {}
             for j,cam in enumerate(cam_strms.keys()):
@@ -410,7 +410,7 @@ def run_KF(KF, nsteps, freq, hydra_strm, cam_dat, hydra_covar, rgb_covar, rgbd_c
 
 
 
-def filter_traj(demo_fname, ann_fname, tps_model_fname, save_tps, do_smooth, plot, block):
+def filter_traj(demo_dir, tps_model_fname, save_tps, do_smooth, plot, block):
     """
     Runs the kalman filter for BOTH the grippers and writes the demo.traj file.
     TPS_MODEL_FNAME : The name of the file to load the tps-model from
@@ -418,9 +418,11 @@ def filter_traj(demo_fname, ann_fname, tps_model_fname, save_tps, do_smooth, plo
     
     freq = 30.0
     
-    rec_data, time_shifts, _, n_segs = prepare_kf_data(demo_fname, ann_fname, freq=freq,
+    rec_data, time_shifts, _, n_segs = prepare_kf_data(demo_dir,
+                                                       freq=freq,
                                                        rem_outliers=True,
-                                                       tps_correct=True, tps_model_fname=tps_model_fname,
+                                                       tps_correct=True, 
+                                                       tps_model_fname=tps_model_fname,
                                                        plot=plot,
                                                        block=block)
     
@@ -495,12 +497,11 @@ def filter_traj(demo_fname, ann_fname, tps_model_fname, save_tps, do_smooth, plo
                 else:
                     i += 1
             '''
-            Finish dirty hack
-            '''        
-                    
-                    
-                    
-            
+            Finish dirty hack.
+            '''
+
+
+
             seg_traj = {"stamps"  : ts,
                         "tfms"    : Ts_kf,
                         "covars"  : covars_kf,
@@ -513,7 +514,7 @@ def filter_traj(demo_fname, ann_fname, tps_model_fname, save_tps, do_smooth, plo
 
         traj[lr] = lr_trajs
 
-    traj_fname = osp.join(osp.dirname(demo_fname), 'demo.traj')
+    traj_fname = osp.join(demo_dir, demo_names.traj_name)
     with open(traj_fname, 'wb') as f:
         cp.dump(traj, f)
 
@@ -540,19 +541,14 @@ if __name__=='__main__':
         demos_info = yaml.load(fh)
         
         
-   
     if args.demo_name == '':
         for demo in demos_info["demos"]:
-            demo_fname = osp.join(demo_type_dir, demo["demo_name"], demo_names.demo_data_name)
-            ann_fname = osp.join(demo_type_dir, demo["demo_name"], demo_names.demo_ann_name)
-            filter_traj(demo_fname, ann_fname, tps_model_fname=args.tps_fname, save_tps=args.save_tps, do_smooth=args.do_smooth, plot=args.plotting, block=args.block)
+            demo_dir = osp.join(demo_type_dir, demo["demo_name"])
+            filter_traj(demo_dir, tps_model_fname=args.tps_fname, save_tps=args.save_tps, do_smooth=args.do_smooth, plot=args.plotting, block=args.block)
     else:
         if args.demo_name in (demo["demo_name"] for demo in demos_info["demos"]):
-            demo_fname = osp.join(demo_type_dir, args.demo_name, demo_names.demo_data_name)
-            ann_fname = osp.join(demo_type_dir, args.demo_name, demo_names.demo_ann_name)
-            filter_traj(demo_fname, ann_fname, tps_model_fname=args.tps_fname, save_tps=args.save_tps, do_smooth=args.do_smooth, plot=args.plotting, block=args.block)
-                
-                
+            demo_dir = osp.join(demo_type_dir, args.demo_name)
+            filter_traj(demo_dir, tps_model_fname=args.tps_fname, save_tps=args.save_tps, do_smooth=args.do_smooth, plot=args.plotting, block=args.block)
+
     if args.plotting == True and args.block == False:
         raw_input()
-

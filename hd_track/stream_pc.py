@@ -238,13 +238,15 @@ if __name__ == '__main__':
     import rosbag, rospy, os
     from sensor_msgs.msg import PointCloud2
     
-    bag = rosbag.Bag('/home/sibi/sandbox/human_demos/hd_data/demos/recorded/demo6.bag')
+    bag = rosbag.Bag('/home/sibi/sandbox/human_demos/hd_data/demos/overhand/demo00001/demo.bag')
     
     rospy.init_node('test_pc')
     pub = rospy.Publisher('/test_pointclouds', PointCloud2)
 
     freq = 1
     pc_streamer = streamize_pc(bag, '/camera1/depth_registered/points', 1, tstart=1383366737.35)
+    # THE ABOVE LINE WILL NOT WORK. NO MORE PC IN POINT CLOUDS.
+
     
     while True:
         try:

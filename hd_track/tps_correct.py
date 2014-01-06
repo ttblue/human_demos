@@ -9,16 +9,13 @@ import matplotlib.pylab as plt
 from hd_utils.colorize import colorize
 from hd_utils.conversions import *
 from hd_utils.utils import *
-from hd_utils.defaults import tfm_link_rof
-
-
-from   hd_utils.defaults import calib_files_dir
-from   hd_utils.defaults import hd_path
+from hd_utils.defaults import tfm_link_rof, hd_path, calib_files_dir, demo_files_dir, demo_names
+from   hd_utils.tps_utils import *
+from   hd_utils.mayavi_plotter import *
 
 ## for tps-correct:
 from   rapprentice import registration
-from   hd_utils.tps_utils import *
-from   hd_utils.mayavi_plotter import *
+
 
 
 """
@@ -239,18 +236,15 @@ if __name__=="__main__":
     parser.add_argument('--plot', help="Plot the data", action="store_true", default=False)
     parser.add_argument('--rviz', help="Publish the data on topics for visualization on RVIZ", action="store_true", default=True)
     parser.add_argument('-freq', help="frequency in filter", action='store', dest='freq', default=30., type=float)
-    parser.add_argument('-dname', help="name of demonstration file", action='store', dest='demo_fname', default='demo100', type=str)
-    parser.add_argument('-clib', help="name of calibration file", action='store', dest='calib_fname', default = 'cc_two_camera_calib', type=str)
+    parser.add_argument('-demo_name', help="name of demonstration", action='store', type=str)
+    parser.add_argument('-demo_type', help="type of demonstration", action='store', type=str)
     vals = parser.parse_args()
     
     #rospy.init_node('viz_demos',anonymous=True)    
 
     freq        = vals.freq
-    demo_fname  = vals.demo_fname
-    calib_fname = vals.calib_fname
-    
-    demo_dir  = hd_path + '/hd_data/demos/' + demo_fname;
-    data_file = osp.join(demo_dir, 'demo.data')
+    demo_dir  = osp.join(demo_files_dir, vals.demo_type, vals.demo_name)
+    data_file = osp.join(demo_dir, demo_names.data_name)
     
     fit_and_plot_tps(True)
-    #fit_gpr(data_file, calib_fname, freq, use_spline=False, customized_shift=None, single_camera=True, plot_commands='1h')
+    #fit_gpr(demo_dir, freq, use_spline=False, customized_shift=None, single_camera=True, plot_commands='1h')
