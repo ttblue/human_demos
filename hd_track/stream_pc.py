@@ -236,6 +236,8 @@ class streamize_rgbd_pc():
                 else:
                     break
 
+            if self.index == 0 and self.done:
+                return
             rtn_msg = self.get_pc(self.index-1)
             if self.verbose:
                 print "Time stamp: ", self.base_ts + self.ts

@@ -550,6 +550,9 @@ def make_kin_tree_from_joint(
     originFromParent = conversions.pose_to_hmat(ps.pose)
     originFromRotated = np.dot(originFromParent, parentFromRotated)
 
+    import IPython
+    IPython.embed()
+
     newps = gm.PoseStamped()
     newps.header = ps.header
     newps.pose = conversions.hmat_to_pose(originFromRotated)

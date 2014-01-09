@@ -43,10 +43,11 @@ def load_data(data_file, lr, freq=30.0):
         if 'cam' in kname:
             tfs = [tt[0] for tt in dat[lr][kname]]
             ts  = [tt[1] for tt in dat[lr][kname]]
+            ctype_name = int(kname[-1])
             ## don't append any empty-streams:
             if len(ts) > 0:
                 cam_strm = streamize(tfs, ts, freq, avg_transform)#, tstart=-1./freq)
-                cam_info[kname] = {'type'   : cam_types[kname],
+                cam_info[kname] = {'type'   : cam_types[ctype_name],
                                    'stream' : cam_strm}
 
     ## hydra data:

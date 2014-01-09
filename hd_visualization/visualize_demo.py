@@ -3,16 +3,22 @@ import yaml
 import cPickle as cp
 import numpy as np
 import time
+import argparse
+import math
 
 import rospy
 from sensor_msgs.msg import PointCloud2
+from geometry_msgs.msg import PoseStamped
 
 from hd_utils.defaults import tfm_link_rof, demo_names, demo_files_dir
 from hd_utils.utils import avg_transform
 from hd_utils.colorize import yellowprint
+import hd_utils.conversions as conversions
 
-from hd_track.streamer import streamize
+from hd_track.streamer import streamize, soft_next
 from hd_track.stream_pc import streamize_rgbd_pc    
+
+from ros_vis import draw_trajectory
 
 def load_data(data_file, lr, freq=30.0, speed=1.0):
     """
@@ -22,7 +28,7 @@ def load_data(data_file, lr, freq=30.0, speed=1.0):
         dat = cp.load(f)
 
     demo_dir    = osp.dirname(data_file)
-    cam_types   = get_cam_types(demo_dir)
+    with open(osp.join(demo_dir, demo_names.camera_types_name),'r') as fh: cam_types = yaml.load(fh)
     T_cam2hbase = dat['T_cam2hbase']
 
     cam_info = {}
@@ -30,11 +36,12 @@ def load_data(data_file, lr, freq=30.0, speed=1.0):
         if 'cam' in kname:
             tfs = [tt[0] for tt in dat[lr][kname]]
             ts  = [tt[1] for tt in dat[lr][kname]]
+            ctype_name = int(kname[-1])
             ## don't append any empty-streams:
             if len(ts) > 0:
                 cam_strm = streamize(tfs, ts, freq, avg_transform, speed=speed)#, tstart=-1./freq)
-                cam_info[kname] = {'type'   : cam_types[kname],
-                                   'stream' : cam_strm}
+                cam_info[ctype_name] = {'type'   : cam_types[ctype_name],
+                                        'stream' : cam_strm}
 
     ## hydra data:
     hydra_tfs = [tt[0] for tt in dat[lr]['hydra']]     
@@ -111,11 +118,12 @@ def view_demo_on_rviz(demo_type, demo_name, freq, speed=1.0, main='h', prompt=Fa
     demo_dir = osp.join(demo_files_dir, demo_type, demo_name)
     bag_file = osp.join(demo_dir, demo_names.bag_name)
     data_file = osp.join(demo_dir, demo_names.data_name)
+    calib_file = osp.join(demo_dir, demo_names.calib_name)
     with open(osp.join(demo_dir, demo_names.camera_types_name),'r') as fh: cam_types = yaml.load(fh)
     with open(data_file, 'r') as fh: dat = cp.load(fh)
     
     # get grippers used
-    grippers = dat.keys()
+    grippers = [key for key in dat.keys() if key in 'lr']
 
     # data 
     rgbd_dirs = {cam:osp.join(demo_dir,demo_names.video_dir%cam) for cam in cam_types if cam_types[cam] == 'rgbd'}
@@ -130,6 +138,7 @@ def view_demo_on_rviz(demo_type, demo_name, freq, speed=1.0, main='h', prompt=Fa
     T_cam2hbase, cam_dat['l'], hydra_dat['l'], pot_dat['l'] = load_data(data_file, 'l', freq, speed)
     _,  cam_dat['r'], hydra_dat['r'], pot_dat['r'] = load_data(data_file, 'r', freq, speed)
 
+    all_cam_strms = []
     for lr in 'lr':
         for cam in cam_dat[lr].keys():
             all_cam_strms.append(cam_dat[lr][cam]['stream'])
@@ -144,10 +153,10 @@ def view_demo_on_rviz(demo_type, demo_name, freq, speed=1.0, main='h', prompt=Fa
         tfm_pubs[lr] = {}
         for cam in cam_types:
             tfm_pubs[lr][cam] = rospy.Publisher('/%s_ar%i_estimate'%(lr,cam), PoseStamped)
-        tfm_pub[lr]['h'] = rospy.Publisher('/%s_hydra_estimate'%(lr), PoseStamped)
+        tfm_pubs[lr]['h'] = rospy.Publisher('/%s_hydra_estimate'%(lr), PoseStamped)
 
     ## get the point-cloud stream
-    pc_strms = {cam:streamize_rgbd_pc(rgbd_dir[cam], cam_frames[cam], freq, tstart=tmin,speed=speed) for cam in rgbd_dirs}
+    pc_strms = {cam:streamize_rgbd_pc(rgbd_dirs[cam], cam_frames[cam], freq, tstart=tmin,speed=speed) for cam in rgbd_dirs}
     pc_pubs = {cam:rospy.Publisher('/point_cloud%i'%cam, PointCloud2) for cam in rgbd_dirs}
 
     cam_tfms  = get_cam_transforms (calib_file, len(cam_types))
@@ -191,7 +200,7 @@ def view_demo_on_rviz(demo_type, demo_name, freq, speed=1.0, main='h', prompt=Fa
             for cam in cam_types:
                 next_est[lr][cam] = soft_next(cam_dat[lr][cam]['stream'])
 
-            ang_val = soft_next(ang_strm[lr])
+            ang_val = soft_next(pot_dat[lr])
             if ang_val != None:
                 prev_ang[lr] = ang_val
                 ang_val  = ang_val
@@ -205,21 +214,24 @@ def view_demo_on_rviz(demo_type, demo_name, freq, speed=1.0, main='h', prompt=Fa
                 tfms.append(tfm)
             ang_vals.append(ang_val)
 
-        handles = draw_trajectory(cam_frames[cam], tfms, color=(1,1,0,1), open_fracs=ang_vals)
+        #print tfms
+#         import IPython
+#         IPython.embed()
+        #handles = draw_trajectory(cam_frames[1], tfms, color=(1,1,0,1), open_fracs=ang_vals)
 
         for lr in grippers:
             for m,est in next_est[lr].items():
                 if est != None:
-                    tfm_pubs[m].publish(pose_to_stamped_pose(hmat_to_pose(est), cam_frame[1]))
+                    tfm_pubs[lr][m].publish(conversions.pose_to_stamped_pose(conversions.hmat_to_pose(est), cam_frames[1]))
                 else:
-                    tfm_pubs[m].publish(pose_to_stamped_pose(hmat_to_pose(T_far), cam_frame[1]))
+                    tfm_pubs[lr][m].publish(conversions.pose_to_stamped_pose(conversions.hmat_to_pose(T_far), cam_frames[1]))
         
         sleeper.sleep()
 
 
 
 
-def view_tracking_on_rviz(demo_type, demo_name, freq, speed=1.0, use_smoother=True, prompt=False):
+def view_tracking_on_rviz(demo_type, demo_name, freq=30, speed=1.0, use_smoother=True, prompt=False):
     """
     Visualizes demo after kalman tracking/smoothing on rviz.
     @demo_type, @demo_name: demo identification.
@@ -231,6 +243,7 @@ def view_tracking_on_rviz(demo_type, demo_name, freq, speed=1.0, use_smoother=Tr
     demo_dir = osp.join(demo_files_dir, demo_type, demo_name)
     bag_file = osp.join(demo_dir, demo_names.bag_name)
     traj_file = osp.join(demo_dir, demo_names.traj_name)
+    calib_file = osp.join(demo_dir, demo_names.calib_name)
     with open(osp.join(demo_dir, demo_names.camera_types_name),'r') as fh: cam_types = yaml.load(fh)
     with open(traj_file, 'r') as fh: traj = cp.load(fh)
     
@@ -320,3 +333,24 @@ def view_tracking_on_rviz(demo_type, demo_name, freq, speed=1.0, use_smoother=Tr
             handles = draw_trajectory(cam_frames[cam], tfms, color=(1,1,0,1), open_fracs=ang_vals)
             
             sleeper.sleep()
+            
+if __name__=='__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--demo_type",help="Type of demonstration")
+    parser.add_argument("--demo_name",help="Name of demo", default='', type=str)
+    parser.add_argument("--freq",help="Frequency of sampling.", default=1.0, type=float)
+    parser.add_argument("--speed",help="Speed of demo.", default=1.0, type=float)
+    parser.add_argument("--use_traj",help="Use .traj file (kalman f/s data)", action='store_true',default=False)
+    parser.add_argument("--main",help="If not using .traj file, which sensor is main?", default='h', type=str)
+    parser.add_argument("--use_smoother",help="If using .traj file, filter or smoother?", action='store_true',default=False)
+    parser.add_argument("--prompt",help="Prompt for each step.", action='store_true', default=False)
+    args = parser.parse_args()
+
+    if args.use_traj:
+        view_tracking_on_rviz(demo_type=args.demo_type, demo_name=args.demo_name, 
+                              freq=args.freq, speed=args.freq, 
+                              use_smoother=args.use_smoother, prompt=args.prompt)
+    else:
+        view_demo_on_rviz(demo_type=args.demo_type, demo_name=args.demo_name, 
+                          freq=args.freq, speed=args.freq, 
+                          main=args.main, prompt=args.prompt)
