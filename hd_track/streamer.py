@@ -22,7 +22,7 @@ class streamize():
     This class is iterable.
     """
     
-    def __init__(self, objs, ts, freq, favg, tstart=None):
+    def __init__(self, objs, ts, freq, favg, tstart=None, speed=1.0):
         assert len(objs)==len(ts), "time-stamps and objects should have the same length"
         self.objs = objs
         self.ts = np.array(ts)
@@ -33,7 +33,9 @@ class streamize():
             self.tmax = self.ts[-1]
         
         self.favg = favg
-        self.dt   = 1./freq
+        
+        self.speed = speed
+        self.dt   = self.speed/freq
         
         self.idx  = 0
 
@@ -80,6 +82,9 @@ class streamize():
 
     def get_start_time(self):
         return self.tstart
+    
+    def get_speed(self):
+        return self.speed
 
 
 def time_shift_stream(strm, dT):

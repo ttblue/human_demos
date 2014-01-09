@@ -3,6 +3,8 @@ import yaml, rosbag
 import argparse
 import os, os.path as osp
 from hd_utils.defaults import demo_files_dir, demo_names, master_name
+from hd_utils.yes_or_no import yes_or_no
+from hd_utils.colorize import yellowprint, greenprint
 """
 Voice command meanings:
 
@@ -130,7 +132,11 @@ if __name__=='__main__':
     args = parser.parse_args()
     
     if args.demo_name != '':
-        generate_annotation(args.demo_type, args.demo_name)
+        if osp.isfile(osp.join(demo_type_dir, demo["demo_name"], demo_names.ann_name)):
+            if yes_or_no('Annotation file already exists for this demo. Overwrite?'):
+                generate_annotation(args.demo_type, args.demo_name)
+        else:
+            generate_annotation(args.demo_type, args.demo_name)
     else: 
         # if args.demo_name == '', run generate annotation for all the demos in the directory
         demo_type_dir = osp.join(demo_files_dir, args.demo_type)
@@ -140,8 +146,10 @@ if __name__=='__main__':
             demos_info = yaml.load(fh)
 
         for demo in demos_info["demos"]:
-            generate_annotation(args.demo_type, demo["demo_name"])
-        
+            if not osp.isfile(osp.join(demo_type_dir, demo["demo_name"], demo_names.ann_name)):
+                generate_annotation(args.demo_type, demo["demo_name"])
+            else:
+                yellowprint("Annotation file exists for %s. Not overwriting"%demo["demo_name"])
 
-    print "done annotation generation"
+    greenprint("Done annotation generation.")
     

@@ -40,14 +40,15 @@ tfm_pub = None
 pot_pub = None
 
 # Camera defaults
-NUM_CAMERAS = 2
+NUM_CAMERAS = 3
 CAM_N_OBS = 10
 CAM_N_AVG = 30
 
 # Hydra defaults
 HYDRA_N_OBS = 15
 HYDRA_N_AVG = 50
-CALIB_CAMERA = 0
+# should not change this. Maybe should remove this altogether.
+CALIB_CAMERA = 0 
 
 # Gripper defaults
 GRIPPER_MIN_OBS = 4

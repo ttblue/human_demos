@@ -45,7 +45,7 @@ def load_data(data_file, lr, freq=30.0):
             ts  = [tt[1] for tt in dat[lr][kname]]
             ## don't append any empty-streams:
             if len(ts) > 0:
-                cam_strm = streamize(tfs, ts, freq, avg_transform, tstart=-1./freq)
+                cam_strm = streamize(tfs, ts, freq, avg_transform)#, tstart=-1./freq)
                 cam_info[kname] = {'type'   : cam_types[kname],
                                    'stream' : cam_strm}
 
@@ -56,7 +56,7 @@ def load_data(data_file, lr, freq=30.0):
     if len(hydra_ts) <= 0:
         redprint("ERROR : No hydra data found in : %s"%dat_fname)
         sys.exit(-1)
-    hydra_strm = streamize(hydra_tfs, hydra_ts, freq, avg_transform, tstart=-1./freq)
+    hydra_strm = streamize(hydra_tfs, hydra_ts, freq, avg_transform)#, tstart=-1./freq)
 
     ## potentiometer angles:
     pot_vals = np.array([tt[0] for tt in dat[lr]['pot_angles']])
@@ -64,7 +64,8 @@ def load_data(data_file, lr, freq=30.0):
     if len(pot_ts) <= 0:
         redprint("ERROR : No potentiometer data found in : %s"%dat_fname)
         sys.exit(-1)
-    pot_strm = streamize(pot_vals, pot_ts, freq, np.mean, tstart=-1./freq)
+    pot_strm = streamize(pot_vals, pot_ts, freq, np.mean)#, tstart=-1./freq)
+
 
     return (T_cam2hbase, cam_info, hydra_strm, pot_strm)
 
