@@ -201,7 +201,7 @@ def view_demo_on_rviz(demo_type, demo_name, freq, speed=1.0, main='h', prompt=Fa
                 next_est[lr][cam] = soft_next(cam_dat[lr][cam]['stream'])
 
             ang_val = soft_next(pot_dat[lr])
-            if ang_val != None:
+            if ang_val != None and not np.isnan(ang_val):
                 prev_ang[lr] = ang_val
                 ang_val  = ang_val
             else:
@@ -214,10 +214,7 @@ def view_demo_on_rviz(demo_type, demo_name, freq, speed=1.0, main='h', prompt=Fa
                 tfms.append(tfm)
             ang_vals.append(ang_val)
 
-        #print tfms
-#         import IPython
-#         IPython.embed()
-        #handles = draw_trajectory(cam_frames[1], tfms, color=(1,1,0,1), open_fracs=ang_vals)
+        handles = draw_trajectory(cam_frames[1], tfms, color=(1,1,0,1), open_fracs=ang_vals)
 
         for lr in grippers:
             for m,est in next_est[lr].items():
@@ -338,7 +335,7 @@ if __name__=='__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--demo_type",help="Type of demonstration")
     parser.add_argument("--demo_name",help="Name of demo", default='', type=str)
-    parser.add_argument("--freq",help="Frequency of sampling.", default=1.0, type=float)
+    parser.add_argument("--freq",help="Frequency of sampling.", default=30.0, type=float)
     parser.add_argument("--speed",help="Speed of demo.", default=1.0, type=float)
     parser.add_argument("--use_traj",help="Use .traj file (kalman f/s data)", action='store_true',default=False)
     parser.add_argument("--main",help="If not using .traj file, which sensor is main?", default='h', type=str)
