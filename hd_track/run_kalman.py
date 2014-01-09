@@ -489,6 +489,9 @@ def filter_traj(demo_dir, tps_model_fname, save_tps, do_smooth, plot, block):
                     
         
             # then linear interpolation between non-None elements
+            print n_pot_angles
+            print len(ts)
+            print nsteps
             i = 0
             while i < n_pot_angles:
                 if pot_angles[i] == None:

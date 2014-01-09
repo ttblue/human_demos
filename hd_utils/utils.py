@@ -60,6 +60,9 @@ def avg_transform (tfms):
 def rad_angle(angle):
     return angle/180.0*np.pi
 
+def deg_angle(angle):
+    return angle*180.0/np.pi
+
 def rotation_matrix(axis,theta):
     axis = axis/np.sqrt(np.dot(axis,axis))
     a = np.cos(theta/2)

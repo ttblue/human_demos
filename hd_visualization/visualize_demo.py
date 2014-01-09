@@ -11,7 +11,7 @@ from sensor_msgs.msg import PointCloud2
 from geometry_msgs.msg import PoseStamped
 
 from hd_utils.defaults import tfm_link_rof, demo_names, demo_files_dir
-from hd_utils.utils import avg_transform
+from hd_utils.utils import avg_transform, rad_angle
 from hd_utils.colorize import yellowprint
 import hd_utils.conversions as conversions
 
@@ -159,6 +159,9 @@ def view_demo_on_rviz(demo_type, demo_name, freq, speed=1.0, main='h', prompt=Fa
     pc_strms = {cam:streamize_rgbd_pc(rgbd_dirs[cam], cam_frames[cam], freq, tstart=tmin,speed=speed) for cam in rgbd_dirs}
     pc_pubs = {cam:rospy.Publisher('/point_cloud%i'%cam, PointCloud2) for cam in rgbd_dirs}
 
+#     import IPython
+#     IPython.embed()
+
     cam_tfms  = get_cam_transforms (calib_file, len(cam_types))
     for cam in rgbd_dirs:
         if cam != 1:
@@ -174,7 +177,7 @@ def view_demo_on_rviz(demo_type, demo_name, freq, speed=1.0, main='h', prompt=Fa
     for i in xrange(nsteps):
         if prompt:
             raw_input("Hit enter when ready.")
-        print "Time stamp: ", tmin+(0.0+i*speed)/freq
+        #print "Time stamp: ", tmin+(0.0+i*speed)/freq
         
         ## show the point-cloud:
         found_pc = False
@@ -212,7 +215,7 @@ def view_demo_on_rviz(demo_type, demo_name, freq, speed=1.0, main='h', prompt=Fa
                 tfms.append(T_far)
             else:
                 tfms.append(tfm)
-            ang_vals.append(ang_val)
+            ang_vals.append(rad_angle(ang_val))
 
         handles = draw_trajectory(cam_frames[1], tfms, color=(1,1,0,1), open_fracs=ang_vals)
 
@@ -228,7 +231,7 @@ def view_demo_on_rviz(demo_type, demo_name, freq, speed=1.0, main='h', prompt=Fa
 
 
 
-def view_tracking_on_rviz(demo_type, demo_name, freq=30, speed=1.0, use_smoother=True, prompt=False):
+def view_tracking_on_rviz(demo_type, demo_name, freq=30.0, speed=1.0, use_smoother=True, prompt=False):
     """
     Visualizes demo after kalman tracking/smoothing on rviz.
     @demo_type, @demo_name: demo identification.
@@ -272,20 +275,20 @@ def view_tracking_on_rviz(demo_type, demo_name, freq=30, speed=1.0, use_smoother
         if prompt:
             raw_input("Press enter for segment %s."%seg)
         else:
-            yellow_print("Segment %s beginning."%seg)
+            yellowprint("Segment %s beginning."%seg)
             time.sleep(1)
         
         # Initializing data streams:
         traj_strms = {}
         pot_strms = {}
-        tfms_key = 'tfms_s' if use_smooth else 'tfms'
+        tfms_key = 'tfms_s' if use_smoother else 'tfms'
 
         for lr in grippers:
             traj_strms[lr] = streamize(traj[lr][seg][tfms_key], traj[lr][seg]['stamps'], freq, avg_transform, speed=speed)
-            pot_strms[lr] = streamize(traj[lr][seg]['pot_angles'], traj[lr][seg]['stamps'], freq, np.mean, speed=speed)
+            pot_strms[lr] = streamize(traj[lr][seg]['pot_angles'][:-1], traj[lr][seg]['stamps'], freq, np.mean, speed=speed)
         
         tmin, tmax, nsteps = relative_time_streams(traj_strms.values() + pot_strms.values(), freq, speed)
-        pc_strms = {cam:streamize_rgbd_pc(rgbd_dir[cam], cam_frames[cam], freq, tstart=tmin, tend=tmax,speed=speed) for cam in rgbd_dirs}
+        pc_strms = {cam:streamize_rgbd_pc(rgbd_dirs[cam], cam_frames[cam], freq, tstart=tmin, tend=tmax,speed=speed) for cam in rgbd_dirs}
     
         prev_ang = {'l': 0, 'r': 0}
         for i in xrange(nsteps):
@@ -314,8 +317,8 @@ def view_tracking_on_rviz(demo_type, demo_name, freq=30, speed=1.0, use_smoother
             for lr in grippers:
                 tfm = soft_next(traj_strms[lr])
                 
-                ang_val = soft_next(ang_strm[lr])
-                if ang_val != None:
+                ang_val = soft_next(pot_strms[lr])
+                if ang_val != None and not np.isnan(ang_val):
                     prev_ang[lr] = ang_val
                     ang_val  = ang_val
                 else:
@@ -325,11 +328,12 @@ def view_tracking_on_rviz(demo_type, demo_name, freq=30, speed=1.0, use_smoother
                     tfms.append(T_far)
                 else:
                     tfms.append(tfm)
-                ang_vals.append(ang_val)
+                ang_vals.append(rad_angle(ang_val))
+    
     
             handles = draw_trajectory(cam_frames[cam], tfms, color=(1,1,0,1), open_fracs=ang_vals)
             
-            sleeper.sleep()
+            time.sleep(1.0/freq)
             
 if __name__=='__main__':
     parser = argparse.ArgumentParser()
@@ -345,9 +349,9 @@ if __name__=='__main__':
 
     if args.use_traj:
         view_tracking_on_rviz(demo_type=args.demo_type, demo_name=args.demo_name, 
-                              freq=args.freq, speed=args.freq, 
+                              freq=args.freq, speed=args.speed, 
                               use_smoother=args.use_smoother, prompt=args.prompt)
     else:
         view_demo_on_rviz(demo_type=args.demo_type, demo_name=args.demo_name, 
-                          freq=args.freq, speed=args.freq, 
+                          freq=args.freq, speed=args.speed, 
                           main=args.main, prompt=args.prompt)
