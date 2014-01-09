@@ -5,6 +5,22 @@ import conversions
 from colorize import redprint
 import transformations as tfms
 
+def display_all_keys(d, depth=0, limit=-1):
+    """
+    Displays all the keys hierarchically in a dictionary. 
+    """
+    if limit >= 0 and depth > limit:
+        return
+    if not isinstance(d,dict):
+        if depth==0:
+            print "Not a dictionary."
+        return
+    
+    keys = sorted(d.keys())
+    for key in keys:
+        print '  '*depth + '- ' + str(key)
+        display_all_keys(d[key],depth+1,limit)
+        
 
 def avg_quaternions(qs):
     """
