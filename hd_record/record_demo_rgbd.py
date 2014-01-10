@@ -170,6 +170,7 @@ def record_demo (demo_dir, use_voice):
     # Change to voice command
     time.sleep(1.2)
     subprocess.call("espeak -v en 'Recording.'", stdout=devnull, stderr=devnull, shell=True)
+    time_start = time.time()
     if use_voice:
         while True:
             status = cmd_checker.get_latest_msg()
@@ -178,7 +179,9 @@ def record_demo (demo_dir, use_voice):
             sleeper.sleep()
     else:
         raw_input(colorize("Press any key when done.",'y',True))
-
+    
+    time_finish = time.time()
+    
     for cam in started_video:
         if started_video[cam]:
             save_image_services[cam](cam_stop_request)
@@ -186,15 +189,16 @@ def record_demo (demo_dir, use_voice):
     if started_bag:
         topic_writer.stop_saving()
         yellowprint("Stopped bag.")
-        
-    print
-
+    
+    
     if use_voice:
         while status == "stop recording":
             sleeper.sleep()
             status = cmd_checker.get_latest_msg()
+        greenprint("Time taken to record demo: %02f s"%(time_finish-time_start))
         return status == "finish recording"
     elif yes_or_no("Save demo?"):
+        greenprint("Time taken to record demo: %02f s"%(time_finish-time_start))
         return True
     else:
         return False
@@ -211,6 +215,8 @@ def record_pipeline ( demo_type, calib_file,
     @use_voice: use voice commands to start/stop demo if true. o/w use command line.
     """
     global cmd_checker, camera_types, demo_type_dir, master_file, demo_num, latest_demo_file, topic_writer
+
+    time_sess_start = time.time()
 
     rospy.init_node("time_to_record")
     sleeper = rospy.Rate(10)
@@ -258,6 +264,7 @@ def record_pipeline ( demo_type, calib_file,
         demo_dir = osp.join(demo_type_dir, demo_name)
         if not osp.exists(demo_dir): os.mkdir(demo_dir)
         else:
+            yellowprint("%s exists! Removing directory for fresh recording."%s)
             shutil.rmtree(demo_dir)
             os.mkdir(demo_dir)
             
@@ -302,6 +309,9 @@ def record_pipeline ( demo_type, calib_file,
     stop_camera_saving()    
     cpipe.done() 
     topic_writer.done_session()
+    
+    time_sess_finish = time.time()
+    greenprint("Time taken to record in this session: %02f s"%(time_sess_finish-time_sess_start))
 
 def record_single_demo (demo_type, demo_name, calib_file, 
                           num_cameras, use_voice):
