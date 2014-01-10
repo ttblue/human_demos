@@ -104,7 +104,7 @@ def soft_next(stream):
 
 class stream_soft_next:
     """
-    Modified soft_next for streams which reset once exhausted.
+    stream soft_next for streams which reset once exhausted.
     """
     def __init__(self, strm):
         self.strm = strm
@@ -124,8 +124,8 @@ class stream_soft_next:
 
 def get_corresponding_data(strm1, strm2):
     """
-    Returns two lists of same-length where the corresponding enteries occur at the same time-stamp.
-    STRM1, STRM2 are the two streams for which the corresponding enteries are to be found.
+    Returns two lists of same-length where the corresponding entries occur at the same time-stamp.
+    STRM1, STRM2 are the two streams for which the corresponding entries are to be found.
     It also returns the indices at which data from both the streams is found.
 
     It assumes that the two streams start at the same time-scale.
@@ -169,7 +169,7 @@ def segment_stream(strm, start_times, stop_times):
     for i in xrange(n_segs):
         i_start, i_stop = start_inds[i], stop_inds[i]
                 
-        if i == n_segs - 1:
+        if i == n_segs - 1: # because in last segment, start_time == stop_time
             sstrm = streamize(dat[i_start:], ts[i_start:], 1./strm.dt, strm.favg, start_times[i]-strm.dt)
         else:
             sstrm = streamize(dat[i_start:i_stop], ts[i_start:i_stop], 1./strm.dt, strm.favg, start_times[i]-strm.dt)
