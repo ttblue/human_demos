@@ -125,6 +125,9 @@ class stream_soft_next:
                 ret = self.strm.next()
             except StopIteration:
                 self.exhausted = True
+            finally:
+                return ret
+            
             return ret
 
 

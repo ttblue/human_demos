@@ -166,7 +166,7 @@ class kalman:
 
     def get_obs_mat(self, is_hydra):
         """
-        Return the obsevation matrix ('C')
+        Return the observation matrix ('C')
         """
         return self.obs_mat
 
@@ -224,7 +224,7 @@ class kalman:
         if obs_tf==None:
             return
 
-        pos, rpy     = self.canonicalize_obs(obs_tf)
+        pos, rpy = self.canonicalize_obs(obs_tf)
         C_obs = self.get_obs_mat(is_hydra)
         z_obs = np.c_['0,2', pos, rpy]
         self.x_filt, self.S_filt = self.measurement_update(z_obs, C_obs, Q_obs, self.x_filt, self.S_filt)

@@ -17,7 +17,7 @@ import hd_utils.conversions as conversions
 
 import hd_extract.extract_data as ed
 
-from hd_track.streamer import streamize, soft_next
+from hd_track.streamer import streamize, soft_next, stream_soft_next
 from hd_track.stream_pc import streamize_rgbd_pc
 from hd_track.run_kalman import filter_traj
 
@@ -42,10 +42,10 @@ def load_data(data_file, lr, freq=30.0, speed=1.0, hydra_only=False):
                 ts  = [tt[1] for tt in dat[lr][kname]]
                 ctype_name = int(kname[-1])
                 ## don't append any empty-streams:
-                if len(ts) > 0:
-                    cam_strm = streamize(tfs, ts, freq, avg_transform, speed=speed)#, tstart=-1./freq)
-                    cam_info[ctype_name] = {'type'   : cam_types[ctype_name],
-                                            'stream' : cam_strm}
+                #if len(ts) > 0:
+                cam_strm = streamize(tfs, ts, freq, avg_transform, speed=speed)#, tstart=-1./freq)
+                cam_info[ctype_name] = {'type'   : cam_types[ctype_name],
+                                        'stream' : cam_strm}
 
     ## hydra data:
     hydra_tfs = [tt[0] for tt in dat[lr]['hydra']]     
@@ -98,6 +98,7 @@ def relative_time_streams(strms, freq, speed=1.0):
     tmin, tmax = float('inf'), float('-inf')
     for strm in strms:
         _, ts = strm.get_data()
+        if len(ts) == 0: continue
         tmin = min(tmin, np.min(ts))            
         tmax = max(tmax, np.max(ts)) 
 
@@ -184,6 +185,18 @@ def view_demo_on_rviz(demo_type, demo_name, freq, speed=1.0, main='h', prompt=Fa
     handles = []
     
     prev_ang = {'l': 0, 'r': 0}
+    
+    
+    dat_snext = {lr:{} for lr in grippers}
+    for lr in grippers:
+        dat_snext[lr]['h'] = stream_soft_next(hydra_dat[lr])
+        dat_snext[lr]['pot'] = stream_soft_next(pot_dat[lr])
+        
+        for cam in cam_types:
+            dat_snext[lr][cam] = stream_soft_next(cam_dat[lr][cam]['stream'])
+        
+    
+    
     for i in xrange(nsteps):
         if prompt:
             raw_input("Hit enter when ready.")
@@ -209,11 +222,14 @@ def view_demo_on_rviz(demo_type, demo_name, freq, speed=1.0, main='h', prompt=Fa
         ang_vals  = []
 
         for lr in grippers:
-            next_est[lr]['h'] = soft_next(hydra_dat[lr])
+            #next_est[lr]['h'] = soft_next(hydra_dat[lr])
+            next_est[lr]['h'] = dat_snext[lr]['h']()
             for cam in cam_types:
-                next_est[lr][cam] = soft_next(cam_dat[lr][cam]['stream'])
+                #next_est[lr][cam] = soft_next(cam_dat[lr][cam]['stream'])
+                next_est[lr][cam] = dat_snext[lr][cam]()
 
-            ang_val = soft_next(pot_dat[lr])
+            #ang_val = soft_next(pot_dat[lr])
+            ang_val = dat_snext[lr]['pot']()
             if ang_val != None and not np.isnan(ang_val):
                 prev_ang[lr] = ang_val
                 ang_val  = ang_val
@@ -311,6 +327,13 @@ def view_tracking_on_rviz(demo_type, demo_name, freq=30.0, speed=1.0, use_smooth
         pc_strms = {cam:streamize_rgbd_pc(rgbd_dirs[cam], cam_frames[cam], freq, tstart=tmin, tend=tmax,speed=speed) for cam in rgbd_dirs}
     
         prev_ang = {'l': 0, 'r': 0}
+        
+        dat_snext = {lr:{} for lr in grippers}
+        for lr in grippers:
+            dat_snext[lr]['traj'] = stream_soft_next(traj_strms[lr])
+            dat_snext[lr]['pot'] = stream_soft_next(pot_strms[lr])
+        
+
         for i in xrange(nsteps):
             if prompt:
                 raw_input("Hit enter when ready.")
@@ -335,9 +358,11 @@ def view_tracking_on_rviz(demo_type, demo_name, freq=30.0, speed=1.0, use_smooth
             ang_vals  = []
     
             for lr in grippers:
-                tfm = soft_next(traj_strms[lr])
+                #tfm = soft_next(traj_strms[lr])
+                tfm = dat_snext[lr]['traj']()
                 
-                ang_val = soft_next(pot_strms[lr])
+                #ang_val = soft_next(pot_strms[lr])
+                ang_val = dat_snext[lr]['pot']()
                 if ang_val != None and not np.isnan(ang_val):
                     prev_ang[lr] = ang_val
                     ang_val  = ang_val
@@ -417,6 +442,11 @@ def view_hydra_demo_on_rviz (demo_type, demo_name, freq, speed, prompt):
     
     handles = []
     
+    dat_snext = {lr:{} for lr in grippers}
+    for lr in grippers:
+        dat_snext[lr]['h'] = stream_soft_next(hydra_dat[lr])
+        dat_snext[lr]['pot'] = stream_soft_next(pot_dat[lr])
+    
     prev_ang = {'l': 0, 'r': 0}
     for i in xrange(nsteps):
         if prompt:
@@ -443,9 +473,11 @@ def view_hydra_demo_on_rviz (demo_type, demo_name, freq, speed, prompt):
         ang_vals  = []
 
         for lr in grippers:
-            ests[lr] = soft_next(hydra_dat[lr])
+            #ests[lr] = soft_next(hydra_dat[lr])
+            ests[lr] = dat_snext[lr]['h']()
 
-            ang_val = soft_next(pot_dat[lr])
+            #ang_val = soft_next(pot_dat[lr])
+            ang_val = dat_snext[lr]['pot']()
             if ang_val != None and not np.isnan(ang_val):
                 prev_ang[lr] = ang_val
                 ang_val  = ang_val
