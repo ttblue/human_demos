@@ -36,6 +36,7 @@ demo_files_dir =  osp.join(data_dir, 'demos')
 Default names for files inside each demo directory.
 '''
 master_name = 'master.yaml'
+latest_demo_name = 'latest_demo.txt'
 verify_name = 'verify'
 class demo_names:
     base_name = 'demo%05d'
@@ -43,6 +44,7 @@ class demo_names:
     ann_name = 'ann.yaml'
     calib_name = 'calib'
     data_name = 'demo.data'
+    hydra_data_name = 'hydra_only.data' #for quick visualization
     traj_name = 'demo.traj'
     video_dir = 'camera_#%i'
     camera_types_name = 'camera_types.yaml'

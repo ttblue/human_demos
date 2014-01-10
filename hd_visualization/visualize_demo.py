@@ -20,7 +20,7 @@ from hd_track.stream_pc import streamize_rgbd_pc
 
 from ros_vis import draw_trajectory
 
-def load_data(data_file, lr, freq=30.0, speed=1.0):
+def load_data(data_file, lr, freq=30.0, speed=1.0, hydra_only=False):
     """
     Changed slightly from the one in demo_data_prep to include speed.
     """
@@ -31,17 +31,18 @@ def load_data(data_file, lr, freq=30.0, speed=1.0):
     with open(osp.join(demo_dir, demo_names.camera_types_name),'r') as fh: cam_types = yaml.load(fh)
     T_cam2hbase = dat['T_cam2hbase']
 
-    cam_info = {}
-    for kname in dat[lr].keys():
-        if 'cam' in kname:
-            tfs = [tt[0] for tt in dat[lr][kname]]
-            ts  = [tt[1] for tt in dat[lr][kname]]
-            ctype_name = int(kname[-1])
-            ## don't append any empty-streams:
-            if len(ts) > 0:
-                cam_strm = streamize(tfs, ts, freq, avg_transform, speed=speed)#, tstart=-1./freq)
-                cam_info[ctype_name] = {'type'   : cam_types[ctype_name],
-                                        'stream' : cam_strm}
+    if not hydra_only:
+        cam_info = {}
+        for kname in dat[lr].keys():
+            if 'cam' in kname:
+                tfs = [tt[0] for tt in dat[lr][kname]]
+                ts  = [tt[1] for tt in dat[lr][kname]]
+                ctype_name = int(kname[-1])
+                ## don't append any empty-streams:
+                if len(ts) > 0:
+                    cam_strm = streamize(tfs, ts, freq, avg_transform, speed=speed)#, tstart=-1./freq)
+                    cam_info[ctype_name] = {'type'   : cam_types[ctype_name],
+                                            'stream' : cam_strm}
 
     ## hydra data:
     hydra_tfs = [tt[0] for tt in dat[lr]['hydra']]     
@@ -60,8 +61,10 @@ def load_data(data_file, lr, freq=30.0, speed=1.0):
         sys.exit(-1)
     pot_strm = streamize(pot_vals, pot_ts, freq, np.mean, speed=speed)#, tstart=-1./freq)
 
-
-    return (T_cam2hbase, cam_info, hydra_strm, pot_strm)
+    if not hydra_only:
+        return (T_cam2hbase, cam_info, hydra_strm, pot_strm)
+    else:
+        return (T_cam2hbase, hydra_strm, pot_strm)
 
 
 def get_cam_transforms (calib_file, num_cams):
@@ -336,12 +339,119 @@ def view_tracking_on_rviz(demo_type, demo_name, freq=30.0, speed=1.0, use_smooth
             
             time.sleep(1.0/freq)
             
+def view_hydra_demo_on_rviz (demo_type, demo_name, freq, speed, prompt):
+    """
+    Uses hydra_only.data for the segment to quickly visualize the demo.
+    @demo_type, @demo_name: demo identification.
+    @freq: basically measure of fine-ness of timesteps.
+    @speed: how fast to replay demo.
+    @prompt: does the user hit enter after each time step?
+    """
+    demo_dir = osp.join(demo_files_dir, demo_type, demo_name)
+    bag_file = osp.join(demo_dir, demo_names.bag_name)
+    data_file = osp.join(demo_dir, demo_names.hydra_data_name)
+    calib_file = osp.join(demo_dir, demo_names.calib_name)
+    with open(osp.join(demo_dir, demo_names.camera_types_name),'r') as fh: cam_types = yaml.load(fh)
+    with open(data_file, 'r') as fh: dat = cp.load(fh)
+    
+    # get grippers used
+    grippers = [key for key in dat.keys() if key in 'lr']
+
+    # data 
+    rgbd_dirs = {cam:osp.join(demo_dir,demo_names.video_dir%cam) for cam in cam_types if cam_types[cam] == 'rgbd'}
+    cam_frames = {cam:'/camera%i_rgb_optical_frame'%cam for cam in rgbd_dirs}
+    
+    tfm_pubs = {}
+    hydra_dat = {}
+    pot_dat = {}
+    
+    _, hydra_dat['l'], pot_dat['l'] = load_data(data_file, 'l', freq, speed, hydra_only=True)
+    _, hydra_dat['r'], pot_dat['r'] = load_data(data_file, 'r', freq, speed, hydra_only=True)
+    tmin, _, nsteps = relative_time_streams(hydra_dat.values() + pot_dat.values(), freq, speed)
+
+    if rospy.get_name() == "/unnamed":
+        rospy.init_node("visualize_demo")
+
+
+    ## publishers for unfiltered-data:
+    for lr in grippers:
+        tfm_pubs[lr] = rospy.Publisher('/%s_hydra_estimate'%(lr), PoseStamped)
+
+    ## get the point-cloud stream
+    pc_strms = {cam:streamize_rgbd_pc(rgbd_dirs[cam], cam_frames[cam], freq, tstart=tmin,speed=speed) for cam in rgbd_dirs}
+    pc_pubs = {cam:rospy.Publisher('/point_cloud%i'%cam, PointCloud2) for cam in rgbd_dirs}
+
+#     import IPython
+#     IPython.embed()
+
+    cam_tfms  = get_cam_transforms (calib_file, len(cam_types))
+    for cam in rgbd_dirs:
+        if cam != 1:
+            publish_static_tfm(cam_frames[1], cam_frames[cam], cam_tfms[cam])
+
+    sleeper = rospy.Rate(freq)
+    T_far = np.eye(4)
+    T_far[0:3,3] = [10,10,10]        
+    
+    handles = []
+    
+    prev_ang = {'l': 0, 'r': 0}
+    for i in xrange(nsteps):
+        if prompt:
+            raw_input("Hit enter when ready.")
+        #print "Time stamp: ", tmin+(0.0+i*speed)/freq
+        
+        ## show the point-cloud:
+        found_pc = False
+        for cam in pc_strms:
+            try:
+                pc = pc_strms[cam].next()
+                if pc is not None:
+                    print "pc%i ts:"%cam, pc.header.stamp.to_sec()
+                    pc.header.stamp = rospy.Time.now()
+                    pc_pubs[cam].publish(pc)
+                    found_pc = True
+                else:
+                    print "pc%i ts:"%cam,None
+            except StopIteration:
+                pass
+
+        ests = {}
+        tfms = []
+        ang_vals  = []
+
+        for lr in grippers:
+            ests[lr] = soft_next(hydra_dat[lr])
+
+            ang_val = soft_next(pot_dat[lr])
+            if ang_val != None and not np.isnan(ang_val):
+                prev_ang[lr] = ang_val
+                ang_val  = ang_val
+            else:
+                ang_val = prev_ang[lr]
+            
+            if ests[lr] is None:
+                tfms.append(T_far)
+            else:
+                tfms.append(ests[lr])
+            ang_vals.append(rad_angle(ang_val))
+
+        handles = draw_trajectory(cam_frames[1], tfms, color=(1,1,0,1), open_fracs=ang_vals)
+
+        for lr in grippers:
+            if ests[lr] is not None:
+                tfm_pubs[lr].publish(conversions.pose_to_stamped_pose(conversions.hmat_to_pose(ests[lr]), cam_frames[1]))
+            
+        sleeper.sleep()
+
+   
 if __name__=='__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--demo_type",help="Type of demonstration")
     parser.add_argument("--demo_name",help="Name of demo", default='', type=str)
     parser.add_argument("--freq",help="Frequency of sampling.", default=30.0, type=float)
     parser.add_argument("--speed",help="Speed of demo.", default=1.0, type=float)
+    parser.add_argument("--hydra_only",help="Use .traj file (kalman f/s data)", action='store_true',default=False)
     parser.add_argument("--use_traj",help="Use .traj file (kalman f/s data)", action='store_true',default=False)
     parser.add_argument("--main",help="If not using .traj file, which sensor is main?", default='h', type=str)
     parser.add_argument("--use_smoother",help="If using .traj file, filter or smoother?", action='store_true',default=False)
@@ -353,6 +463,10 @@ if __name__=='__main__':
                               freq=args.freq, speed=args.speed, 
                               use_smoother=args.use_smoother, prompt=args.prompt)
     else:
-        view_demo_on_rviz(demo_type=args.demo_type, demo_name=args.demo_name, 
-                          freq=args.freq, speed=args.speed, 
-                          main=args.main, prompt=args.prompt)
+        if args.hydra_only:
+            view_hydra_demo_on_rviz(demo_type=args.demo_type, demo_name=args.demo_name, 
+                                    freq=args.freq, speed=args.speed, prompt=args.prompt)
+        else:
+            view_demo_on_rviz(demo_type=args.demo_type, demo_name=args.demo_name, 
+                              freq=args.freq, speed=args.speed, 
+                              main=args.main, prompt=args.prompt)

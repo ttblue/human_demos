@@ -27,9 +27,9 @@ from hd_utils.colorize import *
 from hd_utils.yes_or_no import yes_or_no
 
 from hd_utils.defaults import demo_files_dir, calib_files_dir, data_dir, \
-                              demo_names, master_name
-
+                              demo_names, master_name, latest_demo_name
 from hd_utils.utils import terminate_process_and_children
+from hd_utils.yes_or_no import yes_or_no
 
 from generate_annotations import generate_annotation
 from rosbag_service import TopicWriter
@@ -102,7 +102,7 @@ def load_parameters (demo_type, num_cameras):
     cam_stop_request.start = False
             
     # Get number of latest demo recorded
-    latest_demo_file = osp.join(demo_type_dir, 'latest_demo.txt')     
+    latest_demo_file = osp.join(demo_type_dir, latest_demo_name)
     if osp.isfile(latest_demo_file):
         try:
             with open(latest_demo_file,'r') as fh:
@@ -257,6 +257,10 @@ def record_pipeline ( demo_type, calib_file,
         demo_name = demo_names.base_name%(demo_num)
         demo_dir = osp.join(demo_type_dir, demo_name)
         if not osp.exists(demo_dir): os.mkdir(demo_dir)
+        else:
+            shutil.rmtree(demo_dir)
+            os.mkdir(demo_dir)
+            
 
         ready_service_for_demo (demo_dir)
 
@@ -350,6 +354,9 @@ def record_single_demo (demo_type, demo_name, calib_file,
     # Initialize names and record
     demo_dir = osp.join(demo_type_dir, demo_name)
     if not osp.exists(demo_dir): os.mkdir(demo_dir)
+    else:
+        shutil.rmtree(demo_dir)
+        os.mkdir(demo_dir)
 
     ready_service_for_demo (demo_dir)
 
