@@ -1,5 +1,5 @@
 '''
-Script to extract data from rgbd+rosbag demonstration
+Script to extract data from rosbag demonstration
 '''
 from hd_extract import extract_data as ed
 import rosbag as rb
@@ -28,24 +28,19 @@ if __name__ == "__main__":
     if args.demo_name == '':
         for demo in demos_info["demos"]:
             demo_dir = osp.join(demo_type_dir, demo["demo_name"])
-            if not osp.isfile(osp.join(demo_dir, demo_names.data_name)):
-                with open(osp.join(demo_dir, demo_names.camera_types_name)) as fh: cam_types = yaml.load(fh)
-                ed.save_observations_rgbd(args.demo_type, demo["demo_name"], demo_names.calib_name, len(cam_types))                    
+            if not osp.isfile(osp.join(demo_dir, demo_names.hydra_data_name)):
+                ed.save_hydra_only(args.demo_type, demo["demo_name"], demo_names.calib_name)                    
             else:
-                yellowprint("Data file exists for %s. Not overwriting."%demo["demo_name"])
+                yellowprint("Hydra data file exists for %s. Not overwriting."%demo["demo_name"])
             
 
     else:
         if args.demo_name in (demo["demo_name"] for demo in demos_info["demos"]):
             demo_dir = osp.join(demo_type_dir, args.demo_name)
-            if osp.isfile(osp.join(demo_dir, demo_names.data_name)):
-                if yes_or_no('Data file already exists for this demo. Overwrite?'):
-                    with open(osp.join(demo_dir, demo_names.camera_types_name)) as fh: cam_types = yaml.load(fh)
-                    ed.save_observations_rgbd(args.demo_type, args.demo_name, demo_names.calib_name, len(cam_types))
+            if osp.isfile(osp.join(demo_dir, demo_names.hydra_data_name)):
+                if yes_or_no('Hydra data file already exists for this demo. Overwrite?'):
+                    ed.save_hydra_only(args.demo_type, args.demo_name, demo_names.calib_name)
             else:
-                with open(osp.join(demo_dir, demo_names.camera_types_name)) as fh: cam_types = yaml.load(fh)
-                ed.save_observations_rgbd(args.demo_type, args.demo_name, demo_names.calib_name, len(cam_types))
-                
+                ed.save_hydra_only(args.demo_type, args.demo_name, demo_names.calib_name)
 
-            
-    print "Done extracting data."
+    print "Done extracting hydra data."

@@ -9,6 +9,7 @@ class TopicWriter (Thread):
     """
     def __init__(self, topics, topic_types):
         Thread.__init__(self)
+        self.daemon = True
 
         if rospy.get_name() == '/unnamed':
             rospy.init_node('bag_writer')
@@ -67,7 +68,6 @@ class TopicWriter (Thread):
         Saves to specific file or stream.
         """
         if not self.saving:
-            blueprint("Saving to file %s."%file)
             self.bag = rosbag.Bag(file, mode='w')
             self.reset_lists() #Just in case
             self.saving = True
@@ -105,13 +105,12 @@ class TopicWriter (Thread):
 
             for topic in self.topics:
                 while self.counters[topic] < len(self.topic_lists[topic]):
-                    msg, ts = self.topic_lists[self.counters[topic]]
+                    msg, ts = self.topic_lists[topic][self.counters[topic]]
                     self.bag.write(topic, msg, ts)
                     self.counters[topic] += 1
             
             self.bag.close()
             self.reset_lists()
-            blueprint("Saved bagfile.")
             
     
     def reset_lists (self):
@@ -122,7 +121,7 @@ class TopicWriter (Thread):
             self.topic_lists[topic] = []
             self.counters[topic] = 0
     
-    def done (self):
+    def done_session (self):
         """
         Done completely.
         """

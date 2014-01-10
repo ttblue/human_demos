@@ -26,7 +26,7 @@ class streamize_pc():
     This class is iterable.
     """
     
-    def __init__(self, bag, cloud_topics, freq, tstart=None, delay=0, verbose=False):
+    def __init__(self, bag, cloud_topics, freq, tstart=None, delay=0, speed=1.0, verbose=False):
                 
         if cloud_topics == None:
             self.done = True
@@ -52,8 +52,9 @@ class streamize_pc():
         except StopIteration:
             self.done = True
             raise StopIteration ('Empty topics.')
-                
-        self.dt = 1./freq
+        
+        self.speed = speed
+        self.dt = self.speed/freq
         self.t  = -self.dt-self.delay if self.tstart==None else self.tstart-self.base_ts-self.dt-self.delay
         self.ts = 0.0
         
@@ -120,6 +121,9 @@ class streamize_pc():
             self.ts = curr_t            
             
             return rtn_msg
+        
+    def get_speed(self):
+        return self.speed
 
 
 class streamize_rgbd_pc():
@@ -140,7 +144,7 @@ class streamize_rgbd_pc():
     This class is iterable.
     """
     
-    def __init__(self, rgbd_dir, frame_id, freq, tstart=None, delay=0, verbose=False):
+    def __init__(self, rgbd_dir, frame_id, freq, tstart=None, tend=None, delay=0, speed=1.0, verbose=True):
         if rgbd_dir is None:
             self.done = True
             return
@@ -149,16 +153,18 @@ class streamize_rgbd_pc():
         self.verbose  = verbose
         self.frame_id = frame_id
         self.tstart   = tstart
+        self.tend     = tend
         self.delay    = delay
 
         self.rgbs_fnames, self.depth_fnames, self.stamps = eu.get_rgbd_names_times(rgbd_dir)
         self.index = 0
 
-        self.curr_msg, self.base_ts = self.get_pc()
+        self.base_ts = self.get_stamp()
 
         self.done = False
 
-        self.dt = 1./freq
+        self.speed = speed
+        self.dt = self.speed/freq
         self.t  = -self.dt-self.delay if self.tstart==None else self.tstart-self.base_ts-self.dt-self.delay       
         self.ts = 0.0
         self.num_seen = 1
@@ -171,18 +177,25 @@ class streamize_rgbd_pc():
     def reset (self):            
         self.t  = -self.dt-self.delay if self.tstart==None else self.tstart-self.base_ts-self.dt-self.delay
         self.ts = 0.0
+        self.index = 0
         self.num_seen = 1
     
     
-    def get_pc(self):
-        rgb = cv2.imread(self.rgbs_fnames[self.index])
-        depth = cv2.imread(self.depth_fnames[self.index], 2)
+    def get_stamp(self, index=None):
+        if not index:
+            index = self.index
+        return self.stamps[index]
+
+    
+    def get_pc(self, index=None):
+        if not index:
+            index = self.index
+        rgb = cv2.imread(self.rgbs_fnames[index])
+        depth = cv2.imread(self.depth_fnames[index], 2)
         xyz = clouds.depth_to_xyz(depth, asus_xtion_pro_f)
         pc = ru.xyzrgb2pc(xyz, rgb, frame_id=self.frame_id, use_time_now=False)
-        stamp = self.stamps[self.index];
-        self.index += 1
         
-        return pc, stamp
+        return pc
     
     def latest_time(self):
         return self.base_ts + self.ts
@@ -208,43 +221,51 @@ class streamize_rgbd_pc():
             curr_t = None
             
             while True:
-                if self.index == len(self.stamps):
+                if self.index >= len(self.stamps)-1:
+                    self.done = True
+                    break
+                if self.tend is not None and self.ts + self.base_ts > self.tend:
                     self.done = True
                     break
                 else:
-                    msg, msg_t = self.get_pc()
+                    self.index += 1
+                    msg_t = self.get_stamp()
                     self.num_seen += 1
                 
                 curr_t = msg_t - self.base_ts;                
                 
                 if curr_t <= ttarg:
-                    self.curr_msg = msg
                     self.ts = curr_t
                 else:
                     break
 
-            rtn_msg = self.curr_msg
+            if self.index == 0 and self.done:
+                return
+            rtn_msg = self.get_pc(self.index-1)
             if self.verbose:
                 print "Time stamp: ", self.base_ts + self.ts
 
-            self.curr_msg = msg
-            self.ts = curr_t                     
+            self.ts = curr_t
             
             return rtn_msg
+    
+    def get_speed(self):
+        return self.speed
 
 
-            
 if __name__ == '__main__':
     import rosbag, rospy, os
     from sensor_msgs.msg import PointCloud2
     
-    bag = rosbag.Bag('/home/sibi/sandbox/human_demos/hd_data/demos/recorded/demo6.bag')
+    bag = rosbag.Bag('/home/sibi/sandbox/human_demos/hd_data/demos/overhand/demo00001/demo.bag')
     
     rospy.init_node('test_pc')
     pub = rospy.Publisher('/test_pointclouds', PointCloud2)
 
     freq = 1
     pc_streamer = streamize_pc(bag, '/camera1/depth_registered/points', 1, tstart=1383366737.35)
+    # THE ABOVE LINE WILL NOT WORK. NO MORE PC IN POINT CLOUDS.
+
     
     while True:
         try:

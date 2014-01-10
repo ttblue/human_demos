@@ -1,6 +1,7 @@
 # A simple class to return a time-stamped list of transforms in a serialized manner.
 from __future__ import division
 import numpy as np
+
 from hd_utils.colorize import colorize
 
 class streamize():
@@ -21,7 +22,7 @@ class streamize():
     This class is iterable.
     """
     
-    def __init__(self, objs, ts, freq, favg, tstart=None):
+    def __init__(self, objs, ts, freq, favg, tstart=None, speed=1.0):
         assert len(objs)==len(ts), "time-stamps and objects should have the same length"
         self.objs = objs
         self.ts = np.array(ts)
@@ -32,7 +33,9 @@ class streamize():
             self.tmax = self.ts[-1]
         
         self.favg = favg
-        self.dt   = 1./freq
+        
+        self.speed = speed
+        self.dt   = self.speed/freq
         
         self.idx  = 0
 
@@ -64,7 +67,7 @@ class streamize():
             self.idx = tidx
             self.t  += self.dt
             
-            return self.favg(cands) if cands else None
+            return self.favg(cands) if cands is not None else None
         
     def get_data(self):
         return (self.objs, self.ts)
@@ -79,6 +82,9 @@ class streamize():
 
     def get_start_time(self):
         return self.tstart
+    
+    def get_speed(self):
+        return self.speed
 
 
 def time_shift_stream(strm, dT):

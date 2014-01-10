@@ -2,6 +2,8 @@ import os.path as osp
 import numpy as np
 import cv2
 
+from defaults import demo_names
+
 def searchsortednearest(a,v):
     higher_inds = np.fmin(np.searchsorted(a,v), len(a)-1)
     lower_inds = np.fmax(higher_inds-1, 0)
@@ -11,13 +13,13 @@ def searchsortednearest(a,v):
     return closer_inds
 
 def get_video_frames(video_dir, frame_stamps):
-    video_stamps = np.loadtxt(osp.join(video_dir,"stamps.txt"))
+    video_stamps = np.loadtxt(osp.join(video_dir, demo_names.stamps_name))
 
     frame_inds = searchsortednearest(video_stamps, frame_stamps)
     
     from glob import glob
-    rgbnames = glob(osp.join(video_dir, "rgb*.jpg"))
-    depthnames = glob(osp.join(video_dir, "depth*.png"))
+    rgbnames = glob(osp.join(video_dir, demo_names.rgb_regexp))
+    depthnames = glob(osp.join(video_dir, demo_names.depth_regexp))
         
     ind2rgbfname = dict([(int(osp.splitext(osp.basename(fname))[0][3:]), fname) for fname in rgbnames])
     ind2depthfname = dict([(int(osp.splitext(osp.basename(fname))[0][5:]), fname) for fname in depthnames])
@@ -38,16 +40,13 @@ def get_video_frames(video_dir, frame_stamps):
 def get_rgbd_names_times (video_dir, depth=True):
     from glob import glob
     
-    video_stamps = np.loadtxt(osp.join(video_dir,"stamps.txt"))
-    rgbnames = glob(osp.join(video_dir, "rgb*.jpg"))
-    #inds_rgb = [int(osp.splitext(osp.basename(fname))[0][3:]) for fname in rgbnames]
-    min_ind_rgb = 0#min(inds_rgb)
-    ind2rgbfname = dict([(int(osp.splitext(osp.basename(fname))[0][3:])-min_ind_rgb, fname) for fname in rgbnames])
+    video_stamps = np.loadtxt(osp.join(video_dir,demo_names.stamps_name))
+    rgbnames = glob(osp.join(video_dir, demo_names.rgb_regexp))
+    ind2rgbfname = dict([(int(osp.splitext(osp.basename(fname))[0][3:]), fname) for fname in rgbnames])
     
     if depth:
-        depthnames = glob(osp.join(video_dir, "depth*.png"))
-        #inds_d = [int(osp.splitext(osp.basename(fname))[0][3:]) for fname in depthnames]
-        min_ind_d = 0#min(inds_d)
-        ind2depthfname = dict([(int(osp.splitext(osp.basename(fname))[0][5:])-min_ind_d, fname) for fname in depthnames])
+        depthnames = glob(osp.join(video_dir, demo_names.depth_regexp))
+ 
+        ind2depthfname = dict([(int(osp.splitext(osp.basename(fname))[0][5:]), fname) for fname in depthnames])
         return ind2rgbfname, ind2depthfname, video_stamps
     else: return ind2rgbfname, video_stamps

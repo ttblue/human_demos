@@ -2,8 +2,9 @@
 import yaml, rosbag
 import argparse
 import os, os.path as osp
-from hd_utils.defaults import demo_files_dir
-
+from hd_utils.defaults import demo_files_dir, demo_names, master_name
+from hd_utils.yes_or_no import yes_or_no
+from hd_utils.colorize import yellowprint, greenprint
 """
 Voice command meanings:
 
@@ -59,7 +60,7 @@ def demos_to_annotations(stamps, commands):
                     #  should never reach cancel recording.
                     "done session": ["finish recording", "cancel recording", "all start"]} #not relevant, should not reach here.
 
-    state = "all start"
+    state = "begin recording"
     demo = []
     subseq = {}
     for (stamp, command) in zip(stamps, commands):
@@ -107,8 +108,8 @@ def demos_to_annotations(stamps, commands):
 
 def generate_annotation(demo_type, demo_name):
     demo_dir = osp.join(demo_files_dir, demo_type, demo_name)
-    bag = rosbag.Bag(osp.join(demo_dir,'demo.bag'))
-    ann_file = osp.join(demo_dir,'ann.yaml')
+    bag = rosbag.Bag(osp.join(demo_dir,demo_names.bag_name))
+    ann_file = osp.join(demo_dir,demo_names.ann_name)
     
     stamps, commands = extract_segment(bag)
     demos = demos_to_annotations(stamps, commands)
@@ -131,18 +132,24 @@ if __name__=='__main__':
     args = parser.parse_args()
     
     if args.demo_name != '':
-        generate_annotation(args.demo_type, args.demo_name)
+        if osp.isfile(osp.join(demo_type_dir, demo["demo_name"], demo_names.ann_name)):
+            if yes_or_no('Annotation file already exists for this demo. Overwrite?'):
+                generate_annotation(args.demo_type, args.demo_name)
+        else:
+            generate_annotation(args.demo_type, args.demo_name)
     else: 
         # if args.demo_name == '', run generate annotation for all the demos in the directory
         demo_type_dir = osp.join(demo_files_dir, args.demo_type)
-        demo_master_file = osp.join(demo_type_dir, "master.yaml")
+        demo_master_file = osp.join(demo_type_dir, master_name)
         
         with open(demo_master_file, 'r') as fh:
             demos_info = yaml.load(fh)
 
-        for demo_info in demos_info["demos"]:
-            generate_annotation(args.demo_type, demo_info["demo_name"])
-        
+        for demo in demos_info["demos"]:
+            if not osp.isfile(osp.join(demo_type_dir, demo["demo_name"], demo_names.ann_name)):
+                generate_annotation(args.demo_type, demo["demo_name"])
+            else:
+                yellowprint("Annotation file exists for %s. Not overwriting."%demo["demo_name"])
 
-    print "done annotation generation"
+    greenprint("Done annotation generation.")
     

@@ -33,7 +33,7 @@ class ARMarkersRos:
         if rospy.get_name() == '/unnamed':
             rospy.init_node('ar_markers_' + self.camera_name)
         
-        self.ar_sub = rospy.Subscriber(self.marker_topic, AlvarMarkers, callback=self.store_last_callback, tcp_nodelay=True) 
+        self.ar_sub = rospy.Subscriber(self.marker_topic, AlvarMarkers, callback=self.store_last_callback) 
             
     def store_last_callback (self, data):
         if len(data.markers) == 0:
@@ -102,13 +102,13 @@ class CameraData:
         if collect_pc:
             self.pc_topic = '/' + self.camera_name + '/depth_registered/points'
             self.pc = None
-            self.pc_sub = rospy.Subscriber(self.pc_topic, PointCloud2, callback=self.store_last_callback_pc, tcp_nodelay=True)
+            self.pc_sub = rospy.Subscriber(self.pc_topic, PointCloud2, callback=self.store_last_callback_pc)
 
         
         if collect_image:
             self.image_topic = '/' + self.camera_name + '/rgb/image_color'
             self.image = None
-            self.image_sub = rospy.Subscriber(self.image_topic, Image, callback = self.store_last_callback_image, tcp_nodelay=True)
+            self.image_sub = rospy.Subscriber(self.image_topic, Image, callback = self.store_last_callback_image)
         
     def store_last_callback_pc (self, data):
         self.pc = data

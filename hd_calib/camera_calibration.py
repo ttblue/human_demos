@@ -81,7 +81,7 @@ def common_ar_markers (ar_pos1, ar_pos2):
         
     return ar1, ar2
 
-def convert_hmats_to_points (hmats, use_four_points=False):
+def convert_hmats_to_points (hmats, use_four_points=True):
     """
     Convert a homogeneous matrix to several points.
     One solution is adding a point for the origin and one for each axis, this works better
@@ -159,7 +159,7 @@ class CameraCalibrator:
 
         return transform
     
-    def extend_camera_pointsets_ar(self, c1, c2):
+    def extend_camera_pointsets_ar(self, c1, c2, use_four_points=True):
         '''
         Extends the correspondence points between camera c1 and c2
         self.point_list[(c1,c2)] = {c1: points, c2: points}
@@ -178,10 +178,11 @@ class CameraCalibrator:
         if (c1, c2) not in self.point_list:
             self.point_list[(c1, c2)] = {c1:[], c2:[]}
             
-        self.point_list[(c1, c2)][c1].extend(convert_hmats_to_points(ar1.values()))
-        self.point_list[(c1, c2)][c2].extend(convert_hmats_to_points(ar2.values()))
+        self.point_list[(c1, c2)][c1].extend(convert_hmats_to_points(ar1.values(), use_four_points=use_four_points))
+        self.point_list[(c1, c2)][c2].extend(convert_hmats_to_points(ar2.values(), use_four_points=use_four_points))
         
-        greenprint("Extended point sets by %i" % (len(ar1)))
+        n = 4 if use_four_points else 1
+        greenprint("Extended point sets by %i" % (len(ar1)*n))
         
         return True
                 

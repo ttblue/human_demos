@@ -36,15 +36,25 @@ demo_files_dir =  osp.join(data_dir, 'demos')
 Default names for files inside each demo directory.
 '''
 master_name = 'master.yaml'
+latest_demo_name = 'latest_demo.txt'
+verify_name = 'verify'
 class demo_names:
-    demo_base_name = 'demo%05d'
-    demo_bag_name = 'demo.bag'
-    demo_ann_name = 'ann.yaml'
-    demo_calib_name = 'calib'
-    demo_data_name = 'demo.data'
-    demo_traj_name = 'demo.traj'
-    demo_camera_types_name = 'camera_types.yaml'
-    demo_camera_models_name = 'camera_models.yaml'
+    base_name = 'demo%05d'
+    bag_name = 'demo.bag'
+    ann_name = 'ann.yaml'
+    calib_name = 'calib'
+    data_name = 'demo.data'
+    hydra_data_name = 'hydra_only.data' #for quick visualization
+    traj_name = 'demo.traj'
+    video_dir = 'camera_#%i'
+    camera_types_name = 'camera_types.yaml'
+    camera_models_name = 'camera_models.yaml'
+    stamps_name = 'stamps.txt'
+    rgb_name = 'rgb%05d.jpg'
+    rgb_regexp = 'rgb*.jpg'
+    depth_name = 'depth%05d.png'
+    depth_regexp = 'depth*.png'
+    tps_model_name = 'tps_models.cp'
 
 '''
 Transform from head to kinect

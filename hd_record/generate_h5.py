@@ -14,8 +14,7 @@ import cPickle as cp
 import cv2
 import shutil
 import argparse
-from hd_utils.defaults import demo_files_dir
-
+from hd_utils.defaults import demo_files_dir, demo_names, master_name, verify_name
 
 
 parser = argparse.ArgumentParser()
@@ -35,16 +34,16 @@ cloud_proc_func = getattr(cloud_proc_mod, args.cloud_proc_func)
 
 def get_video_frames(video_dir, frame_stamps):
     
-    video_stamps = np.loadtxt(osp.join(video_dir,"stamps.txt"))
+    video_stamps = np.loadtxt(osp.join(video_dir,demo_names.stamps_name))
     frame_inds = np.searchsorted(video_stamps, frame_stamps)
     
     rgbs = []
     depths = []
     for frame_ind in frame_inds:
-        rgb = cv2.imread(osp.join(video_dir,"rgb%05i.jpg"%frame_ind))
+        rgb = cv2.imread(osp.join(video_dir,demo_names.rgb_name%frame_ind))
         assert rgb is not None
         rgbs.append(rgb)
-        depth = cv2.imread(osp.join(video_dir,"depth%05i.png"%frame_ind),2)
+        depth = cv2.imread(osp.join(video_dir,demo_names.depth_name%frame_ind),2)
         assert depth is not None
         depths.append(depth)
     return rgbs, depths
@@ -133,7 +132,7 @@ def add_traj_to_hdf(traj, annotation, hdfroot, demo_name):
 
 
 task_dir = osp.join(demo_files_dir, args.demo_type)
-task_file = osp.join(task_dir, "master.yaml")
+task_file = osp.join(task_dir, master_name)
 
 
 with open(task_file, "r") as fh: task_info = yaml.load(fh)
@@ -192,7 +191,7 @@ if not args.no_clouds:
             
 if args.verify:
     
-    verify_dir = osp.join(task_dir, "verify")
+    verify_dir = osp.join(task_dir, verify_name)
     
     
     hdf = h5py.File(h5path, "r")
@@ -242,12 +241,3 @@ if args.verify:
 
                 
                 cp.dump(traj, traj_fd)
-                
-            
-    
-    
-    
-    
-    
-    
-
