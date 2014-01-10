@@ -54,6 +54,7 @@ class demo_names:
     rgb_regexp = 'rgb*.jpg'
     depth_name = 'depth%05d.png'
     depth_regexp = 'depth*.png'
+    tps_model_name = 'tps_models.cp'
 
 '''
 Transform from head to kinect
