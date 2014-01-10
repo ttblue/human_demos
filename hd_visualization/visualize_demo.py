@@ -15,8 +15,11 @@ from hd_utils.utils import avg_transform, rad_angle
 from hd_utils.colorize import yellowprint
 import hd_utils.conversions as conversions
 
+import hd_extract.extract_data as ed
+
 from hd_track.streamer import streamize, soft_next
-from hd_track.stream_pc import streamize_rgbd_pc    
+from hd_track.stream_pc import streamize_rgbd_pc
+from hd_track.run_kalman import filter_traj
 
 from ros_vis import draw_trajectory
 
@@ -123,6 +126,10 @@ def view_demo_on_rviz(demo_type, demo_name, freq, speed=1.0, main='h', prompt=Fa
     data_file = osp.join(demo_dir, demo_names.data_name)
     calib_file = osp.join(demo_dir, demo_names.calib_name)
     with open(osp.join(demo_dir, demo_names.camera_types_name),'r') as fh: cam_types = yaml.load(fh)
+    
+    if not osp.isfile(data_file):
+        yellowprint("%s does not exist for this demo. Extracting now."%demo_names.data_name)
+        ed.save_observations_rgbd(demo_type, demo_name, calib_file, len(cam_types))
     with open(data_file, 'r') as fh: dat = cp.load(fh)
     
     # get grippers used
@@ -248,6 +255,15 @@ def view_tracking_on_rviz(demo_type, demo_name, freq=30.0, speed=1.0, use_smooth
     traj_file = osp.join(demo_dir, demo_names.traj_name)
     calib_file = osp.join(demo_dir, demo_names.calib_name)
     with open(osp.join(demo_dir, demo_names.camera_types_name),'r') as fh: cam_types = yaml.load(fh)
+    
+    
+    if not osp.isfile(traj_file):
+        yellowprint("%s does not exist for this demo. Running kalman filter/smoother now with default args."%demo_names.traj_name)
+        data_file = osp.join(demo_dir, demo_names.data_name)
+        if not osp.isfile(data_file):
+            yellowprint("%s does not exist for this demo. Extracting now."%demo_names.data_name)
+            ed.save_observations_rgbd(demo_type, demo_name, calib_file, len(cam_types))
+        filter_traj(demo_dir, tps_model_fname='', save_tps=True, do_smooth=True, plot='', block=False)
     with open(traj_file, 'r') as fh: traj = cp.load(fh)
     
     # get grippers used
@@ -352,6 +368,12 @@ def view_hydra_demo_on_rviz (demo_type, demo_name, freq, speed, prompt):
     data_file = osp.join(demo_dir, demo_names.hydra_data_name)
     calib_file = osp.join(demo_dir, demo_names.calib_name)
     with open(osp.join(demo_dir, demo_names.camera_types_name),'r') as fh: cam_types = yaml.load(fh)
+    
+    
+    if not osp.isfile(data_file):
+        yellowprint("%s does not exist for this demo. Extracting now."%demo_names.hydra_data_name)
+        ed.save_hydra_only(demo_type, demo_name, calib_file)
+        
     with open(data_file, 'r') as fh: dat = cp.load(fh)
     
     # get grippers used

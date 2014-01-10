@@ -3,6 +3,7 @@ import argparse
 
 from hd_utils.defaults import tfm_link_rof, demo_names, demo_files_dir, latest_demo_name
 from hd_utils.colorize import redprint, yellowprint
+from hd_record.delete_demo import delete_demo
 
 from visualize_demo import view_hydra_demo_on_rviz, view_demo_on_rviz, view_tracking_on_rviz
 
@@ -23,6 +24,7 @@ if __name__=='__main__':
     parser.add_argument("--prompt",help="Prompt for each step.", action='store_true', default=False)
     parser.add_argument("--first",help="Lower bound for demo range.", default=0, type=int)
     parser.add_argument("--last",help="Upper bound for demo range.", default=-1, type=int)
+    parser.add_argument("--prompt_delete",help="Prompt to delete after each demo.", action='store_true', default=False)
     args = parser.parse_args()
 
 
@@ -40,6 +42,8 @@ if __name__=='__main__':
                                   freq=args.freq, speed=args.speed, 
                                   main=args.main, prompt=args.prompt)
     
+        if args.prompt_delete and yes_or_no('Do you want to delete %s?'%args.demo_name):
+            delete_demo(args.demo_type, args.demo_name)
     else:
         first = args.first
         last = args.last
@@ -72,4 +76,6 @@ if __name__=='__main__':
                             view_demo_on_rviz(demo_type=args.demo_type, demo_name=demo_name, 
                                               freq=args.freq, speed=args.speed, 
                                               main=args.main, prompt=args.prompt)
-                    # delete demo if needed
+
+                    if args.prompt_delete and yes_or_no('Do you want to delete %s?'%demo_name):
+                        delete_demo(args.demo_type, demo_name)
