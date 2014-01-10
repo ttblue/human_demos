@@ -273,7 +273,7 @@ def align_tf_streams(hydra_strm, cam_strm, wsize=0):
 
     ## chop-off wsized data from the start and end of the camera-data:
     start_idx, end_idx = 0, len(Xs_cam)-1
-    while cam_inds[start_idx] < wsize and start_idx < len(Xs_cam): start_idx += 1
+    while cam_inds[start_idx] < wsize and start_idx < len(Xs_cam) : start_idx += 1
     while cam_inds[end_idx] >= len(Xs_hy) - wsize and end_idx >= 0: end_idx -= 1
 
     dists    = []
