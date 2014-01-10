@@ -558,12 +558,21 @@ if __name__=='__main__':
         
     if args.demo_name == '':
         for demo in demos_info["demos"]:
-            demo_dir = osp.join(demo_type_dir, demo["demo_name"])
-            filter_traj(demo_dir, tps_model_fname=args.tps_fname, save_tps=args.save_tps, do_smooth=args.do_smooth, plot=args.plot, block=args.block)
+            if not osp.isfile(osp.join(demo_type_dir, demo["demo_name"], demo_names.traj_name)):
+                demo_dir = osp.join(demo_type_dir, demo["demo_name"])
+                filter_traj(demo_dir, tps_model_fname=args.tps_fname, save_tps=args.save_tps, do_smooth=args.do_smooth, plot=args.plot, block=args.block)
+            else:
+                yellowprint("Trajectory file exists for %s. Not overwriting."%demo["demo_name"])
+
     else:
         if args.demo_name in (demo["demo_name"] for demo in demos_info["demos"]):
-            demo_dir = osp.join(demo_type_dir, args.demo_name)
-            filter_traj(demo_dir, tps_model_fname=args.tps_fname, save_tps=args.save_tps, do_smooth=args.do_smooth, plot=args.plot, block=args.block)
+            if osp.isfile(osp.join(demo_type_dir, demo["demo_name"], demo_names.traj_name)):
+                if yes_or_no('Trajectory file already exists for this demo. Overwrite?'):
+                    demo_dir = osp.join(demo_type_dir, args.demo_name)
+                    filter_traj(demo_dir, tps_model_fname=args.tps_fname, save_tps=args.save_tps, do_smooth=args.do_smooth, plot=args.plot, block=args.block)
+            else:
+                demo_dir = osp.join(demo_type_dir, args.demo_name)
+                filter_traj(demo_dir, tps_model_fname=args.tps_fname, save_tps=args.save_tps, do_smooth=args.do_smooth, plot=args.plot, block=args.block)
 
     if args.plot and args.block == False:
         raw_input()

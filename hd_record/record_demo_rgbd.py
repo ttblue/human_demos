@@ -31,6 +31,7 @@ from hd_utils.defaults import demo_files_dir, calib_files_dir, data_dir, \
 
 from hd_utils.utils import terminate_process_and_children
 
+from generate_annotations import generate_annotation
 from rosbag_service import TopicWriter
 
 devnull = open(os.devnull, 'wb')
@@ -275,6 +276,8 @@ def record_pipeline ( demo_type, calib_file,
             
             shutil.copyfile(calib_file_path, osp.join(demo_dir,demo_names.calib_name))
             
+            generate_annotation(demo_type, demo_name)
+            
             if num_demos > 0:
                 num_demos -= 1
                 
@@ -362,6 +365,8 @@ def record_single_demo (demo_type, demo_name, calib_file,
         with open(cam_model_file,"w") as fh: yaml.dump(camera_models, fh)
 
         shutil.copyfile(calib_file_path, osp.join(demo_dir,demo_names.calib_name))
+        
+        generate_annotation(demo_type, demo_name)
         
         greenprint("Saved %s."%demo_name)
     else:

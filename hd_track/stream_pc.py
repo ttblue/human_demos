@@ -221,7 +221,7 @@ class streamize_rgbd_pc():
             curr_t = None
             
             while True:
-                if self.index == len(self.stamps):
+                if self.index >= len(self.stamps)-1:
                     self.done = True
                     break
                 if self.tend is not None and self.ts + self.base_ts > self.tend:

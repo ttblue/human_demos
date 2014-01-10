@@ -149,7 +149,7 @@ if __name__=='__main__':
             if not osp.isfile(osp.join(demo_type_dir, demo["demo_name"], demo_names.ann_name)):
                 generate_annotation(args.demo_type, demo["demo_name"])
             else:
-                yellowprint("Annotation file exists for %s. Not overwriting"%demo["demo_name"])
+                yellowprint("Annotation file exists for %s. Not overwriting."%demo["demo_name"])
 
     greenprint("Done annotation generation.")
     

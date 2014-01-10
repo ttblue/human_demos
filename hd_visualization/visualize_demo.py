@@ -285,7 +285,8 @@ def view_tracking_on_rviz(demo_type, demo_name, freq=30.0, speed=1.0, use_smooth
 
         for lr in grippers:
             traj_strms[lr] = streamize(traj[lr][seg][tfms_key], traj[lr][seg]['stamps'], freq, avg_transform, speed=speed)
-            pot_strms[lr] = streamize(traj[lr][seg]['pot_angles'][:-1], traj[lr][seg]['stamps'], freq, np.mean, speed=speed)
+            # HACK
+            pot_strms[lr] = streamize(traj[lr][seg]['pot_angles'][:len(traj[lr][seg]['stamps'])], traj[lr][seg]['stamps'], freq, np.mean, speed=speed)
         
         tmin, tmax, nsteps = relative_time_streams(traj_strms.values() + pot_strms.values(), freq, speed)
         pc_strms = {cam:streamize_rgbd_pc(rgbd_dirs[cam], cam_frames[cam], freq, tstart=tmin, tend=tmax,speed=speed) for cam in rgbd_dirs}
@@ -348,7 +349,7 @@ if __name__=='__main__':
     args = parser.parse_args()
 
     if args.use_traj:
-        view_tracking_on_rviz(demo_type=args.demo_type, demo_name=args.demo_name, 
+        view_tracking_on_rviz(demo_type=args.demo_type, demo_name=args.demo_name,
                               freq=args.freq, speed=args.speed, 
                               use_smoother=args.use_smoother, prompt=args.prompt)
     else:

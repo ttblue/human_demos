@@ -243,7 +243,7 @@ def save_observations_rgbd(demo_type, demo_name, calib_file, num_cameras, save_f
         for lr in 'lr':
             yellowprint("Gripper %s:"%lr)
             for i in range(num_cameras):
-                yellowprint("Found %i transforms out of %i point clouds from camera%i"%(len(data[lr]['camera%i'%(i+1)]), cam_counts[i], i+1))
+                yellowprint("Found %i transforms out of %i rgb/rgbd images from camera%i"%(len(data[lr]['camera%i'%(i+1)]), cam_counts[i], i+1))
             
             yellowprint("Found %i transforms from hydra"%len(data[lr]['hydra']))
             yellowprint("Found %i potentiometer readings"%len(data[lr]['pot_angles']))

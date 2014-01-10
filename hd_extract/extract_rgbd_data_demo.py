@@ -7,7 +7,8 @@ import argparse
 import os, os.path as osp
 import yaml
 from hd_utils.defaults import demo_files_dir, demo_names, master_name
-
+from hd_utils.colorize import yellowprint
+from hd_utils.yes_or_no import yes_or_no
 
 
 if __name__ == "__main__":
@@ -27,12 +28,24 @@ if __name__ == "__main__":
     if args.demo_name == '':
         for demo in demos_info["demos"]:
             demo_dir = osp.join(demo_type_dir, demo["demo_name"])
-            with open(osp.join(demo_dir, demo_names.camera_types_name)) as fh: cam_types = yaml.load(fh)
-            ed.save_observations_rgbd(args.demo_type, demo["demo_name"], demo_names.calib_name, len(cam_types))
+            if not osp.isfile(osp.join(demo_dir, demo_names.data_name)):
+                with open(osp.join(demo_dir, demo_names.camera_types_name)) as fh: cam_types = yaml.load(fh)
+                ed.save_observations_rgbd(args.demo_type, demo["demo_name"], demo_names.calib_name, len(cam_types))                    
+            else:
+                yellowprint("Data file exists for %s. Not overwriting."%demo["demo_name"])
+            
+
     else:
         if args.demo_name in (demo["demo_name"] for demo in demos_info["demos"]):
             demo_dir = osp.join(demo_type_dir, args.demo_name)
-            with open(osp.join(demo_dir, demo_names.camera_types_name)) as fh: cam_types = yaml.load(fh)
-            ed.save_observations_rgbd(args.demo_type, args.demo_name, demo_names.calib_name, len(cam_types))
+            if osp.isfile(osp.join(demo_dir, demo_names.data_name)):
+                if yes_or_no('Data file already exists for this demo. Overwrite?'):
+                    with open(osp.join(demo_dir, demo_names.camera_types_name)) as fh: cam_types = yaml.load(fh)
+                    ed.save_observations_rgbd(args.demo_type, args.demo_name, demo_names.calib_name, len(cam_types))
+            else:
+                with open(osp.join(demo_dir, demo_names.camera_types_name)) as fh: cam_types = yaml.load(fh)
+                ed.save_observations_rgbd(args.demo_type, args.demo_name, demo_names.calib_name, len(cam_types))
+                
+
             
     print "Done extracting data."
