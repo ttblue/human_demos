@@ -206,57 +206,59 @@ def save_observations_rgbd(demo_type, demo_name, calib_file, num_cameras, save_f
                             data[lr]['camera%i'%i].append((tfm_c1[i].dot(tt_tfm),stamps[ind]))
 
 
+    found_hydra_data = False
+    found_pot_data = False
     # If hydra_only.data file already exists, don't do extra work.
-    hydra_data_file        = osp.join(demo_dir, demo_names.data_name)
-    if osp.isfile(all_data_file):
-        yellowprint ("demo.data already exists for %s. Creating hydra file from this info."%demo_name)
-        with open(data_file,'r') as fh: all_data = cPickle.load(fh)
+    hydra_data_file        = osp.join(demo_dir, demo_names.hydra_data_name)
+    if osp.isfile(hydra_data_file):
+        yellowprint ("%s already exists for %s. Getting hydra data from this info."%(demo_names.hydra_data_name,demo_name))
+        with open(hydra_data_file,'r') as fh: hdata = cPickle.load(fh)
          
-        for lr in all_data:
-            data[lr] = {'hydra':all_data[lr]['hydra'],
-                        'pot_angles':all_data[lr]['pot_angles']}
- 
-        if save_file is None:
-            save_file = demo_names.hydra_data_name
-        save_filename = osp.join(demo_dir, save_file)
-        with open(save_filename, 'w') as sfh: cPickle.dump(data, sfh)
-        return
+        for lr in hdata:
+            if lr in 'lr':
+                if hdata[lr].get('hydra'):
+                    data[lr]['hydra'] = hdata[lr]['hydra']
+                    found_hydra_data = True
+                if hdata[lr].get('pot_angles'):
+                    data[lr]['pot_angles'] = hdata[lr]['pot_angles']
+                    found_pot_data = True
 
 
+    if not found_hydra_data:
+        if verbose:
+            yellowprint('Hydra')
+        lr_long = {'l':'left','r':'right'}
+        for (_, msg, _) in bag.read_messages(topics=['/tf']):
+            hyd_tfm = {}
+            found = ''
+            for tfm in msg.transforms:
+                if found in ['lr','rl']:
+                    break
+                for lr in grippers:
+                    if lr in found:
+                        continue
+                    elif tfm.header.frame_id == '/' + hydra_frame and tfm.child_frame_id == '/hydra_'+lr_long[lr]:
+                        t,r = tfm.transform.translation, tfm.transform.rotation
+                        trans = (t.x,t.y,t.z)
+                        rot = (r.x, r.y, r.z, r.w)
+                        hyd_tfm = tfm_c1_h.dot(conversions.trans_rot_to_hmat(trans, rot))
+                        stamp = tfm.header.stamp.to_sec()
+                        tt_tfm = grippers[lr].get_tooltip_transform(lr_long[lr], hyd_tfm)
+                        data[lr]['hydra'].append((tt_tfm, stamp))
+                        found += lr
+            if found and verbose:
+                blueprint("Got hydra readings %s at time %f"%(found,stamp))
 
-    yellowprint('Hydra')
-    lr_long = {'l':'left','r':'right'}
-    for (_, msg, _) in bag.read_messages(topics=['/tf']):
-        hyd_tfm = {}
-        found = ''
-        for tfm in msg.transforms:
-            if found in ['lr','rl']:
-                break
-            for lr in grippers:
-                if lr in found:
-                    continue
-                elif tfm.header.frame_id == '/' + hydra_frame and tfm.child_frame_id == '/hydra_'+lr_long[lr]:
-                    t,r = tfm.transform.translation, tfm.transform.rotation
-                    trans = (t.x,t.y,t.z)
-                    rot = (r.x, r.y, r.z, r.w)
-                    hyd_tfm = tfm_c1_h.dot(conversions.trans_rot_to_hmat(trans, rot))
-                    stamp = tfm.header.stamp.to_sec()
-                    tt_tfm = grippers[lr].get_tooltip_transform(lr_long[lr], hyd_tfm)
-                    data[lr]['hydra'].append((tt_tfm, stamp))
-                    found += lr
-        if found and verbose:
-            blueprint("Got hydra readings %s at time %f"%(found,stamp))
-
-
-    if verbose:
-        yellowprint('Potentiometer readings')
-    for lr in grippers:
-        for (_, msg, ts) in bag.read_messages(topics=['/%s_pot_angle'%lr]):
-            angle = msg.data
-            stamp = ts.to_sec()
-            data[lr]['pot_angles'].append((angle, stamp))
-            if verbose: 
-                blueprint("Got a %s potentiometer angle of %f at time %f"%(lr,angle, stamp))
+    if not found_pot_data:
+        if verbose:
+            yellowprint('Potentiometer readings')
+        for lr in grippers:
+            for (_, msg, ts) in bag.read_messages(topics=['/%s_pot_angle'%lr]):
+                angle = msg.data
+                stamp = ts.to_sec()
+                data[lr]['pot_angles'].append((angle, stamp))
+                if verbose: 
+                    blueprint("Got a %s potentiometer angle of %f at time %f"%(lr,angle, stamp))
 
     if verbose:
         for lr in 'lr':
@@ -272,6 +274,7 @@ def save_observations_rgbd(demo_type, demo_name, calib_file, num_cameras, save_f
     save_filename = osp.join(demo_dir, save_file)
 
     with open(save_filename, 'w') as sfh: cPickle.dump(data, sfh)
+    yellowprint("Saved %s."%demo_names.data_name)
 
 
 def save_hydra_only (demo_type, demo_name, calib_file, save_file=None):
@@ -283,23 +286,6 @@ def save_hydra_only (demo_type, demo_name, calib_file, save_file=None):
     
     data = {}
 
-    # If demo.data file already exists, don't do extra work.
-    all_data_file        = osp.join(demo_dir, demo_names.data_name)
-    if osp.isfile(all_data_file):
-        yellowprint ("demo.data already exists for %s. Creating hydra file from this info."%demo_name)
-        with open(all_data_file,'r') as fh: all_data = cPickle.load(fh)
-        
-        for lr in all_data:
-            if lr in ['lr']:
-                data[lr] = {'hydra':all_data[lr]['hydra'],
-                            'pot_angles':all_data[lr]['pot_angles']}
-    
-        if save_file is None:
-            save_file = demo_names.hydra_data_name
-        save_filename = osp.join(demo_dir, save_file)
-        with open(save_filename, 'w') as sfh: cPickle.dump(data, sfh)
-        return
-    
     c1_frame = 'camera1_link'
     hydra_frame = 'hydra_base'
     
@@ -316,13 +302,39 @@ def save_hydra_only (demo_type, demo_name, calib_file, save_file=None):
     if tfm_c1_h is None:
         redprint("Calibration does not have hydra transform.")
         return
+    
+    data['T_cam2hbase'] = tfm_c1_h
 
+    # If demo.data file already exists, don't do extra work.
+    found_hydra_data = False
+    found_pot_data = False
+    all_data_file        = osp.join(demo_dir, demo_names.data_name)
+    if osp.isfile(all_data_file):
+        yellowprint ("%s already exists for %s. Creating hydra file from this info."%(demo_names.data_name,demo_name))
+        with open(all_data_file,'r') as fh: all_data = cPickle.load(fh)
+        
+        for lr in all_data:
+            if lr in ['lr']:
+                data[lr] = {}
+                if all_data[lr].get('hydra'):
+                    data[lr]['hydra'] = all_data[lr]['hydra']
+                    found_hydra_data = True
+                if hdata[lr].get('pot_angles'):
+                    data[lr]['pot_angles'] = all_data[lr]['pot_angles']
+                    found_pot_data = True
+
+        
+        if found_hydra_data and found_pot_data:
+            if save_file is None:
+                save_file = demo_names.hydra_data_name
+            save_filename = osp.join(demo_dir, save_file)
+            with open(save_filename, 'w') as sfh: cPickle.dump(data, sfh)
+            return
+    
     if not calib_data.get('grippers'):
         redprint("Gripper not found.")
-        return
-
+        return    
     grippers = {}
-    data['T_cam2hbase'] = tfm_c1_h
     for lr,gdata in calib_data['grippers'].items():
         gr = gripper_lite.GripperLite(lr, gdata['ar'], trans_marker_tooltip=gripper_trans_marker_tooltip[lr])
         gr.reset_gripper(lr, gdata['tfms'], gdata['ar'], gdata['hydra'])
@@ -331,40 +343,41 @@ def save_hydra_only (demo_type, demo_name, calib_file, save_file=None):
                    'pot_angles':[],
                    'T_tt2hy': gr.get_rel_transform('tool_tip', gr.hydra_marker)}
 
-    if verbose:
-        yellowprint('Hydra')
-    lr_long = {'l':'left','r':'right'}
-    for (_, msg, _) in bag.read_messages(topics=['/tf']):
-        hyd_tfm = {}
-        found = ''
-        for tfm in msg.transforms:
-            if found in ['lr','rl']:
-                break
-            for lr in grippers:
-                if lr in found:
-                    continue
-                elif tfm.header.frame_id == '/' + hydra_frame and tfm.child_frame_id == '/hydra_'+lr_long[lr]:
-                    t,r = tfm.transform.translation, tfm.transform.rotation
-                    trans = (t.x,t.y,t.z)
-                    rot = (r.x, r.y, r.z, r.w)
-                    hyd_tfm = tfm_c1_h.dot(conversions.trans_rot_to_hmat(trans, rot))
-                    stamp = tfm.header.stamp.to_sec()
-                    tt_tfm = grippers[lr].get_tooltip_transform(lr_long[lr], hyd_tfm)
-                    data[lr]['hydra'].append((tt_tfm, stamp))
-                    found += lr
-        if found and verbose:
-            blueprint("Got hydra readings %s at time %f"%(found,stamp))
+    if not found_hydra_data:
+        if verbose:
+            yellowprint('Hydra')
+        lr_long = {'l':'left','r':'right'}
+        for (_, msg, _) in bag.read_messages(topics=['/tf']):
+            hyd_tfm = {}
+            found = ''
+            for tfm in msg.transforms:
+                if found in ['lr','rl']:
+                    break
+                for lr in grippers:
+                    if lr in found:
+                        continue
+                    elif tfm.header.frame_id == '/' + hydra_frame and tfm.child_frame_id == '/hydra_'+lr_long[lr]:
+                        t,r = tfm.transform.translation, tfm.transform.rotation
+                        trans = (t.x,t.y,t.z)
+                        rot = (r.x, r.y, r.z, r.w)
+                        hyd_tfm = tfm_c1_h.dot(conversions.trans_rot_to_hmat(trans, rot))
+                        stamp = tfm.header.stamp.to_sec()
+                        tt_tfm = grippers[lr].get_tooltip_transform(lr_long[lr], hyd_tfm)
+                        data[lr]['hydra'].append((tt_tfm, stamp))
+                        found += lr
+            if found and verbose:
+                blueprint("Got hydra readings %s at time %f"%(found,stamp))
 
-
-    if verbose:
-        yellowprint('Potentiometer readings')
-    for lr in grippers:
-        for (_, msg, ts) in bag.read_messages(topics=['/%s_pot_angle'%lr]):
-            angle = msg.data
-            stamp = ts.to_sec()
-            data[lr]['pot_angles'].append((angle, stamp))
-            if verbose: 
-                blueprint("Got a %s potentiometer angle of %f at time %f"%(lr,angle, stamp))
+    if not found_pot_data:
+        if verbose:
+            yellowprint('Potentiometer readings')
+        for lr in grippers:
+            for (_, msg, ts) in bag.read_messages(topics=['/%s_pot_angle'%lr]):
+                angle = msg.data
+                stamp = ts.to_sec()
+                data[lr]['pot_angles'].append((angle, stamp))
+                if verbose: 
+                    blueprint("Got a %s potentiometer angle of %f at time %f"%(lr,angle, stamp))
 
     if verbose:
         for lr in 'lr':
@@ -377,3 +390,5 @@ def save_hydra_only (demo_type, demo_name, calib_file, save_file=None):
     save_filename = osp.join(demo_dir, save_file)
 
     with open(save_filename, 'w') as sfh: cPickle.dump(data, sfh)
+    yellowprint("Saved %s."%demo_names.hydra_data_name)
+    
