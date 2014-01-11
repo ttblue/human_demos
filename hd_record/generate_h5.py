@@ -18,7 +18,7 @@ from hd_utils.defaults import demo_files_dir, demo_names, master_name, verify_na
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument("demo_type", help="Type of demonstration")
+parser.add_argument("--demo_type", help="Type of demonstration")
 parser.add_argument("--cloud_proc_func", default="extract_red")
 parser.add_argument("--cloud_proc_mod", default="hd_utils.cloud_proc_funs")
 parser.add_argument("--no_clouds")
@@ -36,6 +36,9 @@ def get_video_frames(video_dir, frame_stamps):
     
     video_stamps = np.loadtxt(osp.join(video_dir,demo_names.stamps_name))
     frame_inds = np.searchsorted(video_stamps, frame_stamps)
+    
+    if frame_inds[-1] >= len(video_stamps):
+        frame_inds[-1] = len(video_stamps) - 1
     
     rgbs = []
     depths = []
@@ -158,7 +161,7 @@ else:
         demo_name = demo_info['demo_name']
         demo_dir = osp.join(task_dir, demo_name)
         
-        video_dirs = [osp.join(demo_dir, video_dir) for video_dir in demo_info['video_dirs']]
+        rgbd_dir = osp.join(demo_dir, demo_names.video_dir%(1))
 
         annotation_file = osp.join(demo_dir,"ann.yaml")
         traj_file = osp.join(demo_dir, "demo.traj")
@@ -169,7 +172,7 @@ else:
         add_traj_to_hdf(traj, annotations, hdf, demo_name)    
     
         # assumes the first camera contains the rgbd info        
-        add_rgbd_to_hdf(video_dirs[0], annotations, hdf, demo_name)
+        add_rgbd_to_hdf(rgbd_dir, annotations, hdf, demo_name)
 
     
     

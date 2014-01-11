@@ -206,7 +206,7 @@ class kalman:
         return (x_n, S_n)
 
 
-    def register_tf_observation(self, obs_tf, is_hydra, Q_obs, t=None, do_control_update=False):
+    def register_tf_observation(self, obs_tf, Q_obs, t=None, do_control_update=False):
         """
         This function updates the filter with an observation.
         OBS_TF   : is the observed transform.

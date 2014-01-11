@@ -15,7 +15,7 @@ from hd_utils.colorize import blueprint, redprint
 from hd_utils.defaults import demo_names
 
 from hd_track.kalman import closer_angle
-from hd_track.streamer import streamize, time_shift_stream, segment_stream
+from hd_track.streamer import streamize, segment_stream
 
 def get_cam_types(demo_dir):
     cam_type_fname = osp.join(demo_dir, demo_names.camera_types_name)
@@ -55,15 +55,15 @@ def load_data(data_file, lr, freq=30.0):
     hydra_ts  = np.array([tt[1] for tt in dat[lr]['hydra']])
 
     if len(hydra_ts) <= 0:
-        redprint("ERROR : No hydra data found in : %s"%dat_fname)
-        sys.exit(-1)
+        redprint("ERROR : No hydra data found in : %s"%(osp.basename(data_file)))
+        sys.exit(-1)   
     hydra_strm = streamize(hydra_tfs, hydra_ts, freq, avg_transform)#, tstart=-1./freq)
 
     ## potentiometer angles:
     pot_vals = np.array([tt[0] for tt in dat[lr]['pot_angles']])
     pot_ts   = np.array([tt[1] for tt in dat[lr]['pot_angles']])
     if len(pot_ts) <= 0:
-        redprint("ERROR : No potentiometer data found in : %s"%dat_fname)
+        redprint("ERROR : No potentiometer data found in : %s"%(osp.basename(data_file)))
         sys.exit(-1)
     pot_strm = streamize(pot_vals, pot_ts, freq, np.mean)#, tstart=-1./freq)
 
@@ -90,7 +90,6 @@ def segment_streams(ann_dat, strms, time_shifts, demo_dir, base_stream='camera1'
     start_times = np.array([seg_info['look']+time_shifts[base_stream] for seg_info in ann_dat])
     stop_times  = np.array([seg_info['stop']+time_shifts[base_stream] for seg_info in ann_dat])
     nsteps      = map(int, (stop_times - start_times) / strms[0].dt) 
-    print nsteps
     
     strm_segs = []
     for strm in strms:
@@ -269,7 +268,10 @@ def align_tf_streams(hydra_strm, cam_strm, wsize=0):
         idx += 1
 
     for hydra_tfm in hydra_strm:   
-        Xs_hy.append(hydra_tfm[0,3])
+        if hydra_tfm != None:
+            Xs_hy.append(hydra_tfm[0,3])
+        else:
+            redprint("None hydra tfm!")
 
     ## chop-off wsized data from the start and end of the camera-data:
     start_idx, end_idx = 0, len(Xs_cam)-1
@@ -313,6 +315,11 @@ def reject_outliers_tf_stream(strm, n_window=10, v_th=[0.35,0.35,0.25]):
         Xs[i,:] = tfs[i][0:3,3]
     
     n = N-2*s_window
+    
+    ## when stream is very short, just return the original stream
+    if n <= 0:
+        return strm
+    
     v = np.empty((n, 3, 2*s_window))
     
     X0 = Xs[s_window:s_window+n,:]

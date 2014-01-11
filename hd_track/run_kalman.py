@@ -12,10 +12,11 @@ from hd_utils.colorize import *
 from hd_utils.conversions import *
 from hd_utils.utils import *
 from hd_utils.defaults import demo_files_dir, demo_names, master_name
+from hd_utils.yes_or_no import yes_or_no
 
 from hd_track.kalman import kalman, smoother
 from hd_track.kalman_tuning import state_from_tfms_no_velocity
-from hd_track.streamer import streamize, get_corresponding_data, stream_soft_next
+from hd_track.streamer import streamize, get_corresponding_data, stream_soft_next, time_shift_stream
 from hd_track.demo_data_prep import *
 from hd_track.tps_correct    import *
 
@@ -385,13 +386,13 @@ def run_KF(KF, nsteps, freq, hydra_strm, cam_dat, hydra_covar, rgb_covar, rgbd_c
 #     IPython.embed()
     
     for i in xrange(nsteps):
-        KF.register_tf_observation(hydra_snext(), True, hydra_covar, do_control_update=True)
+        KF.register_tf_observation(hydra_snext(), hydra_covar, do_control_update=True)
 
         for i in xrange(len(cam_types)):
             cam_covar = rgbd_covar
             if cam_types[i]=='rgb':
                 cam_covar = rgb_covar
-            KF.register_tf_observation(cam_snext[i](), False, cam_covar, do_control_update=False)
+            KF.register_tf_observation(cam_snext[i](), cam_covar, do_control_update=False)
 
         xs_kf.append(KF.x_filt)
         covars_kf.append(KF.S_filt)
@@ -566,7 +567,7 @@ if __name__=='__main__':
 
     else:
         if args.demo_name in (demo["demo_name"] for demo in demos_info["demos"]):
-            if osp.isfile(osp.join(demo_type_dir, demo["demo_name"], demo_names.traj_name)):
+            if osp.isfile(osp.join(demo_type_dir, args.demo_name, demo_names.traj_name)):
                 if yes_or_no('Trajectory file already exists for this demo. Overwrite?'):
                     demo_dir = osp.join(demo_type_dir, args.demo_name)
                     filter_traj(demo_dir, tps_model_fname=args.tps_fname, save_tps=args.save_tps, do_smooth=args.do_smooth, plot=args.plot, block=args.block)
