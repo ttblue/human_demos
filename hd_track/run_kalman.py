@@ -563,6 +563,7 @@ if __name__=='__main__':
         
     if args.demo_name == '':
         for demo in demos_info["demos"]:
+            demo_dir = osp.join(demo_type_dir, demo["demo_name"])
             # Wait until extraction is done for current demo.
             while osp.isfile(osp.join(demo_dir, demo_names.extract_data_temp)):
                 time.sleep(1)
@@ -572,13 +573,13 @@ if __name__=='__main__':
                 continue
             # Check if traj already exists
             if not osp.isfile(osp.join(demo_type_dir, demo["demo_name"], demo_names.traj_name)):
-                demo_dir = osp.join(demo_type_dir, demo["demo_name"])
                 filter_traj(demo_dir, tps_model_fname=args.tps_fname, save_tps=args.save_tps, do_smooth=args.do_smooth, plot=args.plot, block=args.block)
             else:
                 yellowprint("Trajectory file exists for %s. Not overwriting."%demo["demo_name"])
 
     else:
         if args.demo_name in (demo["demo_name"] for demo in demos_info["demos"]):
+            demo_dir = osp.join(demo_type_dir, args.demo_name)
             # Wait until extraction is done for current demo.
             while osp.isfile(osp.join(demo_dir, demo_names.extract_data_temp)):
                 time.sleep(1)
@@ -587,10 +588,8 @@ if __name__=='__main__':
                 # Check if .traj file already exists
                 if osp.isfile(osp.join(demo_type_dir, args.demo_name, demo_names.traj_name)):
                     if yes_or_no('Trajectory file already exists for this demo. Overwrite?'):
-                        demo_dir = osp.join(demo_type_dir, args.demo_name)
                         filter_traj(demo_dir, tps_model_fname=args.tps_fname, save_tps=args.save_tps, do_smooth=args.do_smooth, plot=args.plot, block=args.block)
                 else:
-                    demo_dir = osp.join(demo_type_dir, args.demo_name)
                     filter_traj(demo_dir, tps_model_fname=args.tps_fname, save_tps=args.save_tps, do_smooth=args.do_smooth, plot=args.plot, block=args.block)
             else:
                 yellowprint("Another node seems to be running kf/ks already for %s."%args.demo_name)
