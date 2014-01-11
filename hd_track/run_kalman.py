@@ -178,6 +178,7 @@ def load_demo_data(demo_dir, freq, rem_outliers, tps_correct, tps_model_fname, p
                 ndat[lr] = len(cam_dat[lr][cam]['stream'].get_data()[0])
        
         lr_align = ndat.keys()[np.argmax(ndat.values())]
+
         time_shifts[cam] = dt* align_tf_streams(hydra_dat[lr_align], cam_dat[lr_align][cam]['stream'])
 
     greenprint("Time-shifts found : %s"%str(time_shifts))
