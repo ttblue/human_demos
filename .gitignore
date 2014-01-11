@@ -83,3 +83,9 @@ nosetests.xml
 # demos
 hd_data/demos/*
 hd_data/calib/cc*
+
+# temp files
+*.swp
+*.swo
+*.swn
+*.swm
