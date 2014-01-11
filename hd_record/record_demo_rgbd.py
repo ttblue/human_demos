@@ -24,7 +24,6 @@ from record_rgbd_service.srv import SaveImage, SaveImageRequest, SaveImageRespon
 
 from hd_calib import calibration_pipeline as cpipe
 from hd_utils.colorize import *
-from hd_utils.yes_or_no import yes_or_no
 
 from hd_utils.defaults import demo_files_dir, calib_files_dir, data_dir, \
                               demo_names, master_name, latest_demo_name
@@ -153,7 +152,6 @@ def record_demo (demo_dir, use_voice):
 
     sleeper = rospy.Rate(30)
 
-    started_bag = False
     started_video = {cam:False for cam in camera_types}
 
     print
@@ -264,7 +262,7 @@ def record_pipeline ( demo_type, calib_file,
         demo_dir = osp.join(demo_type_dir, demo_name)
         if not osp.exists(demo_dir): os.mkdir(demo_dir)
         else:
-            yellowprint("%s exists! Removing directory for fresh recording."%s)
+            yellowprint("%s exists! Removing directory for fresh recording."%demo_dir)
             shutil.rmtree(demo_dir)
             os.mkdir(demo_dir)
             
