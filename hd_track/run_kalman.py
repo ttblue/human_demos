@@ -465,7 +465,7 @@ def filter_traj(demo_dir, tps_model_fname, save_tps, do_smooth, plot, block):
                                 
             Ts_kf, Ts_smthr = state_to_hmat(xs_kf), state_to_hmat(xs_smthr)
             
-            pot_angles = [x for x in pot_strm]
+            pot_angles = [x for x in pot_strm][:nsteps+1]
             
             '''''
             Dirty hack!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -490,9 +490,9 @@ def filter_traj(demo_dir, tps_model_fname, save_tps, do_smooth, plot, block):
                     
         
             # then linear interpolation between non-None elements
-            print n_pot_angles
-            print len(ts)
-            print nsteps
+            #print n_pot_angles
+            #print len(ts)
+            #print nsteps
             i = 0
             while i < n_pot_angles:
                 if pot_angles[i] == None:
@@ -524,6 +524,7 @@ def filter_traj(demo_dir, tps_model_fname, save_tps, do_smooth, plot, block):
                         "tfms_s"  : Ts_smthr,
                         "covars_s": covars_smthr,
                         "pot_angles": pot_angles}
+            
             
             seg_name = rec_data[lr][iseg]["name"]
             lr_trajs[seg_name] = seg_traj

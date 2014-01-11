@@ -130,8 +130,7 @@ def add_traj_to_hdf(traj, annotation, hdfroot, demo_name):
             lr_group["pot_angles"] = traj[lr][seg_name]["pot_angles"]
             lr_group["stamps"] = traj[lr][seg_name]["stamps"]
             lr_group["covars"] = traj[lr][seg_name]["covars"]
-            lr_group["covars_s"] = traj[lr][seg_name]["covars_s"]
-        
+            lr_group["covars_s"] = traj[lr][seg_name]["covars_s"]        
 
 
 task_dir = osp.join(demo_files_dir, args.demo_type)
@@ -234,12 +233,13 @@ if args.verify:
                                  "tfms_s": np.asarray(seg_info["l"]["tfms_s"]),
                                  "pot_angles": np.asarray(seg_info["l"]["pot_angles"]),
                                  "stamps": np.asarray(seg_info["l"]["stamps"])}
+                    
                 
                 if "r" in seg_info.keys():
                     traj["r"] = {"tfms": np.asarray(seg_info["r"]["tfms"]),
                                  "tfms_s": np.asarray(seg_info["r"]["tfms_s"]),
                                  "pot_angles": np.asarray(seg_info["r"]["pot_angles"]),
-                                 "stamps": np.asarray(seg_info["r"]["stamps"])}                    
+                                 "stamps": np.asarray(seg_info["r"]["stamps"])}                 
                 
 
                 
