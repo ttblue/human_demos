@@ -51,6 +51,8 @@ camera_types = None
 camera_models = {}
 demo_num = 0
 
+num_saved = 0
+
 voice_cmd = "roslaunch pocketsphinx demo_recording.launch"
 
 class voice_alerts ():
@@ -214,7 +216,7 @@ def record_pipeline ( demo_type, calib_file,
     @num_demos: number of demos to be recorded. -1 -- default -- means until user stops.
     @use_voice: use voice commands to start/stop demo if true. o/w use command line.
     """
-    global cmd_checker, camera_types, demo_type_dir, master_file, demo_num, latest_demo_file, topic_writer
+    global cmd_checker, camera_types, demo_type_dir, master_file, demo_num, latest_demo_file, topic_writer, num_saved
 
     time_sess_start = time.time()
 
@@ -249,6 +251,7 @@ def record_pipeline ( demo_type, calib_file,
             while True:
                 status = cmd_checker.get_latest_msg()
                 if  status in ["begin recording","done session"]:
+                    total_rec_start = time.time()
                     break
                 sleeper.sleep()
         else:
@@ -275,6 +278,8 @@ def record_pipeline ( demo_type, calib_file,
         save_demo = record_demo(demo_dir, use_voice)
         
         if save_demo:
+            time.sleep(1.2)
+            subprocess.call("espeak -v en 'Saving demo %i.'"%demo_num, stdout=devnull, stderr=devnull, shell=True)
             with open(master_file, 'a') as fh: fh.write('- demo_name: %s\n'%demo_name)
             
             cam_type_file = osp.join(demo_dir, demo_names.camera_types_name)
@@ -292,7 +297,11 @@ def record_pipeline ( demo_type, calib_file,
             if num_demos > 0:
                 num_demos -= 1
                 
+            num_saved += 1
+
             greenprint("Saved %s."%demo_name)
+            total_rec_finish = time.time()
+            greenprint("Time taken to record + overhead: %02f"%(total_rec_finish - total_rec_start))
         else:
             if osp.exists(demo_dir):
                 shutil.rmtree(demo_dir)
@@ -312,6 +321,8 @@ def record_pipeline ( demo_type, calib_file,
     
     time_sess_finish = time.time()
     greenprint("Time taken to record in this session: %02f s"%(time_sess_finish-time_sess_start))
+    if num_saved > 0:
+        greenprint("Average time per saved demo: %02f s"%((time_sess_finish-time_sess_start)/num_saved))
 
 def record_single_demo (demo_type, demo_name, calib_file, 
                           num_cameras, use_voice):
