@@ -8,7 +8,6 @@ import yaml
 
 import rosbag
 import roslib
-from sensor_msgs.msg import Image
 roslib.load_manifest('ar_track_service')
 from ar_track_service.srv import MarkerPositions, MarkerPositionsRequest, MarkerPositionsResponse,\
                 MarkerImagePositions, MarkerImagePositionsRequest, MarkerImagePositionsResponse,\
@@ -18,13 +17,12 @@ roslib.load_manifest('cv_bridge')
 from cv_bridge import CvBridge, CvBridgeError
 
 
-from hd_utils.defaults import tfm_link_rof, asus_xtion_pro_f, demo_files_dir, master_name, demo_names
+from hd_utils.defaults import tfm_link_rof, asus_xtion_pro_f, demo_files_dir, demo_names
 from hd_utils.colorize import *
 from hd_utils import ros_utils as ru, clouds, conversions, extraction_utils as eu
 
-from hd_calib import gripper_calibration, gripper, gripper_lite
-from hd_utils.defaults import demo_files_dir, demo_names
-from hd_calib.calibration_pipeline import gripper_marker_id, gripper_trans_marker_tooltip
+from hd_calib import gripper_lite
+from hd_calib.calibration_pipeline import gripper_trans_marker_tooltip
 
 getMarkersPC = None
 getImageMarkers = None
@@ -80,10 +78,14 @@ def get_ar_marker_poses (msg, ar_markers = None, use_pc_service=True, track=Fals
 
 
 def save_observations_rgbd(demo_type, demo_name, calib_file, num_cameras, save_file=None):
-    
+    """
+    Extract data from all sensors and store into demo.data file.
+    """
     global setCalib
-    
+    # Temp file to show that data is already being extracted
     demo_dir        = osp.join(demo_files_dir, demo_type, demo_name)
+    with open(osp.join(demo_dir, demo_names.extract_data_temp)) as fh: fh.write('Extracting...')
+    
     calib_file_path = osp.join(demo_dir, demo_names.calib_name)
     bag_file        = osp.join(demo_dir, demo_names.bag_name)
     
@@ -275,12 +277,18 @@ def save_observations_rgbd(demo_type, demo_name, calib_file, num_cameras, save_f
 
     with open(save_filename, 'w') as sfh: cPickle.dump(data, sfh)
     yellowprint("Saved %s."%demo_names.data_name)
+    
+    os.remove(osp.join(demo_dir, demo_names.extract_data_temp))
 
 
 def save_hydra_only (demo_type, demo_name, calib_file, save_file=None):
-    global setCalib
-
+    """
+    Save hydra only data.
+    """
+    # Temp file to show that data is already being extracted
     demo_dir        = osp.join(demo_files_dir, demo_type, demo_name)
+    with open(osp.join(demo_dir, demo_names.extract_hydra_data_temp)) as fh: fh.write('Extracting...')
+    
     bag_file        = osp.join(demo_dir, demo_names.bag_name)
     calib_file_path = osp.join(demo_dir, demo_names.calib_name)
     
@@ -319,7 +327,7 @@ def save_hydra_only (demo_type, demo_name, calib_file, save_file=None):
                 if all_data[lr].get('hydra'):
                     data[lr]['hydra'] = all_data[lr]['hydra']
                     found_hydra_data = True
-                if hdata[lr].get('pot_angles'):
+                if all_data[lr].get('pot_angles'):
                     data[lr]['pot_angles'] = all_data[lr]['pot_angles']
                     found_pot_data = True
 
@@ -392,3 +400,4 @@ def save_hydra_only (demo_type, demo_name, calib_file, save_file=None):
     with open(save_filename, 'w') as sfh: cPickle.dump(data, sfh)
     yellowprint("Saved %s."%demo_names.hydra_data_name)
     
+    os.remove(osp.join(demo_dir, demo_names.extract_hydra_data_temp))

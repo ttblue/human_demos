@@ -428,6 +428,8 @@ def filter_traj(demo_dir, tps_model_fname, save_tps, do_smooth, plot, block):
     Runs the kalman filter for BOTH the grippers and writes the demo.traj file.
     TPS_MODEL_FNAME : The name of the file to load the tps-model from
     """
+    # Temp file to show that kalman filter/smoother is already being run on demo
+    with open(osp.join(demo_dir, demo_names.run_kalman_temp)) as fh: fh.write('Running Kalman filter/smoother..')
     
     freq = 30.0
     
@@ -517,8 +519,6 @@ def filter_traj(demo_dir, tps_model_fname, save_tps, do_smooth, plot, block):
             Finish dirty hack.
             '''
 
-
-
             seg_traj = {"stamps"  : ts,
                         "tfms"    : Ts_kf,
                         "covars"  : covars_kf,
@@ -535,6 +535,8 @@ def filter_traj(demo_dir, tps_model_fname, save_tps, do_smooth, plot, block):
     traj_fname = osp.join(demo_dir, demo_names.traj_name)
     with open(traj_fname, 'wb') as f:
         cp.dump(traj, f)
+        
+    os.remove(osp.join(demo_dir, demo_names.run_kalman_temp))
 
 
 if __name__=='__main__':
@@ -561,6 +563,11 @@ if __name__=='__main__':
         
     if args.demo_name == '':
         for demo in demos_info["demos"]:
+            # Wait until extraction is done for current demo.
+            while osp.isfile(osp.join(demo_dir, demo_names.extract_data_temp)):
+                time.sleep(1)
+            
+            # Check if traj already exists
             if not osp.isfile(osp.join(demo_type_dir, demo["demo_name"], demo_names.traj_name)):
                 demo_dir = osp.join(demo_type_dir, demo["demo_name"])
                 filter_traj(demo_dir, tps_model_fname=args.tps_fname, save_tps=args.save_tps, do_smooth=args.do_smooth, plot=args.plot, block=args.block)
@@ -569,13 +576,19 @@ if __name__=='__main__':
 
     else:
         if args.demo_name in (demo["demo_name"] for demo in demos_info["demos"]):
-            if osp.isfile(osp.join(demo_type_dir, args.demo_name, demo_names.traj_name)):
-                if yes_or_no('Trajectory file already exists for this demo. Overwrite?'):
+            # Wait until extraction is done for current demo.
+            while osp.isfile(osp.join(demo_dir, demo_names.extract_data_temp)):
+                time.sleep(1)
+            # Check if some other node is running kf/ks currently.
+            if not osp.isfile(osp.join(demo_dir, demo_names.run_kalman_temp)):
+                # Check if .traj file already exists
+                if osp.isfile(osp.join(demo_type_dir, args.demo_name, demo_names.traj_name)):
+                    if yes_or_no('Trajectory file already exists for this demo. Overwrite?'):
+                        demo_dir = osp.join(demo_type_dir, args.demo_name)
+                        filter_traj(demo_dir, tps_model_fname=args.tps_fname, save_tps=args.save_tps, do_smooth=args.do_smooth, plot=args.plot, block=args.block)
+                else:
                     demo_dir = osp.join(demo_type_dir, args.demo_name)
                     filter_traj(demo_dir, tps_model_fname=args.tps_fname, save_tps=args.save_tps, do_smooth=args.do_smooth, plot=args.plot, block=args.block)
-            else:
-                demo_dir = osp.join(demo_type_dir, args.demo_name)
-                filter_traj(demo_dir, tps_model_fname=args.tps_fname, save_tps=args.save_tps, do_smooth=args.do_smooth, plot=args.plot, block=args.block)
 
     if args.plot and args.block == False:
         raw_input()
