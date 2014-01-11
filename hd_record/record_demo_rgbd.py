@@ -274,7 +274,7 @@ def record_pipeline ( demo_type, calib_file,
 
         greenprint("Recording %s."%demo_name)
         # Temp file to show recording
-        with open(osp.join(demo_dir, demo_names.record_demo_temp)) as fh: fh.write('Recording...')
+        with open(osp.join(demo_dir, demo_names.record_demo_temp),'w') as fh: fh.write('Recording...')
         save_demo = record_demo(demo_dir, use_voice)
         
         if save_demo:
@@ -384,7 +384,7 @@ def record_single_demo (demo_type, demo_name, calib_file,
 
     greenprint("Recording %s."%demo_name)
     # Temp file to show recording
-    with open(osp.join(demo_dir, demo_names.record_demo_temp)) as fh: fh.write('Recording...')
+    with open(osp.join(demo_dir, demo_names.record_demo_temp),'w') as fh: fh.write('Recording...')
     save_demo = record_demo(demo_dir, use_voice)
 
     if save_demo:

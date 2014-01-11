@@ -34,7 +34,9 @@ if __name__ == "__main__":
             while osp.isfile(osp.join(demo_dir, demo_names.record_demo_temp)):
                 time.sleep(1)
             # Some other node is extracting data currently.
-            if osp.isfile(osp.join(demo_dir, demo_names.extract_hydra_data_temp)): continue
+            if osp.isfile(osp.join(demo_dir, demo_names.extract_hydra_data_temp)):
+                yellowprint("Another node seems to be extracting hydra data already for %s."%demo["demo_name"]) 
+                continue
             # Check if data file already exists
             if not osp.isfile(osp.join(demo_dir, demo_names.hydra_data_name)):
                 ed.save_hydra_only(args.demo_type, demo["demo_name"], demo_names.calib_name)                    
@@ -56,5 +58,7 @@ if __name__ == "__main__":
                         ed.save_hydra_only(args.demo_type, args.demo_name, demo_names.calib_name)
                 else:
                     ed.save_hydra_only(args.demo_type, args.demo_name, demo_names.calib_name)
+            else:
+                yellowprint("Another node seems to be extracting hydra data already for %s."%args.demo_name)
 
     print "Done extracting hydra data."

@@ -43,7 +43,7 @@ def get_ar_marker_poses (msg, ar_markers = None, use_pc_service=True, track=Fals
     global getMarkersPC, getImageMarkers, reqPC, reqImage, bridge
     
     if rospy.get_name() == '/unnamed':
-        rospy.init_node('ar_marker_poses')
+        rospy.init_node('ar_marker_poses', anonymous=True)
     
     if use_pc_service:
         if getMarkersPC is None:
@@ -84,7 +84,7 @@ def save_observations_rgbd(demo_type, demo_name, calib_file, num_cameras, save_f
     global setCalib
     # Temp file to show that data is already being extracted
     demo_dir        = osp.join(demo_files_dir, demo_type, demo_name)
-    with open(osp.join(demo_dir, demo_names.extract_data_temp)) as fh: fh.write('Extracting...')
+    with open(osp.join(demo_dir, demo_names.extract_data_temp),'w') as fh: fh.write('Extracting...')
     
     calib_file_path = osp.join(demo_dir, demo_names.calib_name)
     bag_file        = osp.join(demo_dir, demo_names.bag_name)
@@ -287,7 +287,7 @@ def save_hydra_only (demo_type, demo_name, calib_file, save_file=None):
     """
     # Temp file to show that data is already being extracted
     demo_dir        = osp.join(demo_files_dir, demo_type, demo_name)
-    with open(osp.join(demo_dir, demo_names.extract_hydra_data_temp)) as fh: fh.write('Extracting...')
+    with open(osp.join(demo_dir, demo_names.extract_hydra_data_temp),'w') as fh: fh.write('Extracting...')
     
     bag_file        = osp.join(demo_dir, demo_names.bag_name)
     calib_file_path = osp.join(demo_dir, demo_names.calib_name)

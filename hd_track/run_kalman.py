@@ -429,7 +429,7 @@ def filter_traj(demo_dir, tps_model_fname, save_tps, do_smooth, plot, block):
     TPS_MODEL_FNAME : The name of the file to load the tps-model from
     """
     # Temp file to show that kalman filter/smoother is already being run on demo
-    with open(osp.join(demo_dir, demo_names.run_kalman_temp)) as fh: fh.write('Running Kalman filter/smoother..')
+    with open(osp.join(demo_dir, demo_names.run_kalman_temp),'w') as fh: fh.write('Running Kalman filter/smoother..')
     
     freq = 30.0
     
@@ -566,7 +566,10 @@ if __name__=='__main__':
             # Wait until extraction is done for current demo.
             while osp.isfile(osp.join(demo_dir, demo_names.extract_data_temp)):
                 time.sleep(1)
-            
+            # Check if some other node is running kf/ks currently.
+            if osp.isfile(osp.join(demo_dir, demo_names.run_kalman_temp)):
+                yellowprint("Another node seems to be running kf/ks already for %s."%demo["demo_name"]) 
+                continue
             # Check if traj already exists
             if not osp.isfile(osp.join(demo_type_dir, demo["demo_name"], demo_names.traj_name)):
                 demo_dir = osp.join(demo_type_dir, demo["demo_name"])
@@ -589,6 +592,8 @@ if __name__=='__main__':
                 else:
                     demo_dir = osp.join(demo_type_dir, args.demo_name)
                     filter_traj(demo_dir, tps_model_fname=args.tps_fname, save_tps=args.save_tps, do_smooth=args.do_smooth, plot=args.plot, block=args.block)
+            else:
+                yellowprint("Another node seems to be running kf/ks already for %s."%args.demo_name)
 
     if args.plot and args.block == False:
         raw_input()

@@ -34,7 +34,9 @@ if __name__ == "__main__":
             while osp.isfile(osp.join(demo_dir, demo_names.record_demo_temp)):
                 time.sleep(1)
             # Some other node is extracting data currently.
-            if osp.isfile(osp.join(demo_dir, demo_names.extract_data_temp)): continue
+            if osp.isfile(osp.join(demo_dir, demo_names.extract_data_temp)):
+                yellowprint("Another node seems to be extracting data already for %s."%demo["demo_name"]) 
+                continue
             # Check if data file already exists
             if not osp.isfile(osp.join(demo_dir, demo_names.data_name)):
                 with open(osp.join(demo_dir, demo_names.camera_types_name)) as fh: cam_types = yaml.load(fh)
@@ -59,6 +61,8 @@ if __name__ == "__main__":
                 else:
                     with open(osp.join(demo_dir, demo_names.camera_types_name)) as fh: cam_types = yaml.load(fh)
                     ed.save_observations_rgbd(args.demo_type, args.demo_name, demo_names.calib_name, len(cam_types))
+            else:
+                yellowprint("Another node seems to be extracting data already for %s."%args.demo_name)
                 
 
             
