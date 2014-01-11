@@ -16,7 +16,7 @@ from hd_utils.yes_or_no import yes_or_no
 
 from hd_track.kalman import kalman, smoother
 from hd_track.kalman_tuning import state_from_tfms_no_velocity
-from hd_track.streamer import streamize, get_corresponding_data, stream_soft_next
+from hd_track.streamer import streamize, get_corresponding_data, stream_soft_next, time_shift_stream
 from hd_track.demo_data_prep import *
 from hd_track.tps_correct    import *
 
@@ -387,13 +387,13 @@ def run_KF(KF, nsteps, freq, hydra_strm, cam_dat, hydra_covar, rgb_covar, rgbd_c
 #     IPython.embed()
     
     for i in xrange(nsteps):
-        KF.register_tf_observation(hydra_snext(), True, hydra_covar, do_control_update=True)
+        KF.register_tf_observation(hydra_snext(), hydra_covar, do_control_update=True)
 
         for i in xrange(len(cam_types)):
             cam_covar = rgbd_covar
             if cam_types[i]=='rgb':
                 cam_covar = rgb_covar
-            KF.register_tf_observation(cam_snext[i](), False, cam_covar, do_control_update=False)
+            KF.register_tf_observation(cam_snext[i](), cam_covar, do_control_update=False)
 
         xs_kf.append(KF.x_filt)
         covars_kf.append(KF.S_filt)

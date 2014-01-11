@@ -144,7 +144,7 @@ class streamize_rgbd_pc():
     This class is iterable.
     """
     
-    def __init__(self, rgbd_dir, frame_id, freq, tstart=None, tend=None, delay=0, speed=1.0, verbose=True):
+    def __init__(self, rgbd_dir, frame_id, freq, tstart=None, tend=None, delay=0, speed=1.0, verbose=False):
         if rgbd_dir is None:
             self.done = True
             return

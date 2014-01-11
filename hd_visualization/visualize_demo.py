@@ -5,6 +5,7 @@ import numpy as np
 import time
 import argparse
 import math
+import sys
 
 import rospy
 from sensor_msgs.msg import PointCloud2
@@ -12,12 +13,13 @@ from geometry_msgs.msg import PoseStamped
 
 from hd_utils.defaults import tfm_link_rof, demo_names, demo_files_dir
 from hd_utils.utils import avg_transform, rad_angle
-from hd_utils.colorize import yellowprint
+from hd_utils.colorize import yellowprint, redprint
 import hd_utils.conversions as conversions
+from hd_utils.ros_utils import publish_static_tfm
 
 import hd_extract.extract_data as ed
 
-from hd_track.streamer import streamize, soft_next
+from hd_track.streamer import streamize, stream_soft_next
 from hd_track.stream_pc import streamize_rgbd_pc
 from hd_track.run_kalman import filter_traj
 
@@ -41,18 +43,17 @@ def load_data(data_file, lr, freq=30.0, speed=1.0, hydra_only=False):
                 tfs = [tt[0] for tt in dat[lr][kname]]
                 ts  = [tt[1] for tt in dat[lr][kname]]
                 ctype_name = int(kname[-1])
-                ## don't append any empty-streams:
-                if len(ts) > 0:
-                    cam_strm = streamize(tfs, ts, freq, avg_transform, speed=speed)#, tstart=-1./freq)
-                    cam_info[ctype_name] = {'type'   : cam_types[ctype_name],
-                                            'stream' : cam_strm}
+                ## we will add empty stream
+                cam_strm = streamize(tfs, ts, freq, avg_transform, speed=speed)#, tstart=-1./freq)
+                cam_info[ctype_name] = {'type'   : cam_types[ctype_name],
+                                        'stream' : cam_strm}
 
     ## hydra data:
     hydra_tfs = [tt[0] for tt in dat[lr]['hydra']]     
     hydra_ts  = np.array([tt[1] for tt in dat[lr]['hydra']])
 
     if len(hydra_ts) <= 0:
-        redprint("ERROR : No hydra data found in : %s"%dat_fname)
+        redprint("ERROR : No hydra data found in : %s"%(osp.basename(data_file)))
         sys.exit(-1)
     hydra_strm = streamize(hydra_tfs, hydra_ts, freq, avg_transform, speed=speed)#, tstart=-1./freq)
 
@@ -60,7 +61,7 @@ def load_data(data_file, lr, freq=30.0, speed=1.0, hydra_only=False):
     pot_vals = np.array([tt[0] for tt in dat[lr]['pot_angles']])
     pot_ts   = np.array([tt[1] for tt in dat[lr]['pot_angles']])
     if len(pot_ts) <= 0:
-        redprint("ERROR : No potentiometer data found in : %s"%dat_fname)
+        redprint("ERROR : No potentiometer data found in : %s"%(osp.basename(data_file)))
         sys.exit(-1)
     pot_strm = streamize(pot_vals, pot_ts, freq, np.mean, speed=speed)#, tstart=-1./freq)
 
@@ -91,13 +92,13 @@ def relative_time_streams(strms, freq, speed=1.0):
     for strm in strms:
         assert strm.get_speed() == speed
 
-    n_strms = len(strms)
     dt =speed/freq
 
     ## calculate tmin & tmax to get rid of absolute time scale:
     tmin, tmax = float('inf'), float('-inf')
     for strm in strms:
         _, ts = strm.get_data()
+        if len(ts) == 0: continue
         tmin = min(tmin, np.min(ts))            
         tmax = max(tmax, np.max(ts)) 
 
@@ -112,7 +113,7 @@ def relative_time_streams(strms, freq, speed=1.0):
 
     return tmin, tmax, nsteps
 
-def view_demo_on_rviz(demo_type, demo_name, freq, speed=1.0, main='h', prompt=False):
+def view_demo_on_rviz(demo_type, demo_name, freq, speed=1.0, main='h', prompt=False, verbose=False):
     """
     Visualizes recorded demo on rviz (without kalman filter/smoother data).
     @demo_type, @demo_name: demo identification.
@@ -145,7 +146,7 @@ def view_demo_on_rviz(demo_type, demo_name, freq, speed=1.0, main='h', prompt=Fa
     hydra_dat = {}
     pot_dat = {}
     
-    T_cam2hbase, cam_dat['l'], hydra_dat['l'], pot_dat['l'] = load_data(data_file, 'l', freq, speed)
+    _, cam_dat['l'], hydra_dat['l'], pot_dat['l'] = load_data(data_file, 'l', freq, speed)
     _,  cam_dat['r'], hydra_dat['r'], pot_dat['r'] = load_data(data_file, 'r', freq, speed)
 
     all_cam_strms = []
@@ -166,7 +167,7 @@ def view_demo_on_rviz(demo_type, demo_name, freq, speed=1.0, main='h', prompt=Fa
         tfm_pubs[lr]['h'] = rospy.Publisher('/%s_hydra_estimate'%(lr), PoseStamped)
 
     ## get the point-cloud stream
-    pc_strms = {cam:streamize_rgbd_pc(rgbd_dirs[cam], cam_frames[cam], freq, tstart=tmin,speed=speed) for cam in rgbd_dirs}
+    pc_strms = {cam:streamize_rgbd_pc(rgbd_dirs[cam], cam_frames[cam], freq, tstart=tmin,speed=speed,verbose=verbose) for cam in rgbd_dirs}
     pc_pubs = {cam:rospy.Publisher('/point_cloud%i'%cam, PointCloud2) for cam in rgbd_dirs}
 
 #     import IPython
@@ -184,10 +185,23 @@ def view_demo_on_rviz(demo_type, demo_name, freq, speed=1.0, main='h', prompt=Fa
     handles = []
     
     prev_ang = {'l': 0, 'r': 0}
+    
+    
+    dat_snext = {lr:{} for lr in grippers}
+    for lr in grippers:
+        dat_snext[lr]['h'] = stream_soft_next(hydra_dat[lr])
+        dat_snext[lr]['pot'] = stream_soft_next(pot_dat[lr])
+        
+        for cam in cam_types:
+            dat_snext[lr][cam] = stream_soft_next(cam_dat[lr][cam]['stream'])
+        
+    
+    
     for i in xrange(nsteps):
         if prompt:
             raw_input("Hit enter when ready.")
-        #print "Time stamp: ", tmin+(0.0+i*speed)/freq
+        if verbose:
+            print "Time stamp: ", tmin+(0.0+i*speed)/freq
         
         ## show the point-cloud:
         found_pc = False
@@ -195,12 +209,14 @@ def view_demo_on_rviz(demo_type, demo_name, freq, speed=1.0, main='h', prompt=Fa
             try:
                 pc = pc_strms[cam].next()
                 if pc is not None:
-                    print "pc%i ts:"%cam, pc.header.stamp.to_sec()
+                    if verbose:
+                        print "pc%i ts:"%cam, pc.header.stamp.to_sec()
                     pc.header.stamp = rospy.Time.now()
                     pc_pubs[cam].publish(pc)
                     found_pc = True
                 else:
-                    print "pc%i ts:"%cam,None
+                    if verbose:
+                        print "pc%i ts:"%cam,None
             except StopIteration:
                 pass
 
@@ -209,11 +225,11 @@ def view_demo_on_rviz(demo_type, demo_name, freq, speed=1.0, main='h', prompt=Fa
         ang_vals  = []
 
         for lr in grippers:
-            next_est[lr]['h'] = soft_next(hydra_dat[lr])
+            next_est[lr]['h'] = dat_snext[lr]['h']()
             for cam in cam_types:
-                next_est[lr][cam] = soft_next(cam_dat[lr][cam]['stream'])
+                next_est[lr][cam] = dat_snext[lr][cam]()
 
-            ang_val = soft_next(pot_dat[lr])
+            ang_val = dat_snext[lr]['pot']()
             if ang_val != None and not np.isnan(ang_val):
                 prev_ang[lr] = ang_val
                 ang_val  = ang_val
@@ -241,7 +257,7 @@ def view_demo_on_rviz(demo_type, demo_name, freq, speed=1.0, main='h', prompt=Fa
 
 
 
-def view_tracking_on_rviz(demo_type, demo_name, freq=30.0, speed=1.0, use_smoother=True, prompt=False):
+def view_tracking_on_rviz(demo_type, demo_name, freq=30.0, speed=1.0, use_smoother=True, prompt=False, verbose=False):
     """
     Visualizes demo after kalman tracking/smoothing on rviz.
     @demo_type, @demo_name: demo identification.
@@ -256,7 +272,7 @@ def view_tracking_on_rviz(demo_type, demo_name, freq=30.0, speed=1.0, use_smooth
     calib_file = osp.join(demo_dir, demo_names.calib_name)
     with open(osp.join(demo_dir, demo_names.camera_types_name),'r') as fh: cam_types = yaml.load(fh)
     
-    
+        
     if not osp.isfile(traj_file):
         yellowprint("%s does not exist for this demo. Running kalman filter/smoother now with default args."%demo_names.traj_name)
         data_file = osp.join(demo_dir, demo_names.data_name)
@@ -308,13 +324,24 @@ def view_tracking_on_rviz(demo_type, demo_name, freq=30.0, speed=1.0, use_smooth
             pot_strms[lr] = streamize(traj[lr][seg]['pot_angles'][:len(traj[lr][seg]['stamps'])], traj[lr][seg]['stamps'], freq, np.mean, speed=speed)
         
         tmin, tmax, nsteps = relative_time_streams(traj_strms.values() + pot_strms.values(), freq, speed)
-        pc_strms = {cam:streamize_rgbd_pc(rgbd_dirs[cam], cam_frames[cam], freq, tstart=tmin, tend=tmax,speed=speed) for cam in rgbd_dirs}
+        
+
+
+        pc_strms = {cam:streamize_rgbd_pc(rgbd_dirs[cam], cam_frames[cam], freq, tstart=tmin, tend=tmax,speed=speed,verbose=verbose) for cam in rgbd_dirs}
     
         prev_ang = {'l': 0, 'r': 0}
+
+        dat_snext = {lr:{} for lr in grippers}
+        for lr in grippers:
+            dat_snext[lr]['traj'] = stream_soft_next(traj_strms[lr])
+            dat_snext[lr]['pot'] = stream_soft_next(pot_strms[lr])
+        
+
         for i in xrange(nsteps):
             if prompt:
                 raw_input("Hit enter when ready.")
-            print "Time stamp: ", tmin+(0.0+i*speed)/freq
+            if verbose:
+                print "Time stamp: ", tmin+(0.0+i*speed)/freq
             
             ## show the point-cloud:
             found_pc = False
@@ -322,12 +349,14 @@ def view_tracking_on_rviz(demo_type, demo_name, freq=30.0, speed=1.0, use_smooth
                 try:
                     pc = pc_strms[cam].next()
                     if pc is not None:
-                        print "pc%i ts:"%cam, pc.header.stamp.to_sec()
+                        if verbose:
+                            print "pc%i ts:"%cam, pc.header.stamp.to_sec()
                         pc.header.stamp = rospy.Time.now()
                         pc_pubs[cam].publish(pc)
                         found_pc = True
                     else:
-                        print "pc%i ts:"%cam,None
+                        if verbose:
+                            print "pc%i ts:"%cam,None
                 except StopIteration:
                     pass
     
@@ -335,9 +364,9 @@ def view_tracking_on_rviz(demo_type, demo_name, freq=30.0, speed=1.0, use_smooth
             ang_vals  = []
     
             for lr in grippers:
-                tfm = soft_next(traj_strms[lr])
+                tfm = dat_snext[lr]['traj']()
                 
-                ang_val = soft_next(pot_strms[lr])
+                ang_val = dat_snext[lr]['pot']()
                 if ang_val != None and not np.isnan(ang_val):
                     prev_ang[lr] = ang_val
                     ang_val  = ang_val
@@ -355,7 +384,7 @@ def view_tracking_on_rviz(demo_type, demo_name, freq=30.0, speed=1.0, use_smooth
             
             time.sleep(1.0/freq)
             
-def view_hydra_demo_on_rviz (demo_type, demo_name, freq, speed, prompt):
+def view_hydra_demo_on_rviz (demo_type, demo_name, freq, speed, prompt, verbose):
     """
     Uses hydra_only.data for the segment to quickly visualize the demo.
     @demo_type, @demo_name: demo identification.
@@ -400,11 +429,8 @@ def view_hydra_demo_on_rviz (demo_type, demo_name, freq, speed, prompt):
         tfm_pubs[lr] = rospy.Publisher('/%s_hydra_estimate'%(lr), PoseStamped)
 
     ## get the point-cloud stream
-    pc_strms = {cam:streamize_rgbd_pc(rgbd_dirs[cam], cam_frames[cam], freq, tstart=tmin,speed=speed) for cam in rgbd_dirs}
+    pc_strms = {cam:streamize_rgbd_pc(rgbd_dirs[cam], cam_frames[cam], freq, tstart=tmin,speed=speed,verbose=verbose) for cam in rgbd_dirs}
     pc_pubs = {cam:rospy.Publisher('/point_cloud%i'%cam, PointCloud2) for cam in rgbd_dirs}
-
-#     import IPython
-#     IPython.embed()
 
     cam_tfms  = get_cam_transforms (calib_file, len(cam_types))
     for cam in rgbd_dirs:
@@ -417,11 +443,17 @@ def view_hydra_demo_on_rviz (demo_type, demo_name, freq, speed, prompt):
     
     handles = []
     
+    dat_snext = {lr:{} for lr in grippers}
+    for lr in grippers:
+        dat_snext[lr]['h'] = stream_soft_next(hydra_dat[lr])
+        dat_snext[lr]['pot'] = stream_soft_next(pot_dat[lr])
+    
     prev_ang = {'l': 0, 'r': 0}
     for i in xrange(nsteps):
         if prompt:
             raw_input("Hit enter when ready.")
-        #print "Time stamp: ", tmin+(0.0+i*speed)/freq
+        if verbose:
+            print "Time stamp: ", tmin+(0.0+i*speed)/freq
         
         ## show the point-cloud:
         found_pc = False
@@ -429,12 +461,14 @@ def view_hydra_demo_on_rviz (demo_type, demo_name, freq, speed, prompt):
             try:
                 pc = pc_strms[cam].next()
                 if pc is not None:
-                    print "pc%i ts:"%cam, pc.header.stamp.to_sec()
+                    if verbose:
+                        print "pc%i ts:"%cam, pc.header.stamp.to_sec()
                     pc.header.stamp = rospy.Time.now()
                     pc_pubs[cam].publish(pc)
                     found_pc = True
                 else:
-                    print "pc%i ts:"%cam,None
+                    if verbose:
+                        print "pc%i ts:"%cam,None
             except StopIteration:
                 pass
 
@@ -443,9 +477,9 @@ def view_hydra_demo_on_rviz (demo_type, demo_name, freq, speed, prompt):
         ang_vals  = []
 
         for lr in grippers:
-            ests[lr] = soft_next(hydra_dat[lr])
+            ests[lr] = dat_snext[lr]['h']()
 
-            ang_val = soft_next(pot_dat[lr])
+            ang_val = dat_snext[lr]['pot']()
             if ang_val != None and not np.isnan(ang_val):
                 prev_ang[lr] = ang_val
                 ang_val  = ang_val
@@ -478,17 +512,18 @@ if __name__=='__main__':
     parser.add_argument("--main",help="If not using .traj file, which sensor is main?", default='h', type=str)
     parser.add_argument("--use_smoother",help="If using .traj file, filter or smoother?", action='store_true',default=False)
     parser.add_argument("--prompt",help="Prompt for each step.", action='store_true', default=False)
+    parser.add_argument("--verbose", help="verbose", action='store_true', default=False)
     args = parser.parse_args()
 
     if args.use_traj:
         view_tracking_on_rviz(demo_type=args.demo_type, demo_name=args.demo_name,
                               freq=args.freq, speed=args.speed, 
-                              use_smoother=args.use_smoother, prompt=args.prompt)
+                              use_smoother=args.use_smoother, prompt=args.prompt, verbose=args.verbose)
     else:
         if args.hydra_only:
             view_hydra_demo_on_rviz(demo_type=args.demo_type, demo_name=args.demo_name, 
-                                    freq=args.freq, speed=args.speed, prompt=args.prompt)
+                                    freq=args.freq, speed=args.speed, prompt=args.prompt, verbose=args.verbose)
         else:
             view_demo_on_rviz(demo_type=args.demo_type, demo_name=args.demo_name, 
                               freq=args.freq, speed=args.speed, 
-                              main=args.main, prompt=args.prompt)
+                              main=args.main, prompt=args.prompt, verbose=args.verbose)

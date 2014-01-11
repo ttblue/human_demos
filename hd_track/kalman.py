@@ -164,9 +164,9 @@ class kalman:
         return (self.get_motion_mat(dt), self.get_motion_covar(dt))
 
 
-    def get_obs_mat(self, is_hydra):
+    def get_obs_mat(self):
         """
-        Return the obsevation matrix ('C')
+        Return the observation matrix ('C')
         """
         return self.obs_mat
 
@@ -206,11 +206,10 @@ class kalman:
         return (x_n, S_n)
 
 
-    def register_tf_observation(self, obs_tf, is_hydra, Q_obs, t=None, do_control_update=False):
+    def register_tf_observation(self, obs_tf, Q_obs, t=None, do_control_update=False):
         """
         This function updates the filter with an observation.
         OBS_TF   : is the observed transform.
-        IS_HYDRA : if true, it uses noise-covariance for hydra (otherwise for cameras).
         Q_OBS    : Noise covariance for this observation.
         DO_CONTROL_UPDATE : if true, a control update is performed before the observation update.
         """
@@ -224,8 +223,8 @@ class kalman:
         if obs_tf==None:
             return
 
-        pos, rpy     = self.canonicalize_obs(obs_tf)
-        C_obs = self.get_obs_mat(is_hydra)
+        pos, rpy = self.canonicalize_obs(obs_tf)
+        C_obs = self.get_obs_mat()
         z_obs = np.c_['0,2', pos, rpy]
         self.x_filt, self.S_filt = self.measurement_update(z_obs, C_obs, Q_obs, self.x_filt, self.S_filt)
 
