@@ -6,7 +6,6 @@ from __future__ import division
 import numpy as np
 from threading import Thread
 import time
-import os
 import os.path as osp
 import cPickle
 
@@ -14,13 +13,12 @@ import roslib
 import rospy
 roslib.load_manifest('tf')
 import tf
-from sensor_msgs.msg import PointCloud2
 from std_msgs.msg import Float32
 
 from hd_utils.colorize import *
 from hd_utils.yes_or_no import yes_or_no
-from hd_utils import conversions, clouds, ros_utils as ru
-from hd_utils.defaults import asus_xtion_pro_f, calib_files_dir
+from hd_utils import conversions
+from hd_utils.defaults import calib_files_dir
 
 from cameras import RosCameras
 from camera_calibration import CameraCalibrator
@@ -157,7 +155,6 @@ class CalibratedTransformPublisher(Thread):
         self.grippers[gr.lr] = gr
 
     def publish_gripper_tfms(self):
-        marker_tfms = self.cameras.get_ar_markers()
 
 #         self.langle_pub.publish(gmt.get_pot_angle('l'))
 #         self.rangle_pub.publish(gmt.get_pot_angle('r'))
@@ -197,7 +194,7 @@ class CalibratedTransformPublisher(Thread):
         self.publish_grippers = False
         self.grippers = {}
 
-    def load_calibration(self, file):
+    def load_calibration(self, cfile):
         """
         Use this if experimental setup has not changed.
         Load files which have been saved by this class. Specific format involved.
@@ -205,7 +202,7 @@ class CalibratedTransformPublisher(Thread):
 
         self.reset()
 
-        file_name = osp.join(calib_files_dir, file)
+        file_name = osp.join(calib_files_dir, cfile)
         with open(file_name, 'r') as fh:
             calib_data = cPickle.load(fh)
         if self.gripper_lite:
@@ -230,7 +227,7 @@ class CalibratedTransformPublisher(Thread):
             self.cameras.calibrated = True
             self.cameras.store_calibrated_transforms(self.get_camera_transforms())
 
-    def load_gripper_calibration(self, file, lr_load='lr'):
+    def load_gripper_calibration(self, cfile, lr_load='lr'):
         """
         Use this if gripper markers have not changed.
         Load files which have been saved by this class. Specific format involved.
@@ -238,7 +235,7 @@ class CalibratedTransformPublisher(Thread):
 
         self.reset(grippers_only=True)
 
-        file_name = osp.join(calib_files_dir, file)
+        file_name = osp.join(calib_files_dir, cfile)
         with open(file_name, 'r') as fh:
             calib_data = cPickle.load(fh)
 
@@ -263,7 +260,7 @@ class CalibratedTransformPublisher(Thread):
 
         self.publish_grippers = True
 
-    def save_calibration(self, file):
+    def save_calibration(self, cfile):
         """
         Save the transforms and the gripper data from this current calibration.
         This assumes that the entire calibration data is stored in this class.
@@ -293,7 +290,7 @@ class CalibratedTransformPublisher(Thread):
             calib_transforms.append(tfm)
         calib_data['transforms'] = calib_transforms
 
-        file_name = osp.join(calib_files_dir, file)
+        file_name = osp.join(calib_files_dir, cfile)
         with open(file_name, 'w') as fh:
             cPickle.dump(calib_data, fh)
 
@@ -323,29 +320,6 @@ class PublishPotAngles(Thread):
             time.sleep(1 / self.rate)
             
         yellowprint("PublishPotAngles thread has finished running.")
-
-
-def calibrate_potentiometer(lr='l'):
-    """
-    Incorrect now. Need to change this + save info. 
-    """
-    if not gmt.pot_initialized:
-        gmt.arduino = read_arduino.Arduino()
-        pot_initialized = True
-        print 'POT INITIALIZED'
-
-    yellowprint('Calibrating potentiometer:')
-    raw_input(colorize('Close gripper all the way to 0 degrees.',
-              'yellow', True))
-    gmt.b[lr] = gmt.arduino.get_reading()
-
-    raw_input(colorize('Now, open gripper all the way.', 'yellow',
-              True))
-    gmt.a[lr] = (gmt.arduino.get_reading() - gmt.b[lr]) / 30.0
-
-    greenprint('Potentiometer calibrated!')
-
-
 
 
 def calibrate_cameras():

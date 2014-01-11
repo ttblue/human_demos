@@ -270,6 +270,8 @@ def record_pipeline ( demo_type, calib_file,
         ready_service_for_demo (demo_dir)
 
         greenprint("Recording %s."%demo_name)
+        # Temp file to show recording
+        with open(osp.join(demo_dir, demo_names.record_demo_temp)) as fh: fh.write('Recording...')
         save_demo = record_demo(demo_dir, use_voice)
         
         if save_demo:
@@ -290,6 +292,8 @@ def record_pipeline ( demo_type, calib_file,
             if num_demos > 0:
                 num_demos -= 1
                 
+                
+            os.remove(osp.join(demo_dir, demo_names.record_demo_temp))
             greenprint("Saved %s."%demo_name)
         else:
             if osp.exists(demo_dir):
@@ -369,6 +373,8 @@ def record_single_demo (demo_type, demo_name, calib_file,
     ready_service_for_demo (demo_dir)
 
     greenprint("Recording %s."%demo_name)
+    # Temp file to show recording
+    with open(osp.join(demo_dir, demo_names.record_demo_temp)) as fh: fh.write('Recording...')
     save_demo = record_demo(demo_dir, use_voice)
 
     if save_demo:
@@ -382,6 +388,7 @@ def record_single_demo (demo_type, demo_name, calib_file,
         shutil.copyfile(calib_file_path, osp.join(demo_dir,demo_names.calib_name))
         
         generate_annotation(demo_type, demo_name)
+        os.remove(osp.join(demo_dir, demo_names.record_demo_temp))
         
         greenprint("Saved %s."%demo_name)
     else:
