@@ -12,6 +12,7 @@ from hd_utils.colorize import *
 from hd_utils.conversions import *
 from hd_utils.utils import *
 from hd_utils.defaults import demo_files_dir, demo_names, master_name
+from hd_utils.yes_or_no import yes_or_no
 
 from hd_track.kalman import kalman, smoother
 from hd_track.kalman_tuning import state_from_tfms_no_velocity
@@ -177,6 +178,7 @@ def load_demo_data(demo_dir, freq, rem_outliers, tps_correct, tps_model_fname, p
                 ndat[lr] = len(cam_dat[lr][cam]['stream'].get_data()[0])
        
         lr_align = ndat.keys()[np.argmax(ndat.values())]
+
         time_shifts[cam] = dt* align_tf_streams(hydra_dat[lr_align], cam_dat[lr_align][cam]['stream'])
 
     greenprint("Time-shifts found : %s"%str(time_shifts))
@@ -566,7 +568,7 @@ if __name__=='__main__':
 
     else:
         if args.demo_name in (demo["demo_name"] for demo in demos_info["demos"]):
-            if osp.isfile(osp.join(demo_type_dir, demo["demo_name"], demo_names.traj_name)):
+            if osp.isfile(osp.join(demo_type_dir, args.demo_name, demo_names.traj_name)):
                 if yes_or_no('Trajectory file already exists for this demo. Overwrite?'):
                     demo_dir = osp.join(demo_type_dir, args.demo_name)
                     filter_traj(demo_dir, tps_model_fname=args.tps_fname, save_tps=args.save_tps, do_smooth=args.do_smooth, plot=args.plot, block=args.block)
