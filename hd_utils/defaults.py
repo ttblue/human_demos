@@ -54,7 +54,12 @@ class demo_names:
     rgb_regexp = 'rgb*.jpg'
     depth_name = 'depth%05d.png'
     depth_regexp = 'depth*.png'
-    tps_model_name = 'tps_models.cp'
+    tps_model_name = 'tps_models.cp' #Change this to l/r
+    
+    record_demo_temp = 'recording_demo.tmp'
+    extract_data_temp = 'extracting_data.tmp'
+    extract_hydra_data_temp = 'extracting_hydra_data.tmp'
+    run_kalman_temp = 'running_kalman.tmp'
 
 '''
 Transform from head to kinect

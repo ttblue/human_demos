@@ -24,7 +24,6 @@ from record_rgbd_service.srv import SaveImage, SaveImageRequest, SaveImageRespon
 
 from hd_calib import calibration_pipeline as cpipe
 from hd_utils.colorize import *
-from hd_utils.yes_or_no import yes_or_no
 
 from hd_utils.defaults import demo_files_dir, calib_files_dir, data_dir, \
                               demo_names, master_name, latest_demo_name
@@ -50,6 +49,8 @@ cmd_checker = None
 camera_types = None
 camera_models = {}
 demo_num = 0
+
+num_saved = 0
 
 voice_cmd = "roslaunch pocketsphinx demo_recording.launch"
 
@@ -153,7 +154,6 @@ def record_demo (demo_dir, use_voice):
 
     sleeper = rospy.Rate(30)
 
-    started_bag = False
     started_video = {cam:False for cam in camera_types}
 
     print
@@ -214,7 +214,7 @@ def record_pipeline ( demo_type, calib_file,
     @num_demos: number of demos to be recorded. -1 -- default -- means until user stops.
     @use_voice: use voice commands to start/stop demo if true. o/w use command line.
     """
-    global cmd_checker, camera_types, demo_type_dir, master_file, demo_num, latest_demo_file, topic_writer
+    global cmd_checker, camera_types, demo_type_dir, master_file, demo_num, latest_demo_file, topic_writer, num_saved
 
     time_sess_start = time.time()
 
@@ -249,6 +249,7 @@ def record_pipeline ( demo_type, calib_file,
             while True:
                 status = cmd_checker.get_latest_msg()
                 if  status in ["begin recording","done session"]:
+                    total_rec_start = time.time()
                     break
                 sleeper.sleep()
         else:
@@ -264,7 +265,7 @@ def record_pipeline ( demo_type, calib_file,
         demo_dir = osp.join(demo_type_dir, demo_name)
         if not osp.exists(demo_dir): os.mkdir(demo_dir)
         else:
-            yellowprint("%s exists! Removing directory for fresh recording."%s)
+            yellowprint("%s exists! Removing directory for fresh recording."%demo_dir)
             shutil.rmtree(demo_dir)
             os.mkdir(demo_dir)
             
@@ -272,9 +273,13 @@ def record_pipeline ( demo_type, calib_file,
         ready_service_for_demo (demo_dir)
 
         greenprint("Recording %s."%demo_name)
+        # Temp file to show recording
+        with open(osp.join(demo_dir, demo_names.record_demo_temp),'w') as fh: fh.write('Recording...')
         save_demo = record_demo(demo_dir, use_voice)
         
         if save_demo:
+            time.sleep(1.2)
+            subprocess.call("espeak -v en 'Saving demo %i.'"%demo_num, stdout=devnull, stderr=devnull, shell=True)
             with open(master_file, 'a') as fh: fh.write('- demo_name: %s\n'%demo_name)
             
             cam_type_file = osp.join(demo_dir, demo_names.camera_types_name)
@@ -292,7 +297,12 @@ def record_pipeline ( demo_type, calib_file,
             if num_demos > 0:
                 num_demos -= 1
                 
+            os.remove(osp.join(demo_dir, demo_names.record_demo_temp))
+
+            num_saved += 1
             greenprint("Saved %s."%demo_name)
+            total_rec_finish = time.time()
+            greenprint("Time taken to record + overhead: %02f"%(total_rec_finish - total_rec_start))
         else:
             if osp.exists(demo_dir):
                 shutil.rmtree(demo_dir)
@@ -312,6 +322,8 @@ def record_pipeline ( demo_type, calib_file,
     
     time_sess_finish = time.time()
     greenprint("Time taken to record in this session: %02f s"%(time_sess_finish-time_sess_start))
+    if num_saved > 0:
+        greenprint("Average time per saved demo: %02f s"%((time_sess_finish-time_sess_start)/num_saved))
 
 def record_single_demo (demo_type, demo_name, calib_file, 
                           num_cameras, use_voice):
@@ -371,6 +383,8 @@ def record_single_demo (demo_type, demo_name, calib_file,
     ready_service_for_demo (demo_dir)
 
     greenprint("Recording %s."%demo_name)
+    # Temp file to show recording
+    with open(osp.join(demo_dir, demo_names.record_demo_temp),'w') as fh: fh.write('Recording...')
     save_demo = record_demo(demo_dir, use_voice)
 
     if save_demo:
@@ -384,6 +398,7 @@ def record_single_demo (demo_type, demo_name, calib_file,
         shutil.copyfile(calib_file_path, osp.join(demo_dir,demo_names.calib_name))
         
         generate_annotation(demo_type, demo_name)
+        os.remove(osp.join(demo_dir, demo_names.record_demo_temp))
         
         greenprint("Saved %s."%demo_name)
     else:
