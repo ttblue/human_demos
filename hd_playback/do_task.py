@@ -4,7 +4,7 @@ import argparse
 usage="""
 
 Run in simulation with a translation and a rotation of fake data:
-./do_task.py --demo_type=overhand --fake_data_demo=demo00001 --fake_data_segment=seg00 --execution=0  --animation=1 --select_manual --fake_data_transform .1 .1 .1 .1 .1 .1
+python do_task.py --demo_type=overhand --fake_data_demo=demo00001 --fake_data_segment=seg00 --execution=0  --animation=1 --select_manual --fake_data_transform .1 .1 .1 .1 .1 .1
 
 
 Run in simulation choosing the closest demo, single threaded
@@ -267,6 +267,7 @@ def unif_resample(traj, max_diff, wt = None):
     return traj_rs, newt
     
 def main():
+
     
     demo_dirname = osp.join(demo_files_dir, args.demo_type)
     h5file = osp.join(demo_dirname, args.demo_type+".h5")
@@ -291,13 +292,16 @@ def main():
         Globals.env.StopSimulation()
         Globals.env.Load("robots/pr2-beta-static.zae")    
         Globals.robot = Globals.env.GetRobots()[0]
+        
 
     # get rgbd from pr2?
     if not args.fake_data_segment or not args.fake_data_demo:
         grabber = cloudprocpy.CloudGrabber()
         grabber.startRGBD()
-
-    Globals.viewer = trajoptpy.GetViewer(Globals.env)    
+    #print 'here'
+    #Globals.viewer = trajoptpy.GetViewer(Globals.env)
+    print 'here'
+    
     
     
     
