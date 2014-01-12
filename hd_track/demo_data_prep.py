@@ -28,6 +28,12 @@ def get_cam_types(demo_dir):
 
     return cam_types
 
+def get_cam_tfms(demo_dir):
+    calib_fname = osp.join(demo_dir, demo_names.calib_name)
+    with open(calib_fname, 'r') as f:
+        calib_dat = cp.load(f)
+
+    return calib_dat['transforms']
 
 def load_data(data_file, lr, freq=30.0):
 
@@ -48,7 +54,7 @@ def load_data(data_file, lr, freq=30.0):
             if len(ts) > 0:
                 cam_strm = streamize(tfs, ts, freq, avg_transform)#, tstart=-1./freq)
                 cam_info[kname] = {'type'   : cam_types[kname],
-                                        'stream' : cam_strm}
+                                   'stream' : cam_strm}
 
     ## hydra data:
     hydra_tfs = [tt[0] for tt in dat[lr]['hydra']]     

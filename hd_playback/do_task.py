@@ -4,9 +4,7 @@ import argparse
 usage="""
 
 Run in simulation with a translation and a rotation of fake data:
-./do_task.py demo_full/demo_full.h5 --fake_data_demo=demo_full_0 --fake_data_segment=seg00 --execution=0  --animation=1 --select_manual --fake_data_transform .1 .1 .1 .1 .1 .1
-
-./do_task.py overhand/overhand.h5 --fake_data_demo=demo00001 --fake_data_segment=seg00 --execution=0  --animation=1 --select_manual --fake_data_transform .1 .1 .1 .1 .1 .1
+./do_task.py --demo_type=overhand --fake_data_demo=demo00001 --fake_data_segment=seg00 --execution=0  --animation=1 --select_manual --fake_data_transform .1 .1 .1 .1 .1 .1
 
 
 Run in simulation choosing the closest demo, single threaded

@@ -16,6 +16,7 @@ if __name__=='__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--demo_type",help="Type of demonstration")
     parser.add_argument("--demo_name",help="Name of demo", default='', type=str)
+    parser.add_argument("--tps_fname",help="tps file name to be used", default='', type=str)
     parser.add_argument("--freq",help="Frequency of sampling.", default=30.0, type=float)
     parser.add_argument("--speed",help="Speed of demo.", default=1.0, type=float)
     parser.add_argument("--hydra_only",help="Use .traj file (kalman f/s data)", action='store_true',default=False)
@@ -33,7 +34,7 @@ if __name__=='__main__':
 
     if args.demo_name != '':
         if args.use_traj:
-            view_tracking_on_rviz(demo_type=args.demo_type, demo_name=args.demo_name,
+            view_tracking_on_rviz(demo_type=args.demo_type, demo_name=args.demo_name, tps_model_fname=args.tps_fname,
                                   freq=args.freq, speed=args.speed, 
                                   use_smoother=args.use_smoother, prompt=args.prompt, verbose=args.verbose)
         else:
@@ -70,7 +71,7 @@ if __name__=='__main__':
                     raw_input('Hit enter for %s.'%demo_name)
                 yellowprint("Visualizing: %s"%demo_name)
                 if args.use_traj:
-                    view_tracking_on_rviz(demo_type=args.demo_type, demo_name=demo_name,
+                    view_tracking_on_rviz(demo_type=args.demo_type, demo_name=demo_name, tps_model_fname=args.tps_fname,
                                           freq=args.freq, speed=args.speed, 
                                           use_smoother=args.use_smoother, prompt=args.prompt, verbose=args.verbose)
                 else:

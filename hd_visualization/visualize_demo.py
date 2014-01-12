@@ -257,7 +257,7 @@ def view_demo_on_rviz(demo_type, demo_name, freq, speed=1.0, main='h', prompt=Fa
 
 
 
-def view_tracking_on_rviz(demo_type, demo_name, freq=30.0, speed=1.0, use_smoother=True, prompt=False, verbose=False):
+def view_tracking_on_rviz(demo_type, demo_name, tps_model_fname, freq=30.0, speed=1.0, use_smoother=True, prompt=False, verbose=False):
     """
     Visualizes demo after kalman tracking/smoothing on rviz.
     @demo_type, @demo_name: demo identification.
@@ -279,7 +279,7 @@ def view_tracking_on_rviz(demo_type, demo_name, freq=30.0, speed=1.0, use_smooth
         if not osp.isfile(data_file):
             yellowprint("%s does not exist for this demo. Extracting now."%demo_names.data_name)
             ed.save_observations_rgbd(demo_type, demo_name, calib_file, len(cam_types))
-        filter_traj(demo_dir, tps_model_fname='', save_tps=True, do_smooth=True, plot='', block=False)
+        filter_traj(demo_dir, tps_model_fname=tps_model_fname, save_tps=True, do_smooth=True, plot='', block=False)
     with open(traj_file, 'r') as fh: traj = cp.load(fh)
     
     # get grippers used
@@ -505,6 +505,7 @@ if __name__=='__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--demo_type",help="Type of demonstration")
     parser.add_argument("--demo_name",help="Name of demo", default='', type=str)
+    parser.add_argument("--tps_fname",help="tps file name to be used", default='', type=str)
     parser.add_argument("--freq",help="Frequency of sampling.", default=30.0, type=float)
     parser.add_argument("--speed",help="Speed of demo.", default=1.0, type=float)
     parser.add_argument("--hydra_only",help="Use .traj file (kalman f/s data)", action='store_true',default=False)
@@ -516,7 +517,7 @@ if __name__=='__main__':
     args = parser.parse_args()
 
     if args.use_traj:
-        view_tracking_on_rviz(demo_type=args.demo_type, demo_name=args.demo_name,
+        view_tracking_on_rviz(demo_type=args.demo_type, demo_name=args.demo_name, tps_model_fname=args.tps_fname,
                               freq=args.freq, speed=args.speed, 
                               use_smoother=args.use_smoother, prompt=args.prompt, verbose=args.verbose)
     else:
