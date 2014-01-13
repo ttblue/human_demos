@@ -504,7 +504,11 @@ def filter_traj(demo_dir, tps_model_fname, save_tps, do_smooth, plot, block):
                                 
             Ts_kf, Ts_smthr = state_to_hmat(xs_kf), state_to_hmat(xs_smthr)
             
-            pot_angles = [x for x in pot_strm][:nsteps+1]
+            pot_angles = []
+            pot_ss = stream_soft_next(pot_strm)
+            for _ in xrange(nsteps+1):
+                pot_angles.append(pot_ss())
+                
             
             '''''
             Dirty hack!!!!!!!!!!!!!!!!!!!!!!!!!

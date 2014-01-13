@@ -98,7 +98,7 @@ def time_shift_stream(strm, dT):
 
 def soft_next(stream):
     """
-    Does not throw a stop-exception if a stream ends. Instead returns none.
+    Does not throw a stop-exception if a stream ends. reset once exhausted    
     """
     ret = None
     try:
@@ -110,7 +110,7 @@ def soft_next(stream):
 
 class stream_soft_next:
     """
-    stream soft_next for streams which reset once exhausted.
+    Does not throw a stop-exception if a stream ends. return None instead    
     """
     def __init__(self, strm):
         self.strm = strm
