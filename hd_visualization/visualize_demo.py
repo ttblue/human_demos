@@ -236,6 +236,8 @@ def view_demo_on_rviz(demo_type, demo_name, freq, speed=1.0, main='h', prompt=Fa
             else:
                 ang_val = prev_ang[lr]
             
+            ang_val *= 2
+            
             tfm = next_est[lr][main]
             if tfm is None:
                 tfms.append(T_far)
@@ -372,11 +374,13 @@ def view_tracking_on_rviz(demo_type, demo_name, tps_model_fname, freq=30.0, spee
                     ang_val  = ang_val
                 else:
                     ang_val = prev_ang[lr]
-                
+                ang_val *= 2
+
                 if tfm is None:
                     tfms.append(T_far)
                 else:
                     tfms.append(tfm)
+                    
                 ang_vals.append(rad_angle(ang_val))
     
     
@@ -485,7 +489,8 @@ def view_hydra_demo_on_rviz (demo_type, demo_name, freq, speed, prompt, verbose)
                 ang_val  = ang_val
             else:
                 ang_val = prev_ang[lr]
-            
+            ang_val *= 2
+
             if ests[lr] is None:
                 tfms.append(T_far)
             else:
