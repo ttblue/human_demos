@@ -348,7 +348,7 @@ def main():
             
             # save ar marker found in another file?
             save_ar = {'marker': ar_marker, 'tfm': ar_run_tfm}
-            with open(osp.join(data_dir,'init_ar', 'playback.cp')) as fh: cPickle.dump(save_ar, fh) 
+            with open(osp.join(data_dir,'ar_init', 'playback.cp')) as fh: cPickle.dump(save_ar, fh) 
             
         except Exception as e:
             yellowprint("Exception: %s"%str(e))
@@ -356,7 +356,7 @@ def main():
         if ar_run_tfm is None:
             if args.ar_run_file == "":
                 # default demo_file
-                ar_run_file = osp.join(data_dir, ar_init, 'playback.cp')
+                ar_run_file = osp.join(data_dir, 'ar_init', 'playback.cp')
             else:
                 ar_run_file = args.ar_run_file
             with open(ar_run_file,'r') as fh: ar_run_tfms = cPickle.load(fh)
