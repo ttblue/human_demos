@@ -61,6 +61,7 @@ class demo_names:
     extract_hydra_data_temp = 'extracting_hydra_data.tmp'
     run_kalman_temp = 'running_kalman.tmp'
 
+    init_ar_marker_name = 'ar_marker_init.cp'
 '''
 Transform from head to kinect
 '''

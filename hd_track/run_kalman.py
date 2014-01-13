@@ -507,9 +507,8 @@ def filter_traj(demo_dir, tps_model_fname, save_tps, do_smooth, plot, block):
             pot_angles = []
             pot_ss = stream_soft_next(pot_strm)
             for _ in xrange(nsteps+1):
-                pot_angles.append(pot_ss())
-                
-            
+                pot_angles.append(pot_ss())             
+
             '''''
             Dirty hack!!!!!!!!!!!!!!!!!!!!!!!!!
             '''''
