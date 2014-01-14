@@ -25,7 +25,7 @@ from record_rgbd_service.srv import SaveImage, SaveImageRequest, SaveImageRespon
 from hd_calib import calibration_pipeline as cpipe
 from hd_utils.colorize import *
 
-from hd_utils.defaults import demo_files_dir, calib_files_dir, data_dir, \
+from hd_utils.defaults import demo_files_dir, calib_files_dir, hd_data_dir, \
                               demo_names, master_name, latest_demo_name
 from hd_utils.utils import terminate_process_and_children
 from hd_utils.yes_or_no import yes_or_no
@@ -91,13 +91,13 @@ def load_parameters (demo_type, num_cameras):
 
     camera_types = {(i+1):None for i in range(num_cameras)}
     for cam in camera_types:
-        with open(osp.join(data_dir,'camera_types','camera%i'%cam),'r') as fh: camera_types[cam] = fh.read()
+        with open(osp.join(hd_data_dir,'camera_types','camera%i'%cam),'r') as fh: camera_types[cam] = fh.read()
         save_image_services[cam] = rospy.ServiceProxy("saveImagescamera%i"%cam, SaveImage)
         cam_save_requests[cam] = SaveImageRequest()
         cam_save_requests[cam].start = True 
 
         if camera_types[cam] == "rgb":
-            with open(osp.join(data_dir,'camera_types','camera%i_model'%cam),'r') as fh: camera_models[cam] = fh.read()
+            with open(osp.join(hd_data_dir,'camera_types','camera%i_model'%cam),'r') as fh: camera_models[cam] = fh.read()
             
     cam_stop_request = SaveImageRequest()
     cam_stop_request.start = False

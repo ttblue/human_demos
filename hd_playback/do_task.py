@@ -87,7 +87,7 @@ from rapprentice import math_utils as mu
 from hd_utils import yes_or_no, ros_utils as ru
 from hd_utils.colorize import *
 from hd_utils.utils import avg_transform
-from hd_utils.defaults import demo_files_dir, data_dir, asus_xtion_pro_f, \
+from hd_utils.defaults import demo_files_dir, hd_data_dir, asus_xtion_pro_f, \
         ar_init_dir, ar_init_demo_name, ar_init_playback_name
 from hd_extract.extract_data import get_ar_marker_poses
 
@@ -283,12 +283,7 @@ def unif_resample(traj, max_diff, wt = None):
     return traj_rs, newt
 
 
-"""
-Need to load demo ar marker.
-Need to check training ar marker.
 
-Once I have both transforms, I transform the old_xyz point-cloud into the new frame.
-"""    
 def main():
 
     
@@ -326,7 +321,7 @@ def main():
         # Get ar marker from demo:
         if args.ar_demo_file == "":
             # default demo_file
-            ar_demo_file = osp.join(data_dir, ar_init_dir, ar_init_demo_name)
+            ar_demo_file = osp.join(hd_data_dir, ar_init_dir, ar_init_demo_name)
         else:
             ar_demo_file = args.ar_demo_file
         with open(ar_demo_file,'r') as fh: ar_demo_tfms = cPickle.load(fh)
@@ -351,7 +346,7 @@ def main():
             
             # save ar marker found in another file?
             save_ar = {'marker': ar_marker, 'tfm': ar_run_tfm}
-            with open(osp.join(data_dir, ar_init_dir, ar_init_playback_name),'w') as fh: cPickle.dump(save_ar, fh)
+            with open(osp.join(hd_data_dir, ar_init_dir, ar_init_playback_name),'w') as fh: cPickle.dump(save_ar, fh)
             raw_input( "Saved new position.") 
             
         except Exception as e:
@@ -361,7 +356,7 @@ def main():
         if ar_run_tfm is None:
             if args.ar_run_file == "":
                 # default demo_file
-                ar_run_file = osp.join(data_dir, ar_init_dir, ar_init_playback_name)
+                ar_run_file = osp.join(hd_data_dir, ar_init_dir, ar_init_playback_name)
             else:
                 ar_run_file = args.ar_run_file
             with open(ar_run_file,'r') as fh: ar_run_tfms = cPickle.load(fh)
