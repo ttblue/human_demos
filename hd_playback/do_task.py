@@ -4,14 +4,14 @@ import argparse
 usage="""
 
 Run in simulation with a translation and a rotation of fake data:
-python do_task.py --demo_type=overhand --fake_data_demo=demo00001 --fake_data_segment=seg00 --execution=0  --animation=1 --select_manual --fake_data_transform .1 .1 .1 .1 .1 .1
+python do_task.py --demo_type=overhand --fake_data_demo=demo00001 --fake_data_segment=seg00 --execution=0 --animation=1 --select_manual --fake_data_transform .1 .1 .1 .1 .1 .1
 
 
 Run in simulation choosing the closest demo, single threaded
-./do_task.py demo_full/demo_full.h5 --fake_data_demo=demo_full_0 --fake_data_segment=seg00 --execution=0  --animation=1 --parallel=0
+./do_task.py demo_full/demo_full.h5 --fake_data_demo=demo_full_0 --fake_data_segment=seg00 --execution=0 --animation=1 --parallel=0
 
-Actually run on the robot without pausing or animating 
-./do_task.py demo_full/demo_full.h5  --execution=1 --animation=0
+Actually run on the robot without pausing or animating
+./do_task.py demo_full/demo_full.h5 --execution=1 --animation=0
 
 """
 parser = argparse.ArgumentParser(usage=usage)
@@ -22,6 +22,7 @@ parser.add_argument("--cloud_proc_mod", default="hd_utils.cloud_proc_funs")
 parser.add_argument("--execution", type=int, default=0)
 parser.add_argument("--animation", type=int, default=0)
 parser.add_argument("--parallel", type=int, default=1)
+parser.add_argument("--cloud", type=int, default=0)
 
 parser.add_argument("--prompt", action="store_true")
 parser.add_argument("--show_neighbors", action="store_true")
@@ -51,15 +52,15 @@ if args.fake_data_segment is None: assert args.execution==1
 """
 Workflow:
 1. Fake data + animation only
-    --fake_data_segment=xxx --execution=0
+--fake_data_segment=xxx --execution=0
 2. Fake data + Gazebo. Set Gazebo to initial state of fake data segment so we'll execute the same thing.
-    --fake_data_segment=xxx --execution=1
-    This is just so we know the robot won't do something stupid that we didn't catch with openrave only mode.
+--fake_data_segment=xxx --execution=1
+This is just so we know the robot won't do something stupid that we didn't catch with openrave only mode.
 3. Real data + Gazebo
-    --execution=1 
-    The problem is that the gazebo robot is in a different state from the real robot, in particular, the head tilt angle. TODO: write a script that       sets gazebo head to real robot head
+--execution=1
+The problem is that the gazebo robot is in a different state from the real robot, in particular, the head tilt angle. TODO: write a script that sets gazebo head to real robot head
 4. Real data + Real execution.
-    --execution=1
+--execution=1
 
 The question is, do you update the robot's head transform.
 If you're using fake data, don't update it.
@@ -136,7 +137,7 @@ def split_trajectory_by_gripper(seg_info, pot_angle_threshold):
 
 def binarize_gripper(angle, pot_angle_threshold):
     open_angle = .08
-    closed_angle = 0    
+    closed_angle = 0
     thresh = pot_angle_threshold
     if angle > thresh: return open_angle
     else: return closed_angle
@@ -158,7 +159,7 @@ def exec_traj_maybesim(bodypart2traj):
         trajs = []
         for (part_name, traj) in bodypart2traj.items():
             manip_name = {"larm":"leftarm","rarm":"rightarm"}[part_name]
-            dof_inds.extend(Globals.robot.GetManipulator(manip_name).GetArmIndices())            
+            dof_inds.extend(Globals.robot.GetManipulator(manip_name).GetArmIndices())
             trajs.append(traj)
         full_traj = np.concatenate(trajs, axis=1)
         Globals.robot.SetActiveDOFs(dof_inds)
@@ -239,6 +240,24 @@ def find_closest_auto(demofile, new_xyz):
     ibest = np.argmin(costs)
     return keys[ibest]
 
+def find_closest_cloud(demofile, new_xyz):
+    from rapprentice import recognition
+    demo_clouds = []
+    
+    
+    keys = {}
+    seg_num = 0
+    for demo_name in demofile:
+        for seg_name in demofile[demo_name]:
+            keys[seg_num] = (demo_name, seg_name)
+            seg_num += 1
+            demo_clouds.append(np.asarray(demofile[demo_name][seg_name]["cloud_xyz"]))
+    tps_func_vec = recognition.make_func_vec(new_xyz, clouds)
+    costs = recognition.make_tps_dist_vec(tps_func_vec)
+    ibest = np.argmin(costs)
+    return keys[ibest]
+    
+
 def tpsrpm_plot_cb(x_nd, y_md, targ_Nd, corr_nm, wt_n, f):
     ypred_nd = f.transform_points(x_nd)
     handles = []
@@ -246,17 +265,17 @@ def tpsrpm_plot_cb(x_nd, y_md, targ_Nd, corr_nm, wt_n, f):
     handles.extend(plotting_openrave.draw_grid(Globals.env, f.transform_points, x_nd.min(axis=0), x_nd.max(axis=0), xres = .1, yres = .1, zres = .04))
     Globals.viewer.Step()
     
-def arm_moved(joint_traj):    
+def arm_moved(joint_traj):
     if len(joint_traj) < 2: return False
     return ((joint_traj[1:] - joint_traj[:-1]).ptp(axis=0) > .01).any()
     
-def unif_resample(traj, max_diff, wt = None):        
+def unif_resample(traj, max_diff, wt = None):
     """
-    Resample a trajectory so steps have same length in joint space    
+    Resample a trajectory so steps have same length in joint space
     """
     import scipy.interpolate as si
     tol = .005
-    if wt is not None: 
+    if wt is not None:
         wt = np.atleast_2d(wt)
         traj = traj*wt
         
@@ -272,7 +291,7 @@ def unif_resample(traj, max_diff, wt = None):
 
     ncols = traj.shape[1]
     colstep = 10
-    traj_rs = np.empty((nsteps,ncols)) 
+    traj_rs = np.empty((nsteps,ncols))
     for istart in xrange(0, traj.shape[1], colstep):
         (tck,_) = si.splprep(traj[goodinds, istart:istart+colstep].T,k=deg,s = tol**2*len(traj),u=l[goodinds])
         traj_rs[:,istart:istart+colstep] = np.array(si.splev(newl,tck)).T
@@ -290,7 +309,7 @@ def main():
     demotype_dir = osp.join(demo_files_dir, args.demo_type)
     h5file = osp.join(demotype_dir, args.demo_type+".h5")
     print h5file
-    demofile = h5py.File(h5file, 'r')    
+    demofile = h5py.File(h5file, 'r')
     
     trajoptpy.SetInteractive(args.interactive)
     
@@ -307,7 +326,7 @@ def main():
     else:
         Globals.env = openravepy.Environment()
         Globals.env.StopSimulation()
-        Globals.env.Load("robots/pr2-beta-static.zae")    
+        Globals.env.Load("robots/pr2-beta-static.zae")
         Globals.robot = Globals.env.GetRobots()[0]
         
 
@@ -346,6 +365,7 @@ def main():
             
             # save ar marker found in another file?
             save_ar = {'marker': ar_marker, 'tfm': ar_run_tfm}
+
             with open(osp.join(hd_data_dir, ar_init_dir, ar_init_playback_name),'w') as fh: cPickle.dump(save_ar, fh)
             raw_input( "Saved new position.") 
             
@@ -375,7 +395,7 @@ def main():
     Globals.viewer = trajoptpy.GetViewer(Globals.env)
     print 'here'
 
-    while True:        
+    while True:
         '''
         Acquire point cloud
         '''
@@ -391,7 +411,7 @@ def main():
         else:
             Globals.pr2.head.set_pan_tilt(0,1.2)
             Globals.pr2.rarm.goto_posture('side')
-            Globals.pr2.larm.goto_posture('side')            
+            Globals.pr2.larm.goto_posture('side')
             Globals.pr2.join_all()
             time.sleep(.5)
         
@@ -402,14 +422,14 @@ def main():
             
             #T_w_k here should be different from rapprentice
             T_w_k = berkeley_pr2.get_kinect_transform(Globals.robot)
-            new_xyz = cloud_proc_func(rgb, depth, T_w_k)        
+            new_xyz = cloud_proc_func(rgb, depth, T_w_k)
         
         if args.log:
             LOG_COUNT += 1
             import cv2
             cv2.imwrite(osp.join(LOG_DIR,"rgb%05i.png"%LOG_COUNT), rgb)
             cv2.imwrite(osp.join(LOG_DIR,"depth%05i.png"%LOG_COUNT), depth)
-            np.save(osp.join(LOG_DIR,"xyz%i.npy"%LOG_COUNT), new_xyz)   
+            np.save(osp.join(LOG_DIR,"xyz%i.npy"%LOG_COUNT), new_xyz)
             
             
             
@@ -430,18 +450,18 @@ def main():
     
     
         if args.log:
-            with open(osp.join(LOG_DIR,"neighbor%i.txt"%LOG_COUNT),"w") as fh: fh.write(seg_name) 
+            with open(osp.join(LOG_DIR,"neighbor%i.txt"%LOG_COUNT),"w") as fh: fh.write(seg_name)
 
-#         import matplotlib.pylab as plt
-#         plt.plot(np.np.asarray(demofile[demo_name][seg_name]['r']['pot_angles'])[:,0])
-#         plt.show()
+# import matplotlib.pylab as plt
+# plt.plot(np.np.asarray(demofile[demo_name][seg_name]['r']['pot_angles'])[:,0])
+# plt.show()
             
             
  
         '''
         Generating end-effector trajectory
-        '''           
-        redprint("Generating end-effector trajectory")    
+        '''
+        redprint("Generating end-effector trajectory")
 
         handles = []
         old_xyz = np.squeeze(seg_info["cloud_xyz"])
@@ -451,7 +471,7 @@ def main():
             
         
         handles.append(Globals.env.plot3(old_xyz,5, (1,0,0)))
-        handles.append(Globals.env.plot3(new_xyz,5, (0,0,1)))  
+        handles.append(Globals.env.plot3(new_xyz,5, (0,0,1)))
         
         scaled_old_xyz, src_params = registration.unit_boxify(old_xyz)
         scaled_new_xyz, targ_params = registration.unit_boxify(new_xyz)
@@ -459,7 +479,7 @@ def main():
                                        plotting=5 if args.animation else 0,rot_reg=np.r_[1e-4,1e-4,1e-1], n_iter=50, reg_init=10, reg_final=.1)
         f = registration.unscale_tps(f, src_params, targ_params)
         
-        handles.extend(plotting_openrave.draw_grid(Globals.env, f.transform_points, old_xyz.min(axis=0)-np.r_[0,0,.1], old_xyz.max(axis=0)+np.r_[0,0,.1], xres = .1, yres = .1, zres = .04))        
+        handles.extend(plotting_openrave.draw_grid(Globals.env, f.transform_points, old_xyz.min(axis=0)-np.r_[0,0,.1], old_xyz.max(axis=0)+np.r_[0,0,.1], xres = .1, yres = .1, zres = .04))
 
 
         eetraj = {}
@@ -477,7 +497,7 @@ def main():
         '''
         Generating mini-trajectory
         '''
-        miniseg_starts, miniseg_ends = split_trajectory_by_gripper(seg_info, args.pot_threshold)   
+        miniseg_starts, miniseg_ends = split_trajectory_by_gripper(seg_info, args.pot_threshold)
         success = True
         redprint("mini segments: %s %s"%(miniseg_starts, miniseg_ends))
         
@@ -491,7 +511,7 @@ def main():
             ### trajopt init traj
             init_joint_trajs = {}
             for lr in 'lr':
-                if args.trajopt_init == 'all_zero':                    
+                if args.trajopt_init == 'all_zero':
                     init_joint_traj = np.zeros((i_end+1-i_start, 7))
                     init_joint_trajs[lr] = init_joint_traj
                     
@@ -528,7 +548,7 @@ def main():
 
                     init_joint_trajs[lr] = init_joint_traj
                     
-                else: 
+                else:
                     redprint("trajopt initialization method %s not supported"%(args.trajopt_init))
                     redprint("use default all zero initialization instead")
                     init_joint_traj = np.zeros((i_end+1-i_start, 7))
@@ -536,20 +556,20 @@ def main():
                     
                 
             ### Generate full-body trajectory
-            bodypart2traj = {}            
+            bodypart2traj = {}
             for lr in 'lr':
                 manip_name = {"l":"leftarm", "r":"rightarm"}[lr]
 
                 ee_link_name = "%s_gripper_tool_frame"%lr
-                new_ee_traj = eetraj[ee_link_name][i_start:i_end+1]         
+                new_ee_traj = eetraj[ee_link_name][i_start:i_end+1]
                 
                 if args.execution: Globals.pr2.update_rave()
                 new_joint_traj = planning.plan_follow_traj(Globals.robot, manip_name,
-                                                           Globals.robot.GetLink(ee_link_name), 
+                                                           Globals.robot.GetLink(ee_link_name),
                                                            new_ee_traj, init_joint_trajs[lr])
                 
                 part_name = {"l":"larm", "r":"rarm"}[lr]
-                bodypart2traj[part_name] = new_joint_traj 
+                bodypart2traj[part_name] = new_joint_traj
                 
                        
             redprint("Executing joint trajectory for demo %s segment %s, part %i using arms '%s'"%(demo_name, seg_name, i_miniseg, bodypart2traj.keys()))
