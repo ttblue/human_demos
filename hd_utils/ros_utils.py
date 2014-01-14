@@ -67,7 +67,7 @@ def xyz2pc(xyz, frame_id, use_time_now=True):
 def xyzrgb2pc(
     xyz,
     bgr,
-    frame_id,
+    frame_id='',
     use_time_now=True,
     ):
     

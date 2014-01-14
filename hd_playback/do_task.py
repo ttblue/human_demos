@@ -109,6 +109,8 @@ class Globals:
 DS_SIZE = .025
 
 
+def add_table_to_env(env):
+    pass
 
 def split_trajectory_by_gripper(seg_info, pot_angle_threshold):
     rgrip = np.asarray(seg_info["l"]["pot_angles"])
@@ -332,7 +334,7 @@ def main():
         ar_marker = ar_demo_tfms['marker']
         # use camera 1 as default
         ar_marker_cameras = [1]
-        ar_demo_tfm = avg_transform([ar_demo_tfms['tfms'][c] for c in ar_demo_tfms if c in ar_marker_cameras])
+        ar_demo_tfm = avg_transform([ar_demo_tfms['tfms'][c] for c in ar_demo_tfms['tfms'] if c in ar_marker_cameras])
         
         # Get ar marker for PR2:
         ar_run_tfm = None
@@ -342,17 +344,19 @@ def main():
             
             pc = ru.xyzrgb2pc(xyz, rgb)
             
-            ar_tfms = get_ar_marker_poses(pc, markers=[ar_marker])
+            ar_tfms = get_ar_marker_poses(pc, ar_markers=[ar_marker])
             if ar_tfms:
                 blueprint("Found ar marker %i for initialization!"%ar_marker)
-                ar_run_tfm = ar_tfms[ar_marker]
+                ar_run_tfm = np.asarray(ar_tfms[ar_marker])
             
             # save ar marker found in another file?
             save_ar = {'marker': ar_marker, 'tfm': ar_run_tfm}
-            with open(osp.join(data_dir, ar_init_dir, ar_init_demo_name)) as fh: cPickle.dump(save_ar, fh) 
+            with open(osp.join(data_dir, ar_init_dir, ar_init_playback_name),'w') as fh: cPickle.dump(save_ar, fh)
+            raw_input( "Saved new position.") 
             
         except Exception as e:
             yellowprint("Exception: %s"%str(e))
+            raw_input()
     
         if ar_run_tfm is None:
             if args.ar_run_file == "":
@@ -365,6 +369,8 @@ def main():
             # use camera 1 as default
             ar_run_tfm = ar_run_tfms['tfm']
         
+        import IPython
+        IPython.embed()
         # transform to move the demo points approximately into PR2's frame
         # Basically a rough transform from head kinect to demo_camera, given the tables are the same.
         init_tfm = ar_run_tfm.dot(np.linalg.inv(ar_demo_tfm))
@@ -500,7 +506,7 @@ def main():
                     manip_name = {"l":"leftarm", "r":"rightarm"}[lr]
                     manip = Globals.robot.GetManipulator(manip_name)
                     ik_type = openravepy.IkParameterizationType.Transform6D
-                    
+
                     for (i, pose_matrix) in enumerate(new_ee_traj[i_start:i_end+1]):
                         sol = manip.FindIKSolution(openravepy.IkParameterization(pose_matrix, ik_type),
                                                    openravepy.IkFilterOptions.IgnoreEndEffectorEnvCollisions)
