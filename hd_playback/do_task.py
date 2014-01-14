@@ -36,7 +36,7 @@ parser.add_argument("--fake_data_transform", type=float, nargs=6, metavar=("tx",
 
 
 parser.add_argument("--trajopt_init",type=str,default="all_zero")
-parser.add_argument("--pot_threshold",type=float, default=0.4)
+parser.add_argument("--pot_threshold",type=float, default=25)
 
 parser.add_argument("--use_ar_init", action="store_true", default=False)
 parser.add_argument("--ar_demo_file",type=str, default="")
@@ -118,6 +118,9 @@ def add_table_to_env(env):
 def split_trajectory_by_gripper(seg_info, pot_angle_threshold):
     rgrip = np.asarray(seg_info["l"]["pot_angles"])
     lgrip = np.asarray(seg_info["r"]["pot_angles"])
+    
+    print rgrip
+    print lgrip
     
     thresh = pot_angle_threshold # open/close threshold
 
@@ -311,7 +314,7 @@ def main():
     
     demotype_dir = osp.join(demo_files_dir, args.demo_type)
     h5file = osp.join(demotype_dir, args.demo_type+".h5")
-    print h5file
+
     demofile = h5py.File(h5file, 'r')
     
     trajoptpy.SetInteractive(args.interactive)
@@ -337,7 +340,7 @@ def main():
     if not args.fake_data_segment or not args.fake_data_demo:
         grabber = cloudprocpy.CloudGrabber()
         grabber.startRGBD()
-    #print 'here'
+
     
     if args.use_ar_init:
         # Get ar marker from demo:
@@ -495,12 +498,12 @@ def main():
             link_name = "%s_gripper_tool_frame"%lr
             
             old_ee_traj = np.asarray(seg_info[lr]["tfms_s"])
-            for i in xrange(len(old_ee_traj)):
-                old_ee_traj[i] = init_tfm.dot(old_ee_traj[i])
+            
+            if args.use_ar_init:
+                for i in xrange(len(old_ee_traj)):
+                    old_ee_traj[i] = init_tfm.dot(old_ee_traj[i])
             new_ee_traj = f.transform_hmats(np.asarray(old_ee_traj))
         
-            #old_ee_traj = np.asarray(seg_info[lr]["tfms_s"])
-            #new_ee_traj = f.transform_hmats(old_ee_traj)
             eetraj[link_name] = new_ee_traj
             
             handles.append(Globals.env.drawlinestrip(old_ee_traj[:,:3,3], 2, (1,0,0,1)))
@@ -578,6 +581,7 @@ def main():
                 new_ee_traj = eetraj[ee_link_name][i_start:i_end+1]
                 
                 if args.execution: Globals.pr2.update_rave()
+
                 new_joint_traj = planning.plan_follow_traj(Globals.robot, manip_name,
                                                            Globals.robot.GetLink(ee_link_name),
                                                            new_ee_traj, init_joint_trajs[lr])

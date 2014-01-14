@@ -509,26 +509,39 @@ def filter_traj(demo_dir, tps_model_fname, save_tps, do_smooth, plot, block):
             for _ in xrange(nsteps+1):
                 pot_angles.append(pot_ss())             
 
+            
             '''''
             Dirty hack!!!!!!!!!!!!!!!!!!!!!!!!!
             '''''
             n_pot_angles = len(pot_angles)
-            if pot_angles[0] == None:
+            if pot_angles[0] == None or np.isnan(pot_angles[0]):
                 # find the first non None
+                first_non_none_id = -1
                 for i in xrange(n_pot_angles):
-                    if pot_angles[i] != None:
+                    if pot_angles[i] != None and not np.isnan(pot_angles[i]):
                         first_non_none_id = i
                         break
-                for i in xrange(first_non_none_id):
-                    pot_angles[i] = pot_angles[first_non_none_id]
                     
-            if pot_angles[n_pot_angles - 1] == None:
+                if first_non_none_id != -1:
+                    for i in xrange(first_non_none_id):
+                        pot_angles[i] = pot_angles[first_non_none_id]
+                else:
+                    for i in xrange(n_pot_angles):
+                        pot_angles[i] = 0
+                    
+            if pot_angles[-1] == None or np.isnan(pot_angles[-1]):
+                first_non_none_id = -1
                 for i in xrange(n_pot_angles - 1, -1, -1):
-                    if pot_angles[i] != None:
+                    if pot_angles[i] != None and not np.isnan(pot_angles[i]):
                         last_non_none_id = i
                         break
-                for i in xrange(last_non_none_id+1, n_pot_angles):
-                    pot_angles[i] = pot_angles[last_non_none_id]
+                    
+                if first_non_none_id != -1:
+                    for i in xrange(last_non_none_id+1, n_pot_angles):
+                        pot_angles[i] = pot_angles[last_non_none_id]
+                else:
+                    for i in xrange(n_pot_angles):
+                        pot_angles[i] = 0
                     
         
             # then linear interpolation between non-None elements
@@ -537,11 +550,11 @@ def filter_traj(demo_dir, tps_model_fname, save_tps, do_smooth, plot, block):
             #print nsteps
             i = 0
             while i < n_pot_angles:
-                if pot_angles[i] == None:
+                if pot_angles[i] == None or np.isnan(pot_angles[i]):
                     non_none_id_0 = i - 1
                     
                     for j in xrange(i+1, n_pot_angles):
-                        if pot_angles[j] != None:
+                        if pot_angles[j] != None and not np.isnan(pot_angles[j]):
                             non_none_id_1 = j
                             break
                     
@@ -568,7 +581,7 @@ def filter_traj(demo_dir, tps_model_fname, save_tps, do_smooth, plot, block):
             
             seg_name = rec_data[lr][iseg]["name"]
             lr_trajs[seg_name] = seg_traj
-
+            
         traj[lr] = lr_trajs
 
     traj_fname = osp.join(demo_dir, demo_names.traj_name)
