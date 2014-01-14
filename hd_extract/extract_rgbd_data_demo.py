@@ -45,8 +45,8 @@ if __name__ == "__main__":
             
 
     else:
-        if args.demo_name in (demo["demo_name"] for demo in demos_info["demos"]):
-            demo_dir = osp.join(demo_type_dir, args.demo_name)
+        demo_dir = osp.join(demo_type_dir, args.demo_name)
+        if osp.exists(demo_dir):
             # Wait until current demo is done recording, if so.
             while osp.isfile(osp.join(demo_dir, demo_names.record_demo_temp)):
                 time.sleep(1)

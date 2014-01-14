@@ -17,7 +17,8 @@ roslib.load_manifest('cv_bridge')
 from cv_bridge import CvBridge, CvBridgeError
 
 
-from hd_utils.defaults import tfm_link_rof, asus_xtion_pro_f, demo_files_dir, demo_names
+from hd_utils.defaults import tfm_link_rof, asus_xtion_pro_f, \
+    demo_files_dir, demo_names, ar_init_dir, ar_init_demo_name
 from hd_utils.colorize import *
 from hd_utils import ros_utils as ru, clouds, conversions, extraction_utils as eu, utils
 
@@ -404,7 +405,7 @@ def save_hydra_only (demo_type, demo_name, save_file=None):
     os.remove(osp.join(demo_dir, demo_names.extract_hydra_data_temp))
     
 
-def save_init_ar(demo_type, demo_name, ar_marker, save_file=None):
+def save_init_ar(demo_type, demo_name, ar_marker, save_in_data_dir=True):
     """
     Extracts the initializing ar marker transform and stores it.
     """    
@@ -500,9 +501,9 @@ def save_init_ar(demo_type, demo_name, ar_marker, save_file=None):
         if cam_count > 0:
             data['tfms'][i] = utils.avg_transform(all_tfms)
 
-    if save_file is None:
-        save_file = demo_names.init_ar_marker_name
-    save_filename = osp.join(demo_dir, save_file)
-
-    with open(save_filename, 'w') as sfh: cPickle.dump(data, sfh)
+    save_filename1 = osp.join(demo_dir, save_file)
+    with open(save_filename1, 'w') as sfh: cPickle.dump(data, sfh)
+    if save_in_data_dir:
+        save_filename2 = osp.join(ar_init_dir, ar_init_demo_name)
+        with open(save_filename2, 'w') as sfh: cPickle.dump(data, sfh)
     yellowprint("Saved %s."%save_file)

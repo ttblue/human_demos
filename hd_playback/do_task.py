@@ -87,7 +87,8 @@ from rapprentice import math_utils as mu
 from hd_utils import yes_or_no, ros_utils as ru
 from hd_utils.colorize import *
 from hd_utils.utils import avg_transform
-from hd_utils.defaults import demo_files_dir, data_dir, asus_xtion_pro_f
+from hd_utils.defaults import demo_files_dir, data_dir, asus_xtion_pro_f, \
+        ar_init_dir, ar_init_demo_name, ar_init_playback_name
 from hd_extract.extract_data import get_ar_marker_poses
 
 
@@ -323,7 +324,7 @@ def main():
         # Get ar marker from demo:
         if args.ar_demo_file == "":
             # default demo_file
-            ar_demo_file = osp.join(data_dir, 'ar_init', 'demo.cp')
+            ar_demo_file = osp.join(data_dir, ar_init_dir, ar_init_demo_name)
         else:
             ar_demo_file = args.ar_demo_file
         with open(ar_demo_file,'r') as fh: ar_demo_tfms = cPickle.load(fh)
@@ -348,7 +349,7 @@ def main():
             
             # save ar marker found in another file?
             save_ar = {'marker': ar_marker, 'tfm': ar_run_tfm}
-            with open(osp.join(data_dir,'ar_init', 'playback.cp')) as fh: cPickle.dump(save_ar, fh) 
+            with open(osp.join(data_dir, ar_init_dir, ar_init_demo_name)) as fh: cPickle.dump(save_ar, fh) 
             
         except Exception as e:
             yellowprint("Exception: %s"%str(e))
@@ -356,7 +357,7 @@ def main():
         if ar_run_tfm is None:
             if args.ar_run_file == "":
                 # default demo_file
-                ar_run_file = osp.join(data_dir, 'ar_init', 'playback.cp')
+                ar_run_file = osp.join(data_dir, ar_init_dir, ar_init_playback_name)
             else:
                 ar_run_file = args.ar_run_file
             with open(ar_run_file,'r') as fh: ar_run_tfms = cPickle.load(fh)
@@ -463,7 +464,7 @@ def main():
         eetraj = {}
         for lr in 'lr':
             link_name = "%s_gripper_tool_frame"%lr
-            old_ee_traj = np.asarray(seg_info[lr]["tfms"])
+            old_ee_traj = np.asarray(seg_info[lr]["tfms_s"])
             new_ee_traj = f.transform_hmats(old_ee_traj)
             eetraj[link_name] = new_ee_traj
             
@@ -568,9 +569,7 @@ def main():
         
         if args.fake_data_demo and args.fake_data_segment: break
 
-            
-        
-    
+
 if __name__ == "__main__":
     main()
 

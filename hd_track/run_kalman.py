@@ -574,7 +574,8 @@ def filter_traj(demo_dir, tps_model_fname, save_tps, do_smooth, plot, block):
     traj_fname = osp.join(demo_dir, demo_names.traj_name)
     with open(traj_fname, 'wb') as f:
         cp.dump(traj, f)
-        
+    yellowprint("Saved %s."%demo_names.traj_name)
+    
     os.remove(osp.join(demo_dir, demo_names.run_kalman_temp))
 
 
@@ -589,6 +590,7 @@ if __name__=='__main__':
     parser.add_argument("--plot", help="plot commands (plots you want to see)", default='')
     parser.add_argument("--tps_fname", help="tps file name to be used", default='', type=str)
     parser.add_argument("--block", help="block plotting", action='store_true', default=False)
+    parser.add_argument("--overwrite", help="overwrite if demo.traj already exists", action='store_true', default=False)
     
     args = parser.parse_args()
     
@@ -611,14 +613,15 @@ if __name__=='__main__':
                 yellowprint("Another node seems to be running kf/ks already for %s."%demo["demo_name"]) 
                 continue
             # Check if traj already exists
-            if not osp.isfile(osp.join(demo_type_dir, demo["demo_name"], demo_names.traj_name)):
+            if not osp.isfile(osp.join(demo_type_dir, demo["demo_name"], demo_names.traj_name)) or args.overwrite:
+                yellowprint("Saving %s."%demo["demo_name"])
                 filter_traj(demo_dir, tps_model_fname=args.tps_fname, save_tps=args.save_tps, do_smooth=args.do_smooth, plot=args.plot, block=args.block)
             else:
                 yellowprint("Trajectory file exists for %s. Not overwriting."%demo["demo_name"])
 
     else:
-        if args.demo_name in (demo["demo_name"] for demo in demos_info["demos"]):
-            demo_dir = osp.join(demo_type_dir, args.demo_name)
+        demo_dir = osp.join(demo_type_dir, args.demo_name)
+        if osp.exists(demo_dir):
             # Wait until extraction is done for current demo.
             while osp.isfile(osp.join(demo_dir, demo_names.extract_data_temp)):
                 time.sleep(1)
@@ -626,9 +629,11 @@ if __name__=='__main__':
             if not osp.isfile(osp.join(demo_dir, demo_names.run_kalman_temp)):
                 # Check if .traj file already exists
                 if osp.isfile(osp.join(demo_type_dir, args.demo_name, demo_names.traj_name)):
-                    if yes_or_no('Trajectory file already exists for this demo. Overwrite?'):
+                    if args.overwrite or yes_or_no('Trajectory file already exists for this demo. Overwrite?'):
+                        yellowprint("Saving %s."%args.demo_name)
                         filter_traj(demo_dir, tps_model_fname=args.tps_fname, save_tps=args.save_tps, do_smooth=args.do_smooth, plot=args.plot, block=args.block)
                 else:
+                    yellowprint("Saving %s."%args.demo_name)
                     filter_traj(demo_dir, tps_model_fname=args.tps_fname, save_tps=args.save_tps, do_smooth=args.do_smooth, plot=args.plot, block=args.block)
             else:
                 yellowprint("Another node seems to be running kf/ks already for %s."%args.demo_name)

@@ -33,8 +33,11 @@ demo_files_dir =  osp.join(data_dir, 'demos')
 
 
 '''
-Default names for files inside each demo directory.
+Default names for files inside each demo directory and others.
 '''
+ar_init_dir = osp.join(data_dir,'ar_init')
+ar_init_demo_name = 'demo.cp'
+ar_init_playback_name = 'playback.cp'
 master_name = 'master.yaml'
 latest_demo_name = 'latest_demo.txt'
 verify_name = 'verify'
