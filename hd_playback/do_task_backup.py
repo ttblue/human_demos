@@ -271,7 +271,6 @@ def main():
     
     demo_dirname = osp.join(demo_files_dir, args.demo_type)
     h5file = osp.join(demo_dirname, args.demo_type+".h5")
-    print h5file
     demofile = h5py.File(h5file, 'r')    
     
     trajoptpy.SetInteractive(args.interactive)
@@ -298,9 +297,7 @@ def main():
     if not args.fake_data_segment or not args.fake_data_demo:
         grabber = cloudprocpy.CloudGrabber()
         grabber.startRGBD()
-    #print 'here'
-    #Globals.viewer = trajoptpy.GetViewer(Globals.env)
-    print 'here'
+    Globals.viewer = trajoptpy.GetViewer(Globals.env)
     
     
     
@@ -405,7 +402,7 @@ def main():
         '''
         Generating mini-trajectory
         '''
-        miniseg_starts, miniseg_ends = split_trajectory_by_gripper(seg_info, args.pot_threshold)   
+        miniseg_starts, miniseg_ends = split_trajectory_by_gripper(seg_info, args.pot_threshold)
         success = True
         redprint("mini segments: %s %s"%(miniseg_starts, miniseg_ends))
         
@@ -420,11 +417,14 @@ def main():
             init_joint_trajs = {}
             for lr in 'lr':
                 if args.trajopt_init == 'all_zero':                    
-                    init_joint_traj = np.zeros((i_end+1-i_start, 7))
+                    #init_joint_traj = np.zeros((i_end+1-i_start, 7))
+                    init_joint_traj = np.zeros((len(asarray(seg_info[lr]["tfms"])), 7))
                     init_joint_trajs[lr] = init_joint_traj
                     
                 elif args.trajopt_init == 'openrave_ik':
-                    init_joint_traj = np.zeros((i_end+1-i_start, 7))
+                    #init_joint_traj = np.zeros((i_end+1-i_start, 7))
+                    init_joint_traj = np.zeros((len(asarray(seg_info[lr]["tfms"])), 7))
+
                     
                     manip_name = {"l":"leftarm", "r":"rightarm"}[lr]
                     manip = Globals.robot.GetManipulator(manip_name)
@@ -441,7 +441,9 @@ def main():
                     init_joint_trajs[lr] = init_joint_traj
 
                 elif args.trajopt_init == 'trajopt_ik':
-                    init_joint_traj = np.zeros((i_end+1-i_start, 7))
+                    #init_joint_traj = np.zeros((i_end+1-i_start, 7))
+                    init_joint_traj = np.zeros((len(asarray(seg_info[lr]["tfms"])), 7))
+
                     manip_name = {"l":"leftarm", "r":"rightarm"}[lr]
                     manip = Globals.robot.GetManipulator(manip_name)
                     
@@ -459,7 +461,8 @@ def main():
                 else: 
                     redprint("trajopt initialization method %s not supported"%(args.trajopt_init))
                     redprint("use default all zero initialization instead")
-                    init_joint_traj = np.zeros((i_end+1-i_start, 7))
+                    init_joint_traj = np.zeros((len(asarray(seg_info[lr]["tfms"])), 7))
+                    #init_joint_traj = np.zeros((i_end+1-i_start, 7))
                     init_joint_trajs[lr] = init_joint_traj
                     
                 
@@ -469,7 +472,7 @@ def main():
                 manip_name = {"l":"leftarm", "r":"rightarm"}[lr]
 
                 ee_link_name = "%s_gripper_tool_frame"%lr
-                new_ee_traj = eetraj[ee_link_name][i_start:i_end+1]          
+                new_ee_traj = eetraj[ee_link_name][i_start:i_end+1]    
                 if args.execution: Globals.pr2.update_rave()
                 new_joint_traj = planning.plan_follow_traj(Globals.robot, manip_name,
                                                            Globals.robot.GetLink(ee_link_name), 
