@@ -16,8 +16,8 @@ from hd_extract import extract_data as ed
 if __name__ == "__main__":
     
     parser = argparse.ArgumentParser()
-    parser.add_argument("-demo_type", help="type of demonstration", action='store', dest='demo_type', type=str)
-    parser.add_argument("-demo_name", help="name of demonstration", action='store', dest='demo_name', type=str, default='')
+    parser.add_argument("--demo_type", help="type of demonstration", action='store', dest='demo_type', type=str)
+    parser.add_argument("--demo_name", help="name of demonstration", action='store', dest='demo_name', type=str, default='')
     args = parser.parse_args()
 
 
@@ -39,15 +39,14 @@ if __name__ == "__main__":
                 continue
             # Check if data file already exists
             if not osp.isfile(osp.join(demo_dir, demo_names.data_name)):
-                with open(osp.join(demo_dir, demo_names.camera_types_name)) as fh: cam_types = yaml.load(fh)
-                ed.save_observations_rgbd(args.demo_type, demo["demo_name"], demo_names.calib_name, len(cam_types))                    
+                ed.save_observations_rgbd(args.demo_type, demo["demo_name"])                    
             else:
                 yellowprint("Data file exists for %s. Not overwriting."%demo["demo_name"])
             
 
     else:
-        if args.demo_name in (demo["demo_name"] for demo in demos_info["demos"]):
-            demo_dir = osp.join(demo_type_dir, args.demo_name)
+        demo_dir = osp.join(demo_type_dir, args.demo_name)
+        if osp.exists(demo_dir):
             # Wait until current demo is done recording, if so.
             while osp.isfile(osp.join(demo_dir, demo_names.record_demo_temp)):
                 time.sleep(1)
@@ -56,11 +55,9 @@ if __name__ == "__main__":
                 # Check if data file already exists
                 if osp.isfile(osp.join(demo_dir, demo_names.data_name)):
                     if yes_or_no('Data file already exists for this demo. Overwrite?'):
-                        with open(osp.join(demo_dir, demo_names.camera_types_name)) as fh: cam_types = yaml.load(fh)
-                        ed.save_observations_rgbd(args.demo_type, args.demo_name, demo_names.calib_name, len(cam_types))
+                        ed.save_observations_rgbd(args.demo_type, args.demo_name)
                 else:
-                    with open(osp.join(demo_dir, demo_names.camera_types_name)) as fh: cam_types = yaml.load(fh)
-                    ed.save_observations_rgbd(args.demo_type, args.demo_name, demo_names.calib_name, len(cam_types))
+                    ed.save_observations_rgbd(args.demo_type, args.demo_name)
             else:
                 yellowprint("Another node seems to be extracting data already for %s."%args.demo_name)
                 

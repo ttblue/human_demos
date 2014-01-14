@@ -357,8 +357,8 @@ def record_single_demo (demo_type, demo_name, calib_file,
     cmd_checker = voice_alerts()
 
     # Check if continuing or stopping
-    greenprint("Ready.")
     subprocess.call("espeak -v en 'Ready.'", stdout=devnull, stderr=devnull, shell=True)
+    greenprint("Ready.")
     if use_voice:
         time.sleep(1.2)        
         while True:

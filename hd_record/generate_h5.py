@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 
 """
-Generate hdf5 file based on master files
+Generate hdf5 file based on master files.
+Assumes that the first camera has the RGBD info.
 """
 import os, os.path as osp
 import rosbag

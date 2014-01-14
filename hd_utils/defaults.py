@@ -33,8 +33,11 @@ demo_files_dir =  osp.join(data_dir, 'demos')
 
 
 '''
-Default names for files inside each demo directory.
+Default names for files inside each demo directory and others.
 '''
+ar_init_dir = osp.join(data_dir,'ar_init')
+ar_init_demo_name = 'demo.cp'
+ar_init_playback_name = 'playback.cp'
 master_name = 'master.yaml'
 latest_demo_name = 'latest_demo.txt'
 verify_name = 'verify'
@@ -61,6 +64,7 @@ class demo_names:
     extract_hydra_data_temp = 'extracting_hydra_data.tmp'
     run_kalman_temp = 'running_kalman.tmp'
 
+    init_ar_marker_name = 'ar_marker_init.cp'
 '''
 Transform from head to kinect
 '''

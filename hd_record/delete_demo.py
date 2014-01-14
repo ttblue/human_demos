@@ -50,8 +50,8 @@ if __name__=='__main__':
     import argparse
     
     parser = argparse.ArgumentParser()
-    parser.add_argument("-demo_type", help="Type of demonstration.", type=str)
-    parser.add_argument("-demo_name", help="Name of demo to delete.", type=str)
+    parser.add_argument("--demo_type", help="Type of demonstration.", type=str)
+    parser.add_argument("--demo_name", help="Name of demo to delete.", type=str)
     vals = parser.parse_args()
     
     delete_demo(vals.demo_type, vals.demo_name)

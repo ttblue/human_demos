@@ -17,9 +17,10 @@ roslib.load_manifest('cv_bridge')
 from cv_bridge import CvBridge, CvBridgeError
 
 
-from hd_utils.defaults import tfm_link_rof, asus_xtion_pro_f, demo_files_dir, demo_names
+from hd_utils.defaults import tfm_link_rof, asus_xtion_pro_f, \
+    demo_files_dir, demo_names, ar_init_dir, ar_init_demo_name
 from hd_utils.colorize import *
-from hd_utils import ros_utils as ru, clouds, conversions, extraction_utils as eu
+from hd_utils import ros_utils as ru, clouds, conversions, extraction_utils as eu, utils
 
 from hd_calib import gripper_lite
 from hd_calib.calibration_pipeline import gripper_trans_marker_tooltip
@@ -77,7 +78,7 @@ def get_ar_marker_poses (msg, ar_markers = None, use_pc_service=True, track=Fals
 
 
 
-def save_observations_rgbd(demo_type, demo_name, calib_file, num_cameras, save_file=None):
+def save_observations_rgbd(demo_type, demo_name, save_file=None):
     """
     Extract data from all sensors and store into demo.data file.
     """
@@ -94,6 +95,7 @@ def save_observations_rgbd(demo_type, demo_name, calib_file, num_cameras, save_f
     with open(osp.join(demo_dir, demo_names.camera_models_name)) as fh:
         camera_models = yaml.load(fh)
     
+    num_cameras = len(camera_types)
 
     video_dirs = {}
     for i in range(1, num_cameras + 1):
@@ -281,7 +283,7 @@ def save_observations_rgbd(demo_type, demo_name, calib_file, num_cameras, save_f
     os.remove(osp.join(demo_dir, demo_names.extract_data_temp))
 
 
-def save_hydra_only (demo_type, demo_name, calib_file, save_file=None):
+def save_hydra_only (demo_type, demo_name, save_file=None):
     """
     Save hydra only data.
     """
@@ -401,3 +403,107 @@ def save_hydra_only (demo_type, demo_name, calib_file, save_file=None):
     yellowprint("Saved %s."%demo_names.hydra_data_name)
     
     os.remove(osp.join(demo_dir, demo_names.extract_hydra_data_temp))
+    
+
+def save_init_ar(demo_type, demo_name, ar_marker, save_in_data_dir=True):
+    """
+    Extracts the initializing ar marker transform and stores it.
+    """    
+    # Temp file to show that data is already being extracted
+    global setCalib
+    demo_dir        = osp.join(demo_files_dir, demo_type, demo_name)
+    calib_file_path = osp.join(demo_dir, demo_names.calib_name)
+    
+    with open(osp.join(demo_dir, demo_names.camera_types_name)) as fh:
+        camera_types = yaml.load(fh)
+    with open(osp.join(demo_dir, demo_names.camera_models_name)) as fh:
+        camera_models = yaml.load(fh)
+    
+    cameras = range(1,len(camera_types)+1)
+    c_frames = {}
+    for i in cameras:
+        c_frames[i]= 'camera%i_link'%(i)
+
+    video_dirs = {}
+    for i in cameras:
+        video_dirs[i] = osp.join(demo_dir, demo_names.video_dir%i)
+    
+    tfm_c1 = {i:None for i in cameras}
+    tfm_c1[1] = np.eye(4)
+
+    with open(calib_file_path,'r') as fh: calib_data = cPickle.load(fh)
+
+    for tfm in calib_data['transforms']:
+        if tfm['parent'] == c_frames[1] or tfm['parent'] == '/' + c_frames[1]:
+            for i in cameras:
+                if tfm['child'] == c_frames[i] or tfm['child'] == '/' + c_frames[i]:
+                    tfm_c1[i] = nlg.inv(tfm_link_rof).dot(tfm['tfm']).dot(tfm_link_rof)
+
+    if not all([tfm_c1[s] != None for s in tfm_c1]):
+        redprint("Calibration does not have required transforms")
+        return
+
+    # We want the ar marker transform from all the relevant cameras
+    data = {'tfms':{i:None for i in cameras}, 'marker':ar_marker}
+
+    for i in cameras:
+        if verbose:
+            yellowprint('Camera%i'%i)
+        if camera_types[i] == "rgbd":
+            rgb_fnames, depth_fnames, stamps = eu.get_rgbd_names_times(video_dirs[i])
+        else:
+            rgb_fnames, stamps = eu.get_rgbd_names_times(video_dirs[i], depth = False)
+
+        all_tfms = []
+        cam_count = 0
+        if camera_types[i] == "rgbd":
+            for ind in rgb_fnames:
+                rgb = cv2.imread(rgb_fnames[ind])
+                
+                if displayImages:
+                    cv2.imshow(winname, rgb)
+                    cv2.waitKey(1)
+
+                assert rgb is not None
+                depth = cv2.imread(depth_fnames[ind],2)
+                assert depth is not None
+                xyz = clouds.depth_to_xyz(depth, asus_xtion_pro_f)
+                pc = ru.xyzrgb2pc(xyz, rgb, frame_id='', use_time_now=False)
+                ar_tfms = get_ar_marker_poses(pc,track=True)
+                if ar_tfms and ar_marker in ar_tfms:
+                    all_tfms.append(tfm_c1[i].dot(ar_tfms[ar_marker]))
+                    cam_count += 1
+            
+        else:
+            if setCalib is None: 
+                setCalib = rospy.ServiceProxy("setCalibInfo", SetCalibInfo)
+            reqCalib.camera_model = camera_models[i]
+            setCalib(reqCalib)
+
+            if verbose:
+                yellowprint("Changed camera calibration parameters to model %s"%camera_models[i])
+
+            for ind in rgb_fnames:                
+                rgb = cv.LoadImage(rgb_fnames[ind])
+                
+                if displayImages:
+                    cv.ShowImage(winname, rgb)
+                    cv.WaitKey(1)
+
+                assert rgb is not None
+                ar_tfms = get_ar_marker_poses(rgb,use_pc_service=False,track=True)
+                if ar_tfms and ar_marker in ar_tfms:
+                    all_tfms.append(tfm_c1[i].dot(ar_tfms[ar_marker]))
+                    cam_count += 1
+        
+        if verbose:
+            blueprint ("Got %i values for AR Marker %i from camera %i."%(cam_count, ar_marker, i))
+        if cam_count > 0:
+            data['tfms'][i] = utils.avg_transform(all_tfms)
+
+    save_filename1 = osp.join(demo_dir, save_file)
+    with open(save_filename1, 'w') as sfh: cPickle.dump(data, sfh)
+    if save_in_data_dir:
+        save_filename2 = osp.join(ar_init_dir, ar_init_demo_name)
+        with open(save_filename2, 'w') as sfh: cPickle.dump(data, sfh)
+    yellowprint("Saved %s."%save_file)

@@ -16,8 +16,8 @@ from hd_extract import extract_data as ed
 if __name__ == "__main__":
     
     parser = argparse.ArgumentParser()
-    parser.add_argument("-demo_type", help="type of demonstration", action='store', dest='demo_type', type=str)
-    parser.add_argument("-demo_name", help="name of demonstration", action='store', dest='demo_name', type=str, default='')
+    parser.add_argument("--demo_type", help="type of demonstration", action='store', dest='demo_type', type=str)
+    parser.add_argument("--demo_name", help="name of demonstration", action='store', dest='demo_name', type=str, default='')
     args = parser.parse_args()
 
 
@@ -39,14 +39,14 @@ if __name__ == "__main__":
                 continue
             # Check if data file already exists
             if not osp.isfile(osp.join(demo_dir, demo_names.hydra_data_name)):
-                ed.save_hydra_only(args.demo_type, demo["demo_name"], demo_names.calib_name)                    
+                ed.save_hydra_only(args.demo_type, demo["demo_name"])                
             else:
                 yellowprint("Hydra data file exists for %s. Not overwriting."%demo["demo_name"])
             
 
     else:
-        if args.demo_name in (demo["demo_name"] for demo in demos_info["demos"]):
-            demo_dir = osp.join(demo_type_dir, args.demo_name)
+        demo_dir = osp.join(demo_type_dir, args.demo_name)
+        if osp.exists(demo_dir):
             # Wait until current demo is done recording, if so.
             while osp.isfile(osp.join(demo_dir, demo_names.record_demo_temp)):
                 time.sleep(1)
@@ -55,9 +55,9 @@ if __name__ == "__main__":
                 # Check if data file already exists
                 if osp.isfile(osp.join(demo_dir, demo_names.hydra_data_name)):
                     if yes_or_no('Hydra data file already exists for this demo. Overwrite?'):
-                        ed.save_hydra_only(args.demo_type, args.demo_name, demo_names.calib_name)
+                        ed.save_hydra_only(args.demo_type, args.demo_name)
                 else:
-                    ed.save_hydra_only(args.demo_type, args.demo_name, demo_names.calib_name)
+                    ed.save_hydra_only(args.demo_type, args.demo_name)
             else:
                 yellowprint("Another node seems to be extracting hydra data already for %s."%args.demo_name)
 
