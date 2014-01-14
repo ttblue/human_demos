@@ -401,7 +401,6 @@ def main():
     
     
     Globals.viewer = trajoptpy.GetViewer(Globals.env)
-    print 'here'
 
     while True:
         '''
@@ -494,8 +493,14 @@ def main():
         eetraj = {}
         for lr in 'lr':
             link_name = "%s_gripper_tool_frame"%lr
+            
             old_ee_traj = np.asarray(seg_info[lr]["tfms_s"])
-            new_ee_traj = f.transform_hmats(old_ee_traj)
+            for i in xrange(len(old_ee_traj)):
+                old_ee_traj[i] = init_tfm.dot(old_ee_traj[i])
+            new_ee_traj = f.transform_hmats(np.asarray(old_ee_traj))
+        
+            #old_ee_traj = np.asarray(seg_info[lr]["tfms_s"])
+            #new_ee_traj = f.transform_hmats(old_ee_traj)
             eetraj[link_name] = new_ee_traj
             
             handles.append(Globals.env.drawlinestrip(old_ee_traj[:,:3,3], 2, (1,0,0,1)))
@@ -576,6 +581,7 @@ def main():
                 new_joint_traj = planning.plan_follow_traj(Globals.robot, manip_name,
                                                            Globals.robot.GetLink(ee_link_name),
                                                            new_ee_traj, init_joint_trajs[lr])
+                
                 
                 part_name = {"l":"larm", "r":"rarm"}[lr]
                 bodypart2traj[part_name] = new_joint_traj
