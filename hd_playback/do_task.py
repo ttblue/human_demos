@@ -22,6 +22,7 @@ parser.add_argument("--cloud_proc_mod", default="hd_utils.cloud_proc_funs")
 parser.add_argument("--execution", type=int, default=0)
 parser.add_argument("--animation", type=int, default=0)
 parser.add_argument("--parallel", type=int, default=1)
+parser.add_argument("--cloud", type=int, default=0)
 
 parser.add_argument("--prompt", action="store_true")
 parser.add_argument("--show_neighbors", action="store_true")
@@ -238,6 +239,24 @@ def find_closest_auto(demofile, new_xyz):
     
     ibest = np.argmin(costs)
     return keys[ibest]
+
+def find_closest_cloud(demofile, new_xyz):
+    from rapprentice import recognition
+    demo_clouds = []
+    
+    
+    keys = {}
+    seg_num = 0
+    for demo_name in demofile:
+        for seg_name in demofile[demo_name]:
+            keys[seg_num] = (demo_name, seg_name)
+            seg_num += 1
+            demo_clouds.append(np.asarray(demofile[demo_name][seg_name]["cloud_xyz"]))
+    tps_func_vec = recognition.make_func_vec(new_xyz, clouds)
+    costs = recognition.make_tps_dist_vec(tps_func_vec)
+    ibest = np.argmin(costs)
+    return keys[ibest]
+    
 
 def tpsrpm_plot_cb(x_nd, y_md, targ_Nd, corr_nm, wt_n, f):
     ypred_nd = f.transform_points(x_nd)
