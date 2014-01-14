@@ -81,15 +81,17 @@ except ImportError:
     print "Couldn't import ros stuff"
 
 
-from rapprentice import registration, berkeley_pr2, \
-     animate_traj, ros2rave, plotting_openrave, task_execution, \
+from rapprentice import registration, animate_traj, ros2rave, \
+     plotting_openrave, task_execution, \
      planning, tps, func_utils, resampling, clouds
 from rapprentice import math_utils as mu
 from hd_utils import yes_or_no, ros_utils as ru
+from hd_utils.pr2_utils import get_kinect_transform
 from hd_utils.colorize import *
 from hd_utils.utils import avg_transform
 from hd_utils.defaults import demo_files_dir, hd_data_dir, asus_xtion_pro_f, \
-        ar_init_dir, ar_init_demo_name, ar_init_playback_name
+        ar_init_dir, ar_init_demo_name, ar_init_playback_name, \
+        tfm_head_dof, tfm_bf_head
 from hd_extract.extract_data import get_ar_marker_poses
 
 
@@ -180,9 +182,10 @@ def find_closest_manual(demofile, _new_xyz):
     keys = {}
     for demo_name in demofile:
         for seg_name in demofile[demo_name]:
-            keys[seg_num] = (demo_name, seg_name)
-            print "%i: %s, %s"%(seg_num, demo_name, seg_name)
-            seg_num += 1
+            if seg_name != 'done':
+                keys[seg_num] = (demo_name, seg_name)
+                print "%i: %s, %s"%(seg_num, demo_name, seg_name)
+                seg_num += 1
             
     choice_ind = task_execution.request_int_in_range(seg_num)
     return keys[choice_ind]
@@ -352,26 +355,27 @@ def main():
         
         # Get ar marker for PR2:
         ar_run_tfm = None
-        try:
-            rgb, depth = grabber.getRGBD()
-            xyz = clouds.depth_to_xyz(depth, asus_xtion_pro_f)
-            
-            pc = ru.xyzrgb2pc(xyz, rgb)
-            
-            ar_tfms = get_ar_marker_poses(pc, ar_markers=[ar_marker])
-            if ar_tfms:
-                blueprint("Found ar marker %i for initialization!"%ar_marker)
-                ar_run_tfm = np.asarray(ar_tfms[ar_marker])
-            
-            # save ar marker found in another file?
-            save_ar = {'marker': ar_marker, 'tfm': ar_run_tfm}
+        if not args.fake_data_segment or not args.fake_data_demo:
+            try:
+                rgb, depth = grabber.getRGBD()
+                xyz = clouds.depth_to_xyz(depth, asus_xtion_pro_f)
+                
+                pc = ru.xyzrgb2pc(xyz, rgb)
+                
+                ar_tfms = get_ar_marker_poses(pc, ar_markers=[ar_marker])
+                if ar_tfms:
+                    blueprint("Found ar marker %i for initialization!"%ar_marker)
+                    ar_run_tfm = np.asarray(ar_tfms[ar_marker])
+                
+                # save ar marker found in another file?
+                save_ar = {'marker': ar_marker, 'tfm': ar_run_tfm}
 
-            with open(osp.join(hd_data_dir, ar_init_dir, ar_init_playback_name),'w') as fh: cPickle.dump(save_ar, fh)
-            raw_input( "Saved new position.") 
-            
-        except Exception as e:
-            yellowprint("Exception: %s"%str(e))
-            raw_input()
+                with open(osp.join(hd_data_dir, ar_init_dir, ar_init_playback_name),'w') as fh: cPickle.dump(save_ar, fh)
+                raw_input( "Saved new position.") 
+                
+            except Exception as e:
+                yellowprint("Exception: %s"%str(e))
+                raw_input()
     
         if ar_run_tfm is None:
             if args.ar_run_file == "":
@@ -384,11 +388,15 @@ def main():
             # use camera 1 as default
             ar_run_tfm = ar_run_tfms['tfm']
         
-        import IPython
-        IPython.embed()
         # transform to move the demo points approximately into PR2's frame
         # Basically a rough transform from head kinect to demo_camera, given the tables are the same.
         init_tfm = ar_run_tfm.dot(np.linalg.inv(ar_demo_tfm))
+        if args.fake_data_segment and args.fake_data_demo:
+            init_tfm = tfm_bf_head.dot(tfm_head_dof).dot(init_tfm)
+        else:
+            #T_w_k here should be different from rapprentice
+            T_w_k = get_kinect_transform(Globals.robot)
+            init_tfm = T_w_k.dot(init_tfm)
 
     
     
@@ -403,8 +411,11 @@ def main():
         if args.fake_data_segment and args.fake_data_demo:
             fake_seg = demofile[args.fake_data_demo][args.fake_data_segment]
             new_xyz = np.squeeze(fake_seg["cloud_xyz"])
+
             hmat = openravepy.matrixFromAxisAngle(args.fake_data_transform[3:6])
             hmat[:3,3] = args.fake_data_transform[0:3]
+            if args.use_ar_init: hmat = init_tfm.dot(hmat)
+
             new_xyz = new_xyz.dot(hmat[:3,:3].T) + hmat[:3,3][None,:]
             #r2r = ros2rave.RosToRave(Globals.robot, np.asarray(fake_seg["joint_states"]["name"]))
             #r2r.set_values(Globals.robot, np.asarray(fake_seg["joint_states"]["position"][0]))
@@ -420,8 +431,6 @@ def main():
             
             rgb, depth = grabber.getRGBD()
             
-            #T_w_k here should be different from rapprentice
-            T_w_k = berkeley_pr2.get_kinect_transform(Globals.robot)
             new_xyz = cloud_proc_func(rgb, depth, T_w_k)
         
         if args.log:

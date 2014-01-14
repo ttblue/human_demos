@@ -10,6 +10,25 @@ tfm_link_rof = np.array([[ 0.   ,  0.   ,  1.   ,  0.   ],
                          [ 0.   , -1.   ,  0.   ,  0.   ],
                          [ 0.   ,  0.   ,  0.   ,  1.   ]])
 
+"""
+Transform from PR2's head_plate_frame to camera's camera_depth_optical_frame.
+"""
+tfm_head_dof = np.array([[ 0.019823, -0.035085,  0.999188, -0.189604],
+                         [-0.999791,  0.004299,  0.019986,  0.025004],
+                         [-0.004997, -0.999375, -0.034993,  0.2199  ],
+                         [ 0.      ,  0.      ,  0.      ,  1.      ]])
+
+"""
+ONLY FOR SIMULATION:
+Transform from PR2's base_footprint to PR2's head_plate_frame.
+DO NOT USE THIS WHILE RUNNING REAL EXECUTION. THIS DEPENDS ON ANGLE OF HEAD.
+"""
+tfm_bf_head = np.array([[ 0.241649, -0.017298,  0.97021 ,  0.069105],
+                        [ 0.004181,  0.99985 ,  0.016785,  0.002356],
+                        [-0.970355, -0.      ,  0.241685,  1.462202],
+                        [ 0.      ,  0.      ,  0.      ,  1.      ]])
+
+
 '''
 Camera intrinsic matrix (default value)
 '''
