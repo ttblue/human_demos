@@ -326,7 +326,7 @@ def unif_resample(traj, max_diff, wt = None):
     return traj_rs, newt
 
 
-def lerp (x, xp, fp):
+def lerp (x, xp, fp, first=None):
     """
     Returns linearly interpolated n-d vector at specified times.
     """
@@ -335,7 +335,10 @@ def lerp (x, xp, fp):
 
     fp_interp = np.empty((len(x),0))
     for idx in range(fp.shape[1]):
-        interp_vals = np.atleast_2d(np.interp(x,xp,fp[:,idx])).T
+        if first is None:
+            interp_vals = np.atleast_2d(np.interp(x,xp,fp[:,idx])).T
+        else:
+            interp_vals = np.atleast_2d(np.interp(x,xp,fp[:,idx],left=first[idx])).T
         fp_interp = np.c_[fp_interp, interp_vals]
     
     return fp_interp
@@ -488,6 +491,12 @@ def main():
         '''
         redprint("Acquire point cloud")
         if args.fake_data_segment and args.fake_data_demo:
+            
+            #Set home position in sim
+            l_vals = PR2.Arm.L_POSTURES['side']
+            Globals.robot.SetDOFValues(l_vals, Globals.robot.GetManipulator('leftarm').GetArmIndices())
+            Globals.robot.SetDOFValues(PR2.mirror_arm_joints(l_vals), Globals.robot.GetManipulator('rightarm').GetArmIndices())
+            
             fake_seg = demofile[args.fake_data_demo][args.fake_data_segment]
             new_xyz = np.squeeze(fake_seg["cloud_xyz"])
 
@@ -601,6 +610,8 @@ def main():
         success = True
         redprint("mini segments: %s %s"%(miniseg_starts, miniseg_ends))
         
+        prev_vals = {lr:None for lr in 'lr'}
+        l_vals = PR2.Arm.L_POSTURES['side']
         for (i_miniseg, (i_start, i_end)) in enumerate(zip(miniseg_starts, miniseg_ends)):
 
             if args.execution=="real": Globals.pr2.update_rave()
@@ -640,11 +651,20 @@ def main():
                             blueprint("Openrave IK succeeds")
                         else:
                             redprint("Openrave IK fails")
-                    
+
+
                     if len(x) == 0:
-                        init_joint_traj_interp = np.zeros((i_end+1-i_start, 7))
+                        if prev_vals[lr] is not None:
+                            vals = prev_vals[lr]
+                        else:
+                            vals = l_vals if lr == 'l' else PR2.mirror_arm_joints(l_vals)
+                        
+                        init_joint_traj_interp = np.tile(vals,(i_end+1-i_start, 1))
                     else:
-                        init_joint_traj_interp = lerp(all_x, x, init_joint_traj)
+                        if prev_vals[lr] is not None:
+                            init_joint_traj_interp = lerp(all_x, x, init_joint_traj, first=prev_vals[lr])
+                        else:
+                            init_joint_traj_interp = lerp(all_x, x, init_joint_traj)
                     
                     yellowprint("Openrave IK found %i solutions out of %i."%(len(x), len(all_x)))
                     
@@ -671,12 +691,12 @@ def main():
                             blueprint("Trajopt IK succeeds")
                         else:
                             redprint("Trajopt IK fails")
-                    
-                    if len(x) == 0:
-                        init_joint_traj_interp = np.zeros((i_end+1-i_start, 7))
+
+                    if prev_vals[lr] is not None:
+                        init_joint_traj_interp = lerp(all_x, x, init_joint_traj, first=prev_vals[lr])
                     else:
                         init_joint_traj_interp = lerp(all_x, x, init_joint_traj)
-                    
+
                     yellowprint("Trajopt IK found %i solutions out of %i."%(len(x), len(all_x)))    
                     
                     init_traj_close = close_traj(init_joint_traj_interp.tolist())
@@ -721,7 +741,7 @@ def main():
                                                            new_ee_traj, init_joints     ,
                                                            end_pose_constraint=end_pose_constraint)
                 
-                
+                prev_vals[lr] = new_joint_traj[-1]
                 #handles.append(Globals.env.drawlinestrip(new_ee_traj[:,:3,3], 2, (0,1,0,1))
                 
                 
