@@ -83,9 +83,8 @@ except ImportError:
 
 from hd_rapprentice import registration, animate_traj, ros2rave, \
      plotting_openrave, task_execution, \
-     planning, tps, func_utils, resampling, clouds
-from hd_rapprentice import math_utils as mu
-from hd_utils import yes_or_no, ros_utils as ru
+     planning, tps, resampling
+from hd_utils import yes_or_no, ros_utils as ru, func_utils, clouds, math_utils as mu
 from hd_utils.pr2_utils import get_kinect_transform
 from hd_utils.colorize import *
 from hd_utils.utils import avg_transform
