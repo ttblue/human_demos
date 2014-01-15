@@ -363,7 +363,7 @@ def downsample_objects(objs, factor):
     Could streamize this.
     factor needs to be int.
     """
-    factor = round(factor)
+    factor = int(round(factor))
     l = len(objs)
     return objs[0:l:factor]
 
@@ -577,7 +577,8 @@ def main():
         for lr in 'lr':
             link_name = "%s_gripper_tool_frame"%lr
             
-            old_ee_traj = np.asarray(downsample_objects(seg_info[lr]["tfms_s"], args.downsample))
+            old_ee_traj = np.asarray(seg_info[lr]["tfms_s"])
+            #old_ee_traj = np.asarray(downsample_objects(seg_info[lr]["tfms_s"], args.downsample))
             
             
             if args.use_ar_init:
@@ -645,8 +646,7 @@ def main():
                     else:
                         init_joint_traj_interp = lerp(all_x, x, init_joint_traj)
                     
-#                     import IPython
-#                     IPython.embed()
+                    yellowprint("Openrave IK found %i solutions out of %i."%(len(x), len(all_x)))
                     
                     init_traj_close = close_traj(init_joint_traj_interp.tolist())
                     init_joint_trajs[lr] = np.asarray(init_traj_close) 
@@ -676,7 +676,9 @@ def main():
                         init_joint_traj_interp = np.zeros((i_end+1-i_start, 7))
                     else:
                         init_joint_traj_interp = lerp(all_x, x, init_joint_traj)
-                        
+                    
+                    yellowprint("Trajopt IK found %i solutions out of %i."%(len(x), len(all_x)))    
+                    
                     init_traj_close = close_traj(init_joint_traj_interp.tolist())
                     init_joint_trajs[lr] = np.asarray(init_traj_close)
                     
@@ -711,10 +713,12 @@ def main():
                 End dirty hack.
                 """
                 
+                new_ee_traj = downsample_objects(new_ee_traj, args.downsample)
+                init_joints = downsample_objects(init_joint_trajs[lr], args.downsample)
 
                 new_joint_traj = planning.plan_follow_traj(Globals.robot, manip_name,
                                                            Globals.robot.GetLink(ee_link_name),
-                                                           new_ee_traj, init_joint_trajs[lr],
+                                                           new_ee_traj, init_joints     ,
                                                            end_pose_constraint=end_pose_constraint)
                 
                 
