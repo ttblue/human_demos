@@ -23,6 +23,7 @@ parser.add_argument("--execution", type=int, default=0)
 parser.add_argument("--animation", type=int, default=0)
 parser.add_argument("--parallel", type=int, default=1)
 parser.add_argument("--cloud", type=int, default=0)
+parser.add_argument("--downsample", help="downsample traj.", type=int, default=1)
 
 parser.add_argument("--prompt", action="store_true")
 parser.add_argument("--show_neighbors", action="store_true")
@@ -356,11 +357,16 @@ def close_traj(traj):
     return new_traj
     
 
-def downsample_traj(traj, factor):
+def downsample_objects(objs, factor):
     """
-    Downsample
+    Downsample a list of objects based on factor.
+    Could streamize this.
+    factor needs to be int.
     """
-    1
+    factor = round(factor)
+    l = len(objs)
+    return objs[0:l:factor]
+
 ADD_TABLE = True
 
 def main():
@@ -571,7 +577,8 @@ def main():
         for lr in 'lr':
             link_name = "%s_gripper_tool_frame"%lr
             
-            old_ee_traj = np.asarray(seg_info[lr]["tfms_s"])
+            old_ee_traj = np.asarray(downsample_objects(seg_info[lr]["tfms_s"], args.downsample))
+            
             
             if args.use_ar_init:
                 for i in xrange(len(old_ee_traj)):
