@@ -206,12 +206,13 @@ def find_closest_manual(demofile, _new_xyz):
     seg_num = 0
     keys = {}
     for demo_name in demofile:
-        for seg_name in demofile[demo_name]:
-            if seg_name != 'done':
-                keys[seg_num] = (demo_name, seg_name)
-                print "%i: %s, %s"%(seg_num, demo_name, seg_name)
-                seg_num += 1
-            
+        if demo_name != "ar_demo":
+            for seg_name in demofile[demo_name]:
+                if seg_name != 'done':
+                    keys[seg_num] = (demo_name, seg_name)
+                    print "%i: %s, %s"%(seg_num, demo_name, seg_name)
+                    seg_num += 1
+                
     choice_ind = task_execution.request_int_in_range(seg_num)
     return keys[choice_ind]
 
@@ -234,10 +235,11 @@ def find_closest_auto(demofile, new_xyz):
     keys = {}
     seg_num = 0
     for demo_name in demofile:
-        for seg_name in demofile[demo_name]:
-            keys[seg_num] = (demo_name, seg_name)
-            seg_num += 1
-            demo_clouds.append(np.asarray(demofile[demo_name][seg_name]["cloud_xyz"]))
+        if demo_name != "ar_demo":
+            for seg_name in demofile[demo_name]:
+                keys[seg_num] = (demo_name, seg_name)
+                seg_num += 1
+                demo_clouds.append(np.asarray(demofile[demo_name][seg_name]["cloud_xyz"]))
             
     if args.parallel:
         costs = Parallel(n_jobs=3,verbose=100)(delayed(registration_cost)(demo_cloud, new_xyz) for demo_cloud in demo_clouds)
@@ -405,22 +407,30 @@ def main():
         Globals.env.Load("robots/pr2-beta-static.zae")
         Globals.robot = Globals.env.GetRobots()[0]
 
+    Globals.viewer = trajoptpy.GetViewer(Globals.env)
     '''
     Add table
     '''
     # As found from measuring
-    if args.execution:
-        tablePos = [0.60,0.0,0.70]
-    else:
-        tablePos = [0.60,0.0,0.40]
-    tableHalfExtents = [0.50,1.00,0.06]
-    
     if ADD_TABLE:
-        with Globals.env:
-            body = openravepy.RaveCreateKinBody(Globals.env,'')
-            body.SetName('table')
-            body.InitFromBoxes(np.array([tablePos + tableHalfExtents]),True)
-            Globals.env.AddKinBody(body,True)
+#         if args.execution:
+#             tablePos = [0.60,0.0,0.70]
+#         else:
+#             tablePos = [0.60,0.0,0.40]
+#         tableHalfExtents = [0.50,1.00,0.06]
+        if args.execution:
+            Globals.env.Load('table.xml')
+        else:
+            Globals.env.Load('table_sim.xml')
+        body = Globals.env.GetKinBody('table')
+        Globals.viewer.SetTransparency(body,0.4)
+#     
+#     
+#         with Globals.env:
+#             body = openravepy.RaveCreateKinBody(Globals.env,'')
+#             body.SetName('table')
+#             body.InitFromBoxes(np.array([tablePos + tableHalfExtents]),False)
+#             Globals.env.AddKinBody(body,True)
         
 
     # get rgbd from pr2?
@@ -488,10 +498,6 @@ def main():
             T_w_k = get_kinect_transform(Globals.robot)
             init_tfm = T_w_k.dot(init_tfm)
 
-    
-    
-    Globals.viewer = trajoptpy.GetViewer(Globals.env)
-
     while True:
         '''
         Acquire point cloud
@@ -519,7 +525,7 @@ def main():
             Globals.pr2.rarm.goto_posture('side')
             Globals.pr2.larm.goto_posture('side')
             Globals.pr2.join_all()
-            time.sleep(.5)
+            time.sleep(3.5)
         
             
             Globals.pr2.update_rave()
@@ -573,23 +579,29 @@ def main():
             # Transform the old clouds approximately into PR2's frame
             old_xyz = old_xyz.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
             
+    
+        color_old = [(1,0,0,1) for _ in range(len(old_xyz))]
+        color_new = [(0,0,1,1) for _ in range(len(new_xyz))]
+        handles.append(Globals.env.plot3(old_xyz,5,np.array(color_old)))
+        handles.append(Globals.env.plot3(new_xyz,5,np.array(color_new)))
         
-        handles.append(Globals.env.plot3(old_xyz,5, (1,0,0)))
-        handles.append(Globals.env.plot3(new_xyz,5, (0,0,1)))
-        
+
+        t1 = time.time()
         scaled_old_xyz, src_params = registration.unit_boxify(old_xyz)
         scaled_new_xyz, targ_params = registration.unit_boxify(new_xyz)
         f,_ = registration.tps_rpm_bij(scaled_old_xyz, scaled_new_xyz, plot_cb = tpsrpm_plot_cb,
                                        plotting=5 if args.animation else 0,rot_reg=np.r_[1e-4,1e-4,1e-1], n_iter=50, reg_init=10, reg_final=.1)
         f = registration.unscale_tps(f, src_params, targ_params)
+        t2 = time.time()
         
-        #handles.extend(plotting_openrave.draw_grid(Globals.env, f.transform_points, old_xyz.min(axis=0)-np.r_[0,0,.1], old_xyz.max(axis=0)+np.r_[0,0,.1], xres = .1, yres = .1, zres = .04))
+        handles.extend(plotting_openrave.draw_grid(Globals.env, f.transform_points, old_xyz.min(axis=0)-np.r_[0,0,.1], old_xyz.max(axis=0)+np.r_[0,0,.1], xres = .1, yres = .1, zres = .04))
+        
+        print 'time: %f'%(t2-t1)
 
 #         import IPython
 #         IPython.embed()
 
         eetraj = {}
-        old_eetraj = {}
         for lr in 'lr':
             link_name = "%s_gripper_tool_frame"%lr
             
@@ -767,6 +779,7 @@ def main():
             
             if len(bodypart2traj) > 0:
                 success &= exec_traj_maybesim(bodypart2traj)
+                time.sleep(5)
                 
             if not success: break
             

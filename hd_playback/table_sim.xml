@@ -1,0 +1,9 @@
+<KinBody name="table">
+  <Body name="tab" type="static">
+    <Geom type="box">
+      <Extents>0.5 1.0 0.06</Extents>
+      <Translation>0.6 0.0 0.4</Translation>
+      <transparency>0.8</transparency>
+    </Geom>
+  </Body>
+</KinBody>
