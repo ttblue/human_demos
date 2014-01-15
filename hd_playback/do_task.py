@@ -17,7 +17,7 @@ Actually run on the robot without pausing or animating
 parser = argparse.ArgumentParser(usage=usage)
 parser.add_argument("--demo_type", type=str)
 parser.add_argument("--cloud_proc_func", default="extract_red")
-parser.add_argument("--cloud_proc_mod", default="hd_utils.cloud_proc_funs")
+parser.add_argument("--cloud_proc_mod", default="hd_utils.cloud_proc_funcs")
     
 parser.add_argument("--execution", type=int, default=0)
 parser.add_argument("--animation", type=int, default=0)
