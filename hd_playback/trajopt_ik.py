@@ -1,13 +1,12 @@
 import openravepy,trajoptpy, numpy as np, json
 
 
-def inverse_kinematics(robot, manip_name, ee_hmat):
+def inverse_kinematics(robot, manip_name, ee_link_name, ee_hmat):
     init_guess = np.zeros(7)
     
     xyz_target  = ee_hmat[:3, 3]
     quat_target = openravepy.quatFromRotationMatrix(ee_hmat[:3, :3])
     
-
     request = {
       "basic_info" : {
         "n_steps" : 10,
@@ -24,8 +23,8 @@ def inverse_kinematics(robot, manip_name, ee_hmat):
         "name" :"cont_coll", # shorten name so printed table will be prettier
         "params" : {
           "continuous" : True,
-          "coeffs" : [20], # penalty coefficients. list of length one is automatically expanded to a list of length n_timesteps
-          "dist_pen" : [0.025] # robot-obstacle distance that penalty kicks in. expands to length n_timesteps
+          "coeffs" : [50], # penalty coefficients. list of length one is automatically expanded to a list of length n_timesteps
+          "dist_pen" : [0.05] # robot-obstacle distance that penalty kicks in. expands to length n_timesteps
         }
       }
       ],
@@ -35,9 +34,9 @@ def inverse_kinematics(robot, manip_name, ee_hmat):
         "type" : "pose", 
         "params" : {"xyz" : xyz_target.tolist(), 
                     "wxyz" : quat_target.tolist(), 
-                    "link": "r_gripper_tool_frame",
-                    "timestep" : 9
-                    }
+                    "link": ee_link_name,
+                    "pos_coeffs":[10,10,10],
+                    "rot_coeffs":[10,10,10]}
                      
       }
       # END pose_constraint

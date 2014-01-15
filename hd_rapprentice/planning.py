@@ -40,7 +40,7 @@ def plan_follow_traj(robot, manip_name, ee_link, new_hmats, old_traj, end_pose_c
     
     request['costs'] += [{
         "type": "collision",
-        "name": "cont_col_free",
+        "name": "cont_coll",
         "params": {
           "coeffs": [50],
           "dist_pen": [0.05]

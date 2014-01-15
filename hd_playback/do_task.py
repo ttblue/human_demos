@@ -662,7 +662,7 @@ def main():
                     x = []
                     
                     for (i, pose_matrix) in enumerate(eetraj[link_name][i_start:i_end+1]):
-                        sol = trajopt_ik.inverse_kinematics(Globals.robot, manip_name, pose_matrix)
+                        sol = trajopt_ik.inverse_kinematics(Globals.robot, manip_name, link_name, pose_matrix)
                         
                         all_x.append(i)
                         if sol != None:
