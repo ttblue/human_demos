@@ -265,7 +265,7 @@ def tpsrpm_plot_cb(x_nd, y_md, targ_Nd, corr_nm, wt_n, f):
     ypred_nd = f.transform_points(x_nd)
     handles = []
     handles.append(Globals.env.plot3(ypred_nd, 3, (0,1,0)))
-    handles.extend(plotting_openrave.draw_grid(Globals.env, f.transform_points, x_nd.min(axis=0), x_nd.max(axis=0), xres = .1, yres = .1, zres = .04))
+    #handles.extend(plotting_openrave.draw_grid(Globals.env, f.transform_points, x_nd.min(axis=0), x_nd.max(axis=0), xres = .1, yres = .1, zres = .04))
     Globals.viewer.Step()
     
 def arm_moved(joint_traj):
@@ -305,6 +305,7 @@ def unif_resample(traj, max_diff, wt = None):
     return traj_rs, newt
 
 
+ADD_TABLE = True
 
 def main():
 
@@ -331,6 +332,23 @@ def main():
         Globals.env.StopSimulation()
         Globals.env.Load("robots/pr2-beta-static.zae")
         Globals.robot = Globals.env.GetRobots()[0]
+
+    '''
+    Add table
+    '''
+    # As found from measuring
+    if args.execution:
+        tablePos = [0.60,0.0,0.70]
+    else:
+        tablePos = [0.60,0.0,0.40]
+    tableHalfExtents = [0.50,1.00,0.05]
+    
+    if ADD_TABLE:
+        with Globals.env:
+            body = openravepy.RaveCreateKinBody(Globals.env,'')
+            body.SetName('table')
+            body.InitFromBoxes(np.array([tablePos + tableHalfExtents]),True)
+            Globals.env.AddKinBody(body,True)
         
 
     # get rgbd from pr2?
@@ -364,6 +382,7 @@ def main():
                 
                 ar_tfms = get_ar_marker_poses(pc, ar_markers=[ar_marker])
                 if ar_tfms:
+                
                     blueprint("Found ar marker %i for initialization!"%ar_marker)
                     ar_run_tfm = np.asarray(ar_tfms[ar_marker])
                 
@@ -463,7 +482,7 @@ def main():
 # import matplotlib.pylab as plt
 # plt.plot(np.np.asarray(demofile[demo_name][seg_name]['r']['pot_angles'])[:,0])
 # plt.show()
-            
+        
             
  
         '''
@@ -487,10 +506,13 @@ def main():
                                        plotting=5 if args.animation else 0,rot_reg=np.r_[1e-4,1e-4,1e-1], n_iter=50, reg_init=10, reg_final=.1)
         f = registration.unscale_tps(f, src_params, targ_params)
         
-        handles.extend(plotting_openrave.draw_grid(Globals.env, f.transform_points, old_xyz.min(axis=0)-np.r_[0,0,.1], old_xyz.max(axis=0)+np.r_[0,0,.1], xres = .1, yres = .1, zres = .04))
+        #handles.extend(plotting_openrave.draw_grid(Globals.env, f.transform_points, old_xyz.min(axis=0)-np.r_[0,0,.1], old_xyz.max(axis=0)+np.r_[0,0,.1], xres = .1, yres = .1, zres = .04))
 
+#         import IPython
+#         IPython.embed()
 
         eetraj = {}
+        old_eetraj = {}
         for lr in 'lr':
             link_name = "%s_gripper_tool_frame"%lr
             
@@ -498,15 +520,14 @@ def main():
             for i in xrange(len(old_ee_traj)):
                 old_ee_traj[i] = init_tfm.dot(old_ee_traj[i])
             new_ee_traj = f.transform_hmats(np.asarray(old_ee_traj))
+
         
-            #old_ee_traj = np.asarray(seg_info[lr]["tfms_s"])
-            #new_ee_traj = f.transform_hmats(old_ee_traj)
             eetraj[link_name] = new_ee_traj
+#             eetraj[link_name] = np.asarray(old_ee_traj)
             
             handles.append(Globals.env.drawlinestrip(old_ee_traj[:,:3,3], 2, (1,0,0,1)))
             handles.append(Globals.env.drawlinestrip(new_ee_traj[:,:3,3], 2, (0,1,0,1)))
             
-        
     
         '''
         Generating mini-trajectory
@@ -525,6 +546,7 @@ def main():
             ### trajopt init traj
             init_joint_trajs = {}
             for lr in 'lr':
+                link_name = "%s_gripper_tool_frame"%lr
                 if args.trajopt_init == 'all_zero':
                     init_joint_traj = np.zeros((i_end+1-i_start, 7))
                     init_joint_trajs[lr] = init_joint_traj
@@ -536,14 +558,16 @@ def main():
                     manip = Globals.robot.GetManipulator(manip_name)
                     ik_type = openravepy.IkParameterizationType.Transform6D
 
-                    for (i, pose_matrix) in enumerate(new_ee_traj[i_start:i_end+1]):
+                    for (i, pose_matrix) in enumerate(eetraj[link_name][i_start:i_end+1]):
                         sol = manip.FindIKSolution(openravepy.IkParameterization(pose_matrix, ik_type),
                                                    openravepy.IkFilterOptions.IgnoreEndEffectorEnvCollisions)
+                                                   #openravepy.IkFilterOptions.CheckEnvCollisions)
                         
                         if sol != None:
                             init_joint_traj[i] = sol
                             redprint("Openrave IK succeeds")
-
+                        else:
+                            redprint("Openrave IK fails")
                     init_joint_trajs[lr] = init_joint_traj
 
                 elif args.trajopt_init == 'trajopt_ik':
@@ -553,7 +577,7 @@ def main():
                     
                     import trajopt_ik
                     
-                    for (i, pose_matrix) in enumerate(new_ee_traj[i_start:i_end+1]):
+                    for (i, pose_matrix) in enumerate(eetraj[link_name][i_start:i_end+1]):
                         sol = trajopt_ik.inverse_kinematics(Globals.robot, manip_name, pose_matrix)
                         if sol != None:
                             init_joint_traj[i] = sol
