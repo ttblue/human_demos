@@ -128,7 +128,7 @@ def closer_ang(x,a,dir=0):
         return a + (x-a)%(2*np.pi) - 2*np.pi
 
 
-def split_trajectory_by_gripper(seg_info, pot_angle_threshold):
+def split_trajectory_by_gripper(seg_info, pot_angle_threshold, thresh=5):
     lgrip = np.asarray(seg_info["l"]["pot_angles"])
     rgrip = np.asarray(seg_info["r"]["pot_angles"])
     
@@ -151,10 +151,17 @@ def split_trajectory_by_gripper(seg_info, pot_angle_threshold):
     seg_starts = np.unique(np.r_[0, after_transitions])
     seg_ends = np.unique(np.r_[before_transitions, n_steps-1])
     
+    new_seg_starts = []
+    new_seg_ends = []
+    for i in range(len(seg_starts)):
+        if seg_ends[i]- seg_starts[i] >= thresh:
+            new_seg_starts.append(seg_starts[i])
+            new_seg_ends.append(seg_ends[i])
+    
 #     import IPython
 #     IPython.embed()
 
-    return seg_starts, seg_ends
+    return new_seg_starts, new_seg_ends
 
 def binarize_gripper(angle, pot_angle_threshold):
     open_angle = .08
