@@ -36,7 +36,7 @@ parser.add_argument("--fake_data_transform", type=float, nargs=6, metavar=("tx",
 
 
 parser.add_argument("--trajopt_init",type=str,default="all_zero")
-parser.add_argument("--pot_threshold",type=float, default=25)
+parser.add_argument("--pot_threshold",type=float, default=15)
 
 parser.add_argument("--use_ar_init", action="store_true", default=False)
 parser.add_argument("--ar_demo_file",type=str, default="")
@@ -91,7 +91,7 @@ from hd_utils.colorize import *
 from hd_utils.utils import avg_transform
 from hd_utils.defaults import demo_files_dir, hd_data_dir, asus_xtion_pro_f, \
         ar_init_dir, ar_init_demo_name, ar_init_playback_name, \
-        tfm_head_dof, tfm_bf_head
+        tfm_head_dof, tfm_bf_head, tfm_gtf_ee
 from hd_extract.extract_data import get_ar_marker_poses
 
 
@@ -111,13 +111,26 @@ class Globals:
 
 DS_SIZE = .025
 
+def smaller_ang(x):
+    return (x + np.pi)%(2*np.pi) - np.pi
+def closer_ang(x,a,dir=0):
+    """                                                
+    find angle y (==x mod 2*pi) that is close to a                             
+    dir == 0: minimize absolute value of difference                            
+    dir == 1: y > x                                                            
+    dir == 2: y < x                                                            
+    """
+    if dir == 0:
+        return a + smaller_ang(x-a)
+    elif dir == 1:
+        return a + (x-a)%(2*np.pi)
+    elif dir == -1:
+        return a + (x-a)%(2*np.pi) - 2*np.pi
 
-def add_table_to_env(env):
-    pass
 
 def split_trajectory_by_gripper(seg_info, pot_angle_threshold):
-    rgrip = np.asarray(seg_info["l"]["pot_angles"])
-    lgrip = np.asarray(seg_info["r"]["pot_angles"])
+    lgrip = np.asarray(seg_info["l"]["pot_angles"])
+    rgrip = np.asarray(seg_info["r"]["pot_angles"])
     
     print rgrip
     print lgrip
@@ -137,14 +150,16 @@ def split_trajectory_by_gripper(seg_info, pot_angle_threshold):
     after_transitions = before_transitions+1
     seg_starts = np.unique(np.r_[0, after_transitions])
     seg_ends = np.unique(np.r_[before_transitions, n_steps-1])
+    
+#     import IPython
+#     IPython.embed()
 
     return seg_starts, seg_ends
 
 def binarize_gripper(angle, pot_angle_threshold):
     open_angle = .08
     closed_angle = 0
-    thresh = pot_angle_threshold
-    if angle > thresh: return open_angle
+    if angle > pot_angle_threshold: return open_angle
     else: return closed_angle
     
     
@@ -308,6 +323,42 @@ def unif_resample(traj, max_diff, wt = None):
     return traj_rs, newt
 
 
+def lerp (x, xp, fp):
+    """
+    Returns linearly interpolated n-d vector at specified times.
+    """
+
+    fp = np.asarray(fp)
+
+    fp_interp = np.empty((len(x),0))
+    for idx in range(fp.shape[1]):
+        interp_vals = np.atleast_2d(np.interp(x,xp,fp[:,idx])).T
+        fp_interp = np.c_[fp_interp, interp_vals]
+    
+    return fp_interp
+
+def close_traj(traj):
+    
+    assert len(traj) > 0
+    
+    curr_angs = traj[0]
+    new_traj = []
+    
+    for i in xrange(len(traj)):
+        new_angs = traj[i]
+        for j in range(len(new_angs)):
+            new_angs[j] = closer_ang(new_angs[j], curr_angs[j])
+        new_traj.append(new_angs)
+        curr_angs = new_angs
+        
+    return new_traj
+    
+
+def downsample_traj(traj, factor):
+    """
+    Downsample
+    """
+    1
 ADD_TABLE = True
 
 def main():
@@ -344,7 +395,7 @@ def main():
         tablePos = [0.60,0.0,0.70]
     else:
         tablePos = [0.60,0.0,0.40]
-    tableHalfExtents = [0.50,1.00,0.05]
+    tableHalfExtents = [0.50,1.00,0.06]
     
     if ADD_TABLE:
         with Globals.env:
@@ -387,22 +438,21 @@ def main():
                 if ar_tfms:
                 
                     blueprint("Found ar marker %i for initialization!"%ar_marker)
-                    ar_run_tfm = np.asarray(ar_tfms[ar_marker])
-                
-                # save ar marker found in another file?
-                save_ar = {'marker': ar_marker, 'tfm': ar_run_tfm}
-
-                with open(osp.join(hd_data_dir, ar_init_dir, ar_init_playback_name),'w') as fh: cPickle.dump(save_ar, fh)
-                raw_input( "Saved new position.") 
+                    ar_run_tfm = np.asarray(ar_tfms[ar_marker])                
+                    # save ar marker found in another file?
+                    save_ar = {'marker': ar_marker, 'tfm': ar_run_tfm}
+    
+                    with open(osp.join(hd_data_dir, ar_init_dir, ar_init_playback_name),'w') as fh: cPickle.dump(save_ar, fh)
+                    print "Saved new position." 
                 
             except Exception as e:
                 yellowprint("Exception: %s"%str(e))
-                raw_input()
     
         if ar_run_tfm is None:
             if args.ar_run_file == "":
                 # default demo_file
                 ar_run_file = osp.join(hd_data_dir, ar_init_dir, ar_init_playback_name)
+                
             else:
                 ar_run_file = args.ar_run_file
             with open(ar_run_file,'r') as fh: ar_run_tfms = cPickle.load(fh)
@@ -557,39 +607,69 @@ def main():
                     init_joint_trajs[lr] = init_joint_traj
                     
                 elif args.trajopt_init == 'openrave_ik':
-                    init_joint_traj = np.zeros((i_end+1-i_start, 7))
+                    init_joint_traj = []
                     
                     manip_name = {"l":"leftarm", "r":"rightarm"}[lr]
                     manip = Globals.robot.GetManipulator(manip_name)
                     ik_type = openravepy.IkParameterizationType.Transform6D
 
+                    all_x = []
+                    x = []
+
                     for (i, pose_matrix) in enumerate(eetraj[link_name][i_start:i_end+1]):
-                        sol = manip.FindIKSolution(openravepy.IkParameterization(pose_matrix, ik_type),
-                                                   openravepy.IkFilterOptions.IgnoreEndEffectorEnvCollisions)
-                                                   #openravepy.IkFilterOptions.CheckEnvCollisions)
+                        
+                        rot_pose_matrix = pose_matrix.dot(tfm_gtf_ee)
+                        sol = manip.FindIKSolution(openravepy.IkParameterization(rot_pose_matrix, ik_type),
+                                                   #openravepy.IkFilterOptions.IgnoreEndEffectorEnvCollisions,
+                                                   openravepy.IkFilterOptions.CheckEnvCollisions)
+                        all_x.append(i)
                         
                         if sol != None:
-                            init_joint_traj[i] = sol
-                            redprint("Openrave IK succeeds")
+                            x.append(i)
+                            init_joint_traj.append(sol)
+                            blueprint("Openrave IK succeeds")
                         else:
                             redprint("Openrave IK fails")
-                    init_joint_trajs[lr] = init_joint_traj
+                    
+                    if len(x) == 0:
+                        init_joint_traj_interp = np.zeros((i_end+1-i_start, 7))
+                    else:
+                        init_joint_traj_interp = lerp(all_x, x, init_joint_traj)
+                    
+#                     import IPython
+#                     IPython.embed()
+                    
+                    init_traj_close = close_traj(init_joint_traj_interp.tolist())
+                    init_joint_trajs[lr] = np.asarray(init_traj_close) 
 
                 elif args.trajopt_init == 'trajopt_ik':
-                    init_joint_traj = np.zeros((i_end+1-i_start, 7))
+                    init_joint_traj = []
                     manip_name = {"l":"leftarm", "r":"rightarm"}[lr]
                     manip = Globals.robot.GetManipulator(manip_name)
                     
                     import trajopt_ik
+
+                    all_x = []
+                    x = []
                     
                     for (i, pose_matrix) in enumerate(eetraj[link_name][i_start:i_end+1]):
                         sol = trajopt_ik.inverse_kinematics(Globals.robot, manip_name, pose_matrix)
+                        
+                        all_x.append(i)
                         if sol != None:
-                            init_joint_traj[i] = sol
-                            redprint("Trajopt IK succeeds")
-
-
-                    init_joint_trajs[lr] = init_joint_traj
+                            x.append(i)
+                            init_joint_traj.append(sol)
+                            blueprint("Trajopt IK succeeds")
+                        else:
+                            redprint("Trajopt IK fails")
+                    
+                    if len(x) == 0:
+                        init_joint_traj_interp = np.zeros((i_end+1-i_start, 7))
+                    else:
+                        init_joint_traj_interp = lerp(all_x, x, init_joint_traj)
+                        
+                    init_traj_close = close_traj(init_joint_traj_interp.tolist())
+                    init_joint_trajs[lr] = np.asarray(init_traj_close)
                     
                 else:
                     redprint("trajopt initialization method %s not supported"%(args.trajopt_init))
@@ -608,9 +688,28 @@ def main():
                 
                 if args.execution: Globals.pr2.update_rave()
 
+                """
+                Dirty hack.
+                """
+                now_val = binarize_gripper(seg_info[lr]["pot_angles"][i_end], args.pot_threshold)
+                next_val = binarize_gripper(seg_info[lr]["pot_angles"][i_end+1], args.pot_threshold)
+                
+                if next_val < now_val:
+                    end_pose_constraint = True
+                else:
+                    end_pose_constraint = False
+                """
+                End dirty hack.
+                """
+                
+
                 new_joint_traj = planning.plan_follow_traj(Globals.robot, manip_name,
                                                            Globals.robot.GetLink(ee_link_name),
-                                                           new_ee_traj, init_joint_trajs[lr])
+                                                           new_ee_traj, init_joint_trajs[lr],
+                                                           end_pose_constraint=end_pose_constraint)
+                
+                
+                #handles.append(Globals.env.drawlinestrip(new_ee_traj[:,:3,3], 2, (0,1,0,1))
                 
                 
                 part_name = {"l":"larm", "r":"rarm"}[lr]

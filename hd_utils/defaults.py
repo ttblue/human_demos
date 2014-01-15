@@ -28,6 +28,17 @@ tfm_bf_head = np.array([[ 0.241649, -0.017298,  0.97021 ,  0.069105],
                         [-0.970355, -0.      ,  0.241685,  1.462202],
                         [ 0.      ,  0.      ,  0.      ,  1.      ]])
 
+"""
+Transform from lr_gripper_tool_frame to end_effector_transform.
+This is so that you can give openrave the data in the frame it is expecting.
+Openrave does IK in end_effector_frame which is different from gripper_tool_frame.
+"""
+tfm_gtf_ee = np.array([[ 0.,  0.,  1.,  0.],
+                       [ 0.,  1.,  0.,  0.],
+                       [-1.,  0.,  0.,  0.],
+                       [ 0.,  0.,  0.,  1.]])
+
+
 
 '''
 Camera intrinsic matrix (default value)
