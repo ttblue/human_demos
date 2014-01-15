@@ -75,16 +75,16 @@ import importlib
 import cloudprocpy, trajoptpy, openravepy
 
 try:
-    from rapprentice import pr2_trajectories, PR2
+    from hd_rapprentice import pr2_trajectories, PR2
     import rospy
 except ImportError:
     print "Couldn't import ros stuff"
 
 
-from rapprentice import registration, animate_traj, ros2rave, \
+from hd_rapprentice import registration, animate_traj, ros2rave, \
      plotting_openrave, task_execution, \
      planning, tps, func_utils, resampling, clouds
-from rapprentice import math_utils as mu
+from hd_rapprentice import math_utils as mu
 from hd_utils import yes_or_no, ros_utils as ru
 from hd_utils.pr2_utils import get_kinect_transform
 from hd_utils.colorize import *
@@ -245,7 +245,7 @@ def find_closest_auto(demofile, new_xyz):
     
     if args.show_neighbors:
         nshow = min(5, len(demo_clouds.keys()))
-        import cv2, rapprentice.cv_plot_utils as cpu
+        import cv2, hd_rapprentice.cv_plot_utils as cpu
         sortinds = np.argsort(costs)[:nshow]
         
         near_rgbs = []
@@ -262,7 +262,10 @@ def find_closest_auto(demofile, new_xyz):
     return keys[ibest]
 
 def find_closest_cloud(demofile, new_xyz):
-    from rapprentice import recognition
+    """
+    recognition seems to be in john_python/lfd/recognition.py.
+    """
+    from hd_rapprentice import recognition
     demo_clouds = []
     
     

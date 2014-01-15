@@ -14,7 +14,7 @@ from   hd_utils.tps_utils import *
 from   hd_utils.mayavi_plotter import *
 
 ## for tps-correct:
-from   rapprentice import registration
+from hd_rapprentice import registration
 
 
 
