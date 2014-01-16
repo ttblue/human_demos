@@ -4,6 +4,9 @@ import time
 import subprocess
 import rospy, roslib
 import argparse
+from std_msgs.msg import Float32
+
+devnull = open(os.devnull, 'wb')
 
 left_state = ''
 right_state = ''
@@ -36,7 +39,7 @@ def call_back_right(msg):
     latest_right_angle = msg.data
     
 def update_states(left_angle, right_angle):
-    global threshold
+    global threshold, left_state, right_state
     if left_angle > threshold:
         left_state = 'open'
     else:
@@ -85,18 +88,17 @@ if __name__=="__main__":
             update_states(left_angle, right_angle)
             subprocess.call("espeak -v en 'Both closed.'", stdout=devnull, stderr=devnull, shell=True)
             continue
-        
         # Left Open
         if left_state == 'closed' and left_angle > threshold:
             subprocess.call("espeak -v en 'Left Opened.'", stdout=devnull, stderr=devnull, shell=True)
         # Right Open
-        elif: right_state == 'closed' and right_angle > threshold:
+        if right_state == 'closed' and right_angle > threshold:
             subprocess.call("espeak -v en 'Right Opened.'", stdout=devnull, stderr=devnull, shell=True)
         # Left Close
-        elif: left_state == 'open' and left_angle < threshold:
+        if left_state == 'open' and left_angle < threshold:
             subprocess.call("espeak -v en 'Left Closed.'", stdout=devnull, stderr=devnull, shell=True)
         # Right Close
-        elif: right_state == 'open' and right_angle < threshold:
+        if right_state == 'open' and right_angle < threshold:
             subprocess.call("espeak -v en 'Right Closed.'", stdout=devnull, stderr=devnull, shell=True)
         
         update_states(left_angle, right_angle)
