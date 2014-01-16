@@ -67,9 +67,17 @@ Default names for files inside each demo directory and others.
 ar_init_dir = osp.join(hd_data_dir,'ar_init')
 ar_init_demo_name = 'demo.cp'
 ar_init_playback_name = 'playback.cp'
+
+feedback_dir = osp.join(hd_data_dir,'demo_feedback')
+simple_feedback_name = 'simple_fb.cp'
+ik_feedback_name = 'ik_fb.cp'
+
 master_name = 'master.yaml'
 latest_demo_name = 'latest_demo.txt'
 verify_name = 'verify'
+
+cam_pr2_calib_name = 'cam_pr2'
+
 class demo_names:
     base_name = 'demo%05d'
     bag_name = 'demo.bag'
