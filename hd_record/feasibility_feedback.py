@@ -409,4 +409,3 @@ if __name__=="__main__":
             initialize_simple(args.navg)
     else:
         feedback_loop(args.method)
-            
