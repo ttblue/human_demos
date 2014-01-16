@@ -59,7 +59,7 @@ if __name__=="__main__":
     rospy.init_node('gripper_feedback')
 
     sub_left = rospy.Subscriber('/l_pot_angle', Float32, call_back_left)
-    sub_right = rospy.Subscriber('r_pot_angle', Float32, call_back_right)
+    sub_right = rospy.Subscriber('/r_pot_angle', Float32, call_back_right)
     
     
     
