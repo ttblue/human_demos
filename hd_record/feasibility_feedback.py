@@ -410,7 +410,7 @@ def feedback_loop (method='simple'):
                     hydra_viol += lr
             
             if hydra_viol:
-                subprocess.call("espeak -v en 'Hydra %s too far.'"%hydra_viol, stdout=devnull, stderr=devnull, shell=True)
+                subprocess.call("espeak -v en 'Hydra %s invalid.'"%hydra_viol, stdout=devnull, stderr=devnull, shell=True)
                 warn_rate.sleep()
 
         sleeper.sleep()
