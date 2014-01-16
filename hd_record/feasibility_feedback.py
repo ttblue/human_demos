@@ -28,8 +28,9 @@ import tf
 
 from hd_calib.cameras import RosCameras
 from hd_calib.camera_calibration import CameraCalibrator
-from hd_calib.calibration_pipeline import CalibratedTransformPublisher
+from hd_calib.calibration_pipeline import CalibratedTransformPublisher, gripper_trans_marker_tooltip
 import hd_calib.get_marker_transforms as gmt
+from hd_calib import gripper_lite
 from hd_utils import conversions
 from hd_utils.colorize import *
 from hd_utils.utils import avg_transform
@@ -83,7 +84,7 @@ def get_avg_hydra_tfm(lr, n_avg, sleeper):
             avg_tfms[h].append(hydra_tfms[h])
         j += 1
         sleeper.sleep()
-    for h in lr: avg_tfms[h] = avg_transform(avg_tfms)
+    for h in lr: avg_tfms[h] = avg_transform(avg_tfms[h])
  
     return avg_tfms
     
@@ -111,11 +112,14 @@ def initialize_simple (n_avg=30):
     attempts = 10
     while attempts > 0:
         try:
-            blc_tfm = get_avg_hydra_tfm(lr_long, n_avg, sleeper)
+            blc_tfm = get_avg_hydra_tfm(lr_long, n_avg, sleeper)[lr_long]
+            print blc_tfm
             aabb_points.append(blc_tfm[0:3,3])
             break
-        except:
+        except Exception as e:
+            print e
             attempts -= 1
+            yellowprint("Failed attempt. Trying %i more times."%attempts)
             sleeper.sleep()
     if attempts == 0:
         redprint("Could not find hydra.")
@@ -124,11 +128,13 @@ def initialize_simple (n_avg=30):
     attempts = 10
     while attempts > 0:
         try:
-            brc_tfm = get_avg_hydra_tfm(lr_long, n_avg, sleeper)
+            brc_tfm = get_avg_hydra_tfm(lr_long, n_avg, sleeper)[lr_long]
+            print brc_tfm[0:3,3]
             aabb_points.append(brc_tfm[0:3,3])
             break
         except:
             attempts -= 1
+            yellowprint("Failed attempt. Trying %i more times."%attempts)
             sleeper.sleep()
     if attempts == 0:
         redprint("Could not find hydra.")
@@ -137,11 +143,13 @@ def initialize_simple (n_avg=30):
     attempts = 10
     while attempts > 0:
         try:
-            tlc_tfm = get_avg_hydra_tfm(lr_long, n_avg, sleeper)
+            tlc_tfm = get_avg_hydra_tfm(lr_long, n_avg, sleeper)[lr_long]
+            print tlc_tfm[0:3,3]
             aabb_points.append(tlc_tfm[0:3,3])
             break
         except:
             attempts -= 1
+            yellowprint("Failed attempt. Trying %i more times."%attempts)
             sleeper.sleep()
     if attempts == 0:
         redprint("Could not find hydra.")
@@ -150,11 +158,13 @@ def initialize_simple (n_avg=30):
     attempts = 10
     while attempts > 0:
         try:
-            trc_tfm = get_avg_hydra_tfm(lr_long, n_avg, sleeper)
+            trc_tfm = get_avg_hydra_tfm(lr_long, n_avg, sleeper)[lr_long]
+            print trc_tfm[0:3,3]
             aabb_points.append(trc_tfm[0:3,3])
             break
         except:
             attempts -= 1
+            yellowprint("Failed attempt. Trying %i more times."%attempts)
             sleeper.sleep()
     if attempts == 0:
         redprint("Could not find hydra.")
@@ -163,18 +173,21 @@ def initialize_simple (n_avg=30):
     attempts = 10
     while attempts > 0:
         try:
-            far_tfm = get_avg_hydra_tfm(lr_long, n_avg, sleeper)
+            far_tfm = get_avg_hydra_tfm(lr_long, n_avg, sleeper)[lr_long]
+            print far_tfm[0:3,3]
             aabb_points.append(far_tfm[0:3,3])
             break
         except:
             attempts -= 1
+            yellowprint("Failed attempt. Trying %i more times."%attempts)
             sleeper.sleep()
     if attempts == 0:
         redprint("Could not find hydra.")
-        
+    
+    buffer = 0.05 # a little buffer for reachability
     aabb_points = np.asarray(aabb_points)
-    mins = aabb_points.min(axis=0)
-    maxes = aabb_points.max(axis=0)
+    mins = aabb_points.min(axis=0) - buffer
+    maxes = aabb_points.max(axis=0) + buffer
     aabb_data = {'mins':mins, 'maxes':maxes}
 
     yellowprint("Saving AABB in file...")
@@ -192,7 +205,7 @@ def check_simple (lr, tfm):
     
     if s_mins == None or s_maxes == None:
         aabb_file = osp.join(feedback_dir, simple_feedback_name)
-        with open(aabb_file,'r') as fh: data = cPickle.dump(fh)
+        with open(aabb_file,'r') as fh: data = cPickle.load(fh)
         s_mins, s_maxes = data['mins'], data['maxes']
     
     pos = tfm[0:3,3]
@@ -203,6 +216,7 @@ def get_transform (parent_frame, child_frame, n_attempts = None):
     """
     Wrapper for getting tf transform.
     """
+    global tfl, tf_sleeper
     
     if tfl is None:
         tfl = tf.TransformListener()
@@ -232,7 +246,7 @@ def initialize_ik (calib_file, n_tfm=5, n_avg=30):
     """
     
     if rospy.get_name() == '/unnamed':
-        rospy.init_node('ik_feedback_init', anonymous=True)
+        rospy.init_node('ik_feedback_init')
     
     cameras = RosCameras()
     tfm_pub = CalibratedTransformPublisher(cameras)
@@ -248,7 +262,7 @@ def initialize_ik (calib_file, n_tfm=5, n_avg=30):
     cam_calib = CameraCalibrator(cameras)
     done = False
     while not done:
-        cam_calib.calibrate(n_tfm, n_avg)
+        cam_calib.calibrate(n_obs=n_tfm, n_avg=n_avg)
         if not cam_calib.calibrated:
             redprint("Camera calibration failed.")
             cam_calib.reset_calibration()
@@ -259,7 +273,10 @@ def initialize_ik (calib_file, n_tfm=5, n_avg=30):
             tfm_bf_c2l = get_transform('base_footprint','camera_link')
             tfm_pr2['tfm'] = tfm_bf_c2l.dot(np.linalg.inv(tfm_cam['tfm']))
 
+#             tfm_pub.add_transforms(cam_calib.get_transforms())
             tfm_pub.add_transforms([tfm_cam, tfm_pr2])
+            print tfm_pub.transforms
+            
             if yes_or_no("Are you happy with the calibration? Check RVIZ."):
                 done = True
                 tfm_pub.save_calibration(cam_pr2_calib_name)
@@ -274,20 +291,27 @@ def initialize_ik (calib_file, n_tfm=5, n_avg=30):
     for tfm in calib_data['transforms']:
         if tfm['parent'] == c1_frame or tfm['parent'] == '/' + c1_frame:
             if tfm['child'] == h_frame or tfm['child'] == '/' + h_frame:
-                tfm_c1_h = nlg.inv(tfm_link_rof).dot(tfm['tfm'])
+                tfm_c1_h = tfm['tfm']
 
     if tfm_c1_h is None:
         redprint("Hydra calib info not found in %s."%calib_file)
     
-    grippers = calib_data['grippers'] 
-    assert grippers.keys() in ['lr','rl'], 'Calibration does not have both grippers.'
+    grippers = calib_data['grippers']
+    assert 'l' in grippers.keys() and 'r' in grippers.keys(), 'Calibration does not have both grippers.'
+    
+    gprs = {}
+    for lr,gdata in grippers.items():
+        gr = gripper_lite.GripperLite(lr, gdata['ar'], trans_marker_tooltip=gripper_trans_marker_tooltip[lr])
+        gr.reset_gripper(lr, gdata['tfms'], gdata['ar'], gdata['hydra'])
+        gprs[lr] = gr
     
     ik_file_data = {}
     ik_file_data['pr2'] = tfm_pr2['tfm'].dot(tfm_c1_h)
     lr_long = {'l':'left','r':'right'}
-    for lr in grippers:
-        ik_file_data[lr_long[lr]] = grippers[lr].get_rel_transform(lr_long[lr], 'tool_tip')    
+    for lr in gprs:
+        ik_file_data[lr_long[lr]] = gprs[lr].get_rel_transform(lr_long[lr], 'tool_tip')    
 
+    
     yellowprint("Saving IK feedback data in file...")
     ik_file = osp.join(feedback_dir, ik_feedback_name)
     with open(ik_file,'w') as fh: cPickle.dump(ik_file_data, fh)
@@ -304,7 +328,7 @@ def check_ik (lr, tfm):
     # Initialize a bunch of parameters
     if T_bf_hb is None or not hydra_rel_tfm:
         ik_file = osp.join(feedback_dir, ik_feedback_name)
-        with open(ik_file,'r') as fh: data = cPickle.dump(fh)
+        with open(ik_file,'r') as fh: data = cPickle.load(fh)
         T_bf_hb = data['pr2']
         hydra_rel_tfm['right'] = data['right']
         hydra_rel_tfm['left'] = data['left']
@@ -316,11 +340,10 @@ def check_ik (lr, tfm):
         manips = {'left':robot.GetManipulator('leftarm'),
                   'right':robot.GetManipulator('rightarm')}
         # Maybe add table
-
     ee_tfm = T_bf_hb.dot(tfm).dot(hydra_rel_tfm[lr]).dot(tfm_gtf_ee)
     
-    iksol = manips[lr].FindIKSolution(opr.IkParameterization(ee_tfm, opr.IkParameterizationType.Transform6D)),
-#                                       opr.IkFilterOptions.Transform6D
+    iksol = manips[lr].FindIKSolution(opr.IkParameterization(ee_tfm, opr.IkParameterizationType.Transform6D), 
+                                      opr.IkFilterOptions.IgnoreEndEffectorEnvCollisions)
     
     return iksol != None
 
@@ -353,6 +376,8 @@ def feedback_loop (method='simple'):
         except:
             continue
     
+    yellowprint("Got first hydra message.")
+    
     while not rospy.is_shutdown():
         # Wait for begin recording        
         while not rospy.is_shutdown():
@@ -362,29 +387,30 @@ def feedback_loop (method='simple'):
             cmd_sleeper.sleep()
             
         # Check feasibility while waiting for cancel recording
-        NUM_INIT = 30
-        num_violations = {h:NUM_INIT for h in hydras}
+        time_thresh = 2.0
+        tstart = rospy.Time.now().to_sec()
+        last_time = {h:tstart for h in hydras}
         while not rospy.is_shutdown():
             status = cmd_checker.get_latest_msg()
             # Done with session
             if  status in ["cancel recording","finish recording"]:
                 break
             hydra_tfms = get_avg_hydra_tfm(hydras, n_avg, check_rate)
+            time_now = rospy.Time.now().to_sec()
   
             for lr in hydras:
-                if not check_func(lr, hydra_tfms[lr]) and num_violations[lr] > 0:
-                    num_violations[lr] -= 1
-                else: num_violations[lr] = NUM_INIT
+                if check_func(lr, hydra_tfms[lr]):
+                    last_time[lr] = time_now
     
             hydra_viol = ''
             for lr in hydras:
-                if num_violations[lr] == 0:
+                if time_now - last_time[lr] > time_thresh:
                     if hydra_viol:
-                        hydra_viol += ' and %s'%lr
+                        hydra_viol += ' and '
                     hydra_viol += lr
             
             if hydra_viol:
-                subprocess.call("espeak -v en 'Hydra %s out of reach.'"%hydra_viol, stdout=devnull, stderr=devnull, shell=True)
+                subprocess.call("espeak -v en 'Hydra %s too far.'"%hydra_viol, stdout=devnull, stderr=devnull, shell=True)
                 warn_rate.sleep()
 
         sleeper.sleep()

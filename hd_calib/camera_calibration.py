@@ -451,6 +451,7 @@ class CameraCalibrator:
         return True
     
     def calibrate (self, method='ar', use_icp=False, n_obs=10, n_avg=5):
+        print method
         if self.num_cameras == 1:
             redprint ("Only one camera. You don't need to calibrate.", True)
             self.calibrated = True
