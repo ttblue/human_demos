@@ -387,7 +387,7 @@ def feedback_loop (method='simple'):
             cmd_sleeper.sleep()
             
         # Check feasibility while waiting for cancel recording
-        time_thresh = 2.0
+        time_thresh = args.time_thresh
         tstart = rospy.Time.now().to_sec()
         last_time = {h:tstart for h in hydras}
         while not rospy.is_shutdown():
@@ -422,6 +422,7 @@ if __name__=="__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--method", help="Choose from simple or ik.", default="simple", type=str)
     parser.add_argument("--initialize", help="Initialize the feedback files.", action="store_true",default=False)
+    parser.add_argument("--time_thresh", help="Time thresh after which to complain.", default=2.0, type=int)
     parser.add_argument("--calib_file", help="Path to calibration file for IK init.", type=str)
     parser.add_argument("--ntfm", help="Number of transforms for initializing IK.", type=int, default=5)
     parser.add_argument("--navg", help="Number of transforms to average for initializing simple/IK.", type=int, default=30)
