@@ -7,22 +7,23 @@ from hd_utils import clouds
 from hd_utils.defaults import asus_xtion_pro_f
 from hd_utils.pr2_utils import get_kinect_transform
 
-def extract_red(rgb, depth, T_w_k):
+def extract_color(rgb, depth, mask, T_w_k):
     """
     extract red points and downsample
     """
         
     hsv = cv2.cvtColor(rgb, cv2.COLOR_BGR2HSV)
+    reference_hsv = cv2
     h = hsv[:,:,0]
     s = hsv[:,:,1]
     v = hsv[:,:,2]
     
-    h_mask = (h<15) | (h>145)
-    s_mask = (s > 30 )
-    v_mask = (v > 100)
+    h_mask = mask[0](h)
+    s_mask = mask[1](s)
+    v_mask = mask[2](v)
     red_mask = h_mask & s_mask & v_mask
     
-    valid_mask = depth > 0
+    valid_mask = (depth > 0)
     
     xyz_k = clouds.depth_to_xyz(depth, asus_xtion_pro_f)
     xyz_w = xyz_k.dot(T_w_k[:3,:3].T) + T_w_k[:3,3][None,None,:]
@@ -30,7 +31,7 @@ def extract_red(rgb, depth, T_w_k):
     z = xyz_w[:,:,2]   
     z0 = xyz_k[:,:,2]
 
-    height_mask = xyz_w[:,:,2] > .7 # TODO pass in parameter
+    height_mask = (xyz_w[:,:,2] > .7) & (xyz_w[:,:,2] < 1.3)  # TODO pass in parameter
     
     good_mask = red_mask & height_mask & valid_mask
     good_mask =   skim.remove_small_objects(good_mask,min_size=64)
@@ -44,15 +45,21 @@ def extract_red(rgb, depth, T_w_k):
         cv2.imshow("final",good_mask.astype('uint8')*255)
         cv2.imshow("rgb", rgb)
         cv2.waitKey()
-            
-        
-    
 
     good_xyz = xyz_w[good_mask]
     
 
     return clouds.downsample(good_xyz, .025)
-    
+
+
+def extract_red(rgb, depth, T_w_k):
+    red_mask = [lambda(x): (x<15)|(x>145), lambda(x): x>30, lambda(x): x>100]
+    return extract_color(rgb, depth, red_mask, T_w_k)
+
+def extract_white(rgb, depth, T_w_k):
+    white_mask = [lambda(x): (x>0), lambda(x): x<30, lambda(x): (x>100)]
+    return extract_color(rgb, depth, white_mask, T_w_k)
+
     
 def grabcut(rgb, depth, T_w_k):
     xyz_k = clouds.depth_to_xyz(depth, asus_xtion_pro_f)
