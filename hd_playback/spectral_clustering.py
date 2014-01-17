@@ -34,14 +34,19 @@ def similarity_matrix(pclouds):
 	for y in xrange(len(pclouds)):
 		new_xyz = pclouds[y]
 		ts = time.time()
-		costs = Parallel(n_jobs=-1,verbose=51)(delayed(registration_cost)(c, new_xyz) for c in pclouds)
+		costs = Parallel(n_jobs=-1,verbose=51)(delayed(registration_cost)(c, new_xyz) for c in pclouds[0:len(pclouds)-y])
+		for i in xrange(y):
+			costs.append(0)
 		te = time.time()
 		print y
 		print "%f"%(te-ts)
 		costs = np.array(costs)
 		cost_matrix = np.vstack((cost_matrix, costs))
-	cost_matrix = 0.5 * (cost_matrix + cost_matrix.T)
+	for y in xrange(len(pclouds)):
+		for x in xrange(y, len(pclouds)):
+			cost_matrix[x][y] = cost_matrix[y][x]
 	similarity_matrix = np.exp(-cost_matrix)
+
 	return similarity_matrix
 
 
