@@ -23,7 +23,7 @@ def extract_color(rgb, depth, mask, T_w_k):
     v_mask = mask[2](v)
     red_mask = h_mask & s_mask & v_mask
     
-    valid_mask = depth > 0
+    valid_mask = (depth > 0)
     
     xyz_k = clouds.depth_to_xyz(depth, asus_xtion_pro_f)
     xyz_w = xyz_k.dot(T_w_k[:3,:3].T) + T_w_k[:3,3][None,None,:]
@@ -31,7 +31,7 @@ def extract_color(rgb, depth, mask, T_w_k):
     z = xyz_w[:,:,2]   
     z0 = xyz_k[:,:,2]
 
-    height_mask = xyz_w[:,:,2] > .7 # TODO pass in parameter
+    height_mask = (xyz_w[:,:,2] > .7) & (xyz_w[:,:,2] < 1.3)  # TODO pass in parameter
     
     good_mask = red_mask & height_mask & valid_mask
     good_mask =   skim.remove_small_objects(good_mask,min_size=64)
