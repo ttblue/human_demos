@@ -36,4 +36,24 @@ def downsample(xyz, v):
     cloud = cloudprocpy.downsampleCloud(cloud, v)
     return cloud.to2dArray()[:,:3]
 
+def median_filter(xyz, window_size, max_allowed_movement):
+    import cloudprocpy
+    cloud = cloudprocpy.CloudXYZ()
+    xyz1 = np.ones((len(xyz),4),'float')
+    xyz1[:,:3] = xyz
+    cloud.from2dArray(xyz1)
+    cloud = cloudprocpy.medianFilter(cloud, window_size, max_allowed_movement)
+    return cloud.to2dArray()[:,:3]
+
+
+def remove_outliers(xyz, thresh=2.0, k=15):
+    import cloudprocpy
+    cloud = cloudprocpy.CloudXYZ()
+    xyz1 = np.ones((len(xyz),4),'float')
+    xyz1[:,:3] = xyz
+    cloud.from2dArray(xyz1)
+    cloud = cloudprocpy.removeOutliers(cloud, thresh, k)
+    return cloud.to2dArray()[:,:3]
+
+
     

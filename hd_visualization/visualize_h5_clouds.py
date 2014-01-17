@@ -6,7 +6,8 @@ from hd_utils.defaults import demo_files_dir, demo_names
 from hd_utils.extraction_utils import get_videos
 from mpl_toolkits.mplot3d import axes3d
 import pylab
-from hd_utils import clouds_utils, clouds
+import h5py
+from hd_utils import clouds
 
 
 parser = argparse.ArgumentParser()
@@ -17,34 +18,28 @@ parser.add_argument("--cloud_proc_mod", default="hd_utils.cloud_proc_funcs")
 args = parser.parse_args()
 
 
-cloud_proc_mod = importlib.import_module(args.cloud_proc_mod)
-cloud_proc_func = getattr(cloud_proc_mod, args.cloud_proc_func)
+demotype_dir = osp.join(demo_files_dir, args.demo_type)
+h5file = osp.join(demotype_dir, args.demo_type+".h5")
 
+demofile = h5py.File(h5file, 'r')
 
-task_dir = osp.join(demo_files_dir, args.demo_type)
-task_file = osp.join(task_dir, args.demo_name)
-
-video_dir = osp.join(task_file, demo_names.video_dir%1)
-rgbs, depths = get_videos(video_dir)
-
-
-
-for (rgb, depth) in zip(rgbs, depths):
-    xyz = cloud_proc_func(np.asarray(rgb), np.asarray(depth), np.eye(4))
+for seg_name in demofile[args.demo_name]:
+    print seg_name
+    xyz = demofile[args.demo_name][seg_name]["cloud_xyz"]
+    xyz = np.squeeze(xyz)
+    print xyz.shape
+    #xyz1 = clouds.remove_outliers(xyz, 1, 50)
+    #xyz1 = xyz #clouds.downsample(xyz, 0.045)
     
     fig = pylab.figure()
     ax = fig.gca(projection='3d')
     ax.plot(xyz[:,0], xyz[:,1], xyz[:,2], 'o')
     
-    #clouds_utils.find_path_through_point_cloud(xyz, True)
-    
-    
     fig.show()
-            
+    
     raw_input()
-    
-    
-    
 
+    
+    
 
 
