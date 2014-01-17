@@ -225,12 +225,14 @@ def registration_cost(xyz0, xyz1):
     return cost
 
 
-def find_closest_auto(demofile, new_xyz):
+def find_closest_auto(demofile, new_xyz, init_tfm=None, n_jobs=3):
     if args.parallel:
         from joblib import Parallel, delayed
         
     demo_clouds = []
     
+    DS_LEAF_SIZE = 0.04
+    new_xyz = clouds.downsample(new_xyz,DS_LEAF_SIZE)
     
     keys = {}
     seg_num = 0
@@ -239,10 +241,13 @@ def find_closest_auto(demofile, new_xyz):
             for seg_name in demofile[demo_name]:
                 keys[seg_num] = (demo_name, seg_name)
                 seg_num += 1
-                demo_clouds.append(np.asarray(demofile[demo_name][seg_name]["cloud_xyz"]))
+                demo_xyz = clouds.downsample(np.asarray(demofile[demo_name][seg_name]["cloud_xyz"]),DS_LEAF_SIZE)
+                if init_tfm is not None:
+                    demo_xyz = demo_xyz.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
+                demo_clouds.append(demo_xyz)
             
     if args.parallel:
-        costs = Parallel(n_jobs=3,verbose=100)(delayed(registration_cost)(demo_cloud, new_xyz) for demo_cloud in demo_clouds)
+        costs = Parallel(n_jobs=n_jobs,verbose=100)(delayed(registration_cost)(demo_cloud, new_xyz) for demo_cloud in demo_clouds)
     else:
         costs = []
         
@@ -438,7 +443,7 @@ def main():
         grabber = cloudprocpy.CloudGrabber()
         grabber.startRGBD()
 
-    
+    init_tfm = None
     if args.use_ar_init:
         # Get ar marker from demo:
         if args.ar_demo_file == "":
@@ -550,7 +555,7 @@ def main():
         if args.select_manual:
             (demo_name, seg_name) = find_closest_manual(demofile, new_xyz)
         else:
-            (demo_name, seg_name) = find_closest_auto(demofile, new_xyz)
+            (demo_name, seg_name) = find_closest_auto(demofile, new_xyz, init_tfm)
         
         seg_info = demofile[demo_name][seg_name]
         redprint("closest demo: %s, %s"%(demo_name, seg_name))
@@ -579,12 +584,18 @@ def main():
             # Transform the old clouds approximately into PR2's frame
             old_xyz = old_xyz.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
             
+        DS_LEAF_SIZE = 0.04
+        new_xyz = clouds.downsample(new_xyz, DS_LEAF_SIZE)
+        old_xyz = clouds.downsample(old_xyz, DS_LEAF_SIZE)
+    
     
         color_old = [(1,0,0,1) for _ in range(len(old_xyz))]
         color_new = [(0,0,1,1) for _ in range(len(new_xyz))]
         handles.append(Globals.env.plot3(old_xyz,5,np.array(color_old)))
         handles.append(Globals.env.plot3(new_xyz,5,np.array(color_new)))
-        
+
+        import IPython
+        IPython.embed()
 
         t1 = time.time()
         scaled_old_xyz, src_params = registration.unit_boxify(old_xyz)
@@ -597,6 +608,8 @@ def main():
         handles.extend(plotting_openrave.draw_grid(Globals.env, f.transform_points, old_xyz.min(axis=0)-np.r_[0,0,.1], old_xyz.max(axis=0)+np.r_[0,0,.1], xres = .1, yres = .1, zres = .04))
         
         print 'time: %f'%(t2-t1)
+        raw_input()
+        Globals.viewer.Idle()
 
 #         import IPython
 #         IPython.embed()
