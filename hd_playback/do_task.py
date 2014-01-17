@@ -231,8 +231,10 @@ def find_closest_auto(demofile, new_xyz, init_tfm=None, n_jobs=3):
         
     demo_clouds = []
     
-    DS_LEAF_SIZE = 0.04
+    DS_LEAF_SIZE = 0.045
     new_xyz = clouds.downsample(new_xyz,DS_LEAF_SIZE)
+    
+    avg = 0.0
     
     keys = {}
     seg_num = 0
@@ -244,10 +246,13 @@ def find_closest_auto(demofile, new_xyz, init_tfm=None, n_jobs=3):
                 demo_xyz = clouds.downsample(np.asarray(demofile[demo_name][seg_name]["cloud_xyz"]),DS_LEAF_SIZE)
                 if init_tfm is not None:
                     demo_xyz = demo_xyz.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
+                print demo_xyz.shape
+                avg += demo_xyz.shape[0]
                 demo_clouds.append(demo_xyz)
-            
+    
+    raw_input(avg/len(demo_clouds))
     if args.parallel:
-        costs = Parallel(n_jobs=n_jobs,verbose=100)(delayed(registration_cost)(demo_cloud, new_xyz) for demo_cloud in demo_clouds)
+        costs = Parallel(n_jobs=n_jobs,verbose=51)(delayed(registration_cost)(demo_cloud, new_xyz) for demo_cloud in demo_clouds)
     else:
         costs = []
         
