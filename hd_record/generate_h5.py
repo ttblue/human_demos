@@ -65,6 +65,8 @@ def add_rgbd_to_hdf(video_dir, annotation, hdfroot, demo_name):
     
     for (i_seg, seg_info) in enumerate(annotation):
         
+        if seg_info["name"] == "done": continue
+        
         if seg_info["name"] in demo_group.keys():
             seg_group = demo_group[seg_info["name"]]
         else:
@@ -87,6 +89,8 @@ def add_traj_to_hdf_full_demo(traj, annotation, hdfroot, demo_name):
     demo_group = hdfroot.create_group(demo_name)
          
     for seg_info in annotation:
+        if seg_info["name"] == "done": continue
+        
         seg_group = demo_group.create_group(seg_info["name"]) 
          
         start = seg_info["start"]
@@ -120,6 +124,8 @@ def add_traj_to_hdf(traj, annotation, hdfroot, demo_name):
     
     for seg_info in annotation:
         seg_name = seg_info["name"]
+        if seg_name == "done": continue
+        
         seg_group = demo_group.create_group(seg_name)
         
         for lr in traj:

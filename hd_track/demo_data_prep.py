@@ -103,6 +103,8 @@ def segment_streams(ann_dat, strms, time_shifts, demo_dir, base_stream='camera1'
 
     out_segs = []
     for i in xrange(n_segs):
+        if ann_dat[i]['name'] == 'done':
+            continue
         si = []
         for n in xrange(len(strms)):
             si.append(strm_segs[n][i])

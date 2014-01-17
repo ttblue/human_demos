@@ -27,12 +27,12 @@ task_file = osp.join(task_dir, args.demo_name)
 video_dir = osp.join(task_file, demo_names.video_dir%1)
 rgbs, depths = get_videos(video_dir)
 
+fig = pylab.figure()
 
 
 for (rgb, depth) in zip(rgbs, depths):
     xyz = cloud_proc_func(np.asarray(rgb), np.asarray(depth), np.eye(4))
     
-    fig = pylab.figure()
     ax = fig.gca(projection='3d')
     ax.plot(xyz[:,0], xyz[:,1], xyz[:,2], 'o')
     
@@ -40,8 +40,8 @@ for (rgb, depth) in zip(rgbs, depths):
     
     
     fig.show()
-            
     raw_input()
+    fig.clf()
     
     
     
