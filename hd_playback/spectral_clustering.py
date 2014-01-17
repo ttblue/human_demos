@@ -8,18 +8,18 @@ from sklearn.cluster import spectral_clustering
 import cPickle as pickle
 import argparse
 import cv2, hd_rapprentice.cv_plot_utils as cpu
+import os.path as osp
+import time
+
 from hd_rapprentice import registration
 from hd_utils import clouds
+from hd_utils.defaults import demo_files_dir
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--num_clouds", type=int)
 parser.add_argument("--num_clusters", type=int)
+parser.add_argument("--demo_type",help="Demo type.", type=str)
 args = parser.parse_args()
 
-num_clouds = args.num_clouds
-
-
-h5file = "/home/henrylu/henry_sandbox/human_demos_data/overhand.h5"
 
 def registration_cost(xyz0, xyz1):
 	scaled_xyz0, _ = registration.unit_boxify(xyz0)
@@ -33,18 +33,21 @@ def similarity_matrix(pclouds):
 	cost_matrix = np.zeros((0, len(pclouds)))
 	for y in xrange(len(pclouds)):
 		new_xyz = pclouds[y]
-		costs = Parallel(n_jobs=-1,verbose=100)(delayed(registration_cost)(c, new_xyz) for c in pclouds)
+		ts = time.time()
+		costs = Parallel(n_jobs=-1,verbose=51)(delayed(registration_cost)(c, new_xyz) for c in pclouds)
+		te = time.time()
 		print y
+		print "%f"%(te-ts)
 		costs = np.array(costs)
 		cost_matrix = np.vstack((cost_matrix, costs))
 	cost_matrix = 0.5 * (cost_matrix + cost_matrix.T)
-	similarity_matrix = np.exp((1.0/cost_matrix))
+	similarity_matrix = np.exp(-cost_matrix)
 	return similarity_matrix
 
 
-def extract_clouds(demofile, num):
+def extract_clouds(demofile):
 	seg_num = 0
-	leaf_size = 0.4
+	leaf_size = 0.04
 	keys = {}
 	pclouds = []
 	for demo_name in demofile:
@@ -55,12 +58,11 @@ def extract_clouds(demofile, num):
 					pclouds.append(clouds.downsample(np.asarray(demofile[demo_name][seg_name]["cloud_xyz"]), leaf_size))
 					print demo_name, seg_name
 					seg_num += 1
-					if seg_num >= num:
-						return keys, pclouds
+	return keys, pclouds
 
-def main():
-	demofile = h5py.File(h5file, 'r')
-	smfile = "sim_matrix_"+str(num_clouds)+".cp"
+def main(demo_type):
+	demofile = h5py.File(osp.join(demo_files_dir, demo_type, demo_type+'.h5'), 'r')
+	smfile = "sim_matrix.cp"
 	try:
 		with open(smfile, 'r') as f:
 			sm = pickle.load(f)
@@ -68,23 +70,20 @@ def main():
 		keys = {}
 		done = False
 		for demo_name in demofile:
-			if done:
-				break
 			if demo_name != "ar_demo":
 				for seg_name in demofile[demo_name]:
 					if seg_name != 'done':
 						keys[seg_num] = (demo_name, seg_name)
 						print demo_name, seg_name
 						seg_num += 1
-						if seg_num >= num_clouds:
-							done = True
-							break
+
 	except IOError:
-		keys, clouds = extract_clouds(demofile, num_clouds)
+		keys, clouds = extract_clouds(demofile)
 		sm = similarity_matrix(clouds)
 		with open(smfile, 'wa') as f:
 			pickle.dump(sm, f)
 	print sm
+	
 	labels = spectral_clustering(sm, n_clusters = args.num_clusters, eigen_solver='arpack')
 	images = [[] for i in xrange(args.num_clusters)]
 	print keys
@@ -111,4 +110,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+	main(args.demo_type)
