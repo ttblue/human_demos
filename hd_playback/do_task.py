@@ -36,7 +36,7 @@ parser.add_argument("--fake_data_transform", type=float, nargs=6, metavar=("tx",
     default=[0,0,0,0,0,0], help="translation=(tx,ty,tz), axis-angle rotation=(rx,ry,rz)")
 
 
-parser.add_argument("--trajopt_init",type=str,default="all_zero")
+parser.add_argument("--trajopt_init",type=str,default="openrave_ik")
 parser.add_argument("--pot_threshold",type=float, default=15)
 
 parser.add_argument("--use_ar_init", action="store_true", default=False)
@@ -599,9 +599,6 @@ def main():
         handles.append(Globals.env.plot3(old_xyz,5,np.array(color_old)))
         handles.append(Globals.env.plot3(new_xyz,5,np.array(color_new)))
 
-        import IPython
-        IPython.embed()
-
         t1 = time.time()
         scaled_old_xyz, src_params = registration.unit_boxify(old_xyz)
         scaled_new_xyz, targ_params = registration.unit_boxify(new_xyz)
@@ -617,7 +614,7 @@ def main():
         Globals.viewer.Idle()
 
 #         import IPython
-#         IPython.embed()
+#         .embed()
 
         eetraj = {}
         for lr in 'lr':
