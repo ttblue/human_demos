@@ -6,7 +6,6 @@ from hd_utils.defaults import demo_files_dir, demo_names
 from hd_utils.extraction_utils import get_videos
 from mpl_toolkits.mplot3d import axes3d
 import pylab
-from hd_utils import clouds_utils, clouds
 
 
 parser = argparse.ArgumentParser()
@@ -34,10 +33,7 @@ for (rgb, depth) in zip(rgbs, depths):
     xyz = cloud_proc_func(np.asarray(rgb), np.asarray(depth), np.eye(4))
     
     ax = fig.gca(projection='3d')
-    ax.plot(xyz[:,0], xyz[:,1], xyz[:,2], 'o')
-    
-    #clouds_utils.find_path_through_point_cloud(xyz, True)
-    
+    ax.plot(xyz[:,0], xyz[:,1], xyz[:,2], 'o')    
     
     fig.show()
     raw_input()

@@ -7,13 +7,12 @@ from hd_utils import clouds
 from hd_utils.defaults import asus_xtion_pro_f
 from hd_utils.pr2_utils import get_kinect_transform
 
-def extract_color(rgb, depth, mask, T_w_k, use_outlier_removal=True, outlier_thresh=1.0, outlier_k=15):
+def extract_color(rgb, depth, mask, T_w_k, use_outlier_removal=True, outlier_thresh=2, outlier_k=50):
     """
     extract red points and downsample
     """
         
     hsv = cv2.cvtColor(rgb, cv2.COLOR_BGR2HSV)
-    reference_hsv = cv2
     h = hsv[:,:,0]
     s = hsv[:,:,1]
     v = hsv[:,:,2]
@@ -34,7 +33,7 @@ def extract_color(rgb, depth, mask, T_w_k, use_outlier_removal=True, outlier_thr
     height_mask = (xyz_w[:,:,2] > .7) & (xyz_w[:,:,2] < 1.3)  # TODO pass in parameter
     
     good_mask = red_mask & height_mask & valid_mask
-    good_mask =   skim.remove_small_objects(good_mask,min_size=64)
+    good_mask = skim.remove_small_objects(good_mask,min_size=64)
 
     if DEBUG_PLOTS:
         cv2.imshow("z0",z0/z0.max())
