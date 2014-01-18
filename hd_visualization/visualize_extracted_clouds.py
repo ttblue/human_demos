@@ -33,6 +33,7 @@ for (rgb, depth) in zip(rgbs, depths):
     xyz = cloud_proc_func(np.asarray(rgb), np.asarray(depth), np.eye(4))
     
     ax = fig.gca(projection='3d')
+    ax.set_autoscale_on(False)
     ax.plot(xyz[:,0], xyz[:,1], xyz[:,2], 'o')    
     
     fig.show()

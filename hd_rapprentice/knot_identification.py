@@ -24,3 +24,5 @@ def rope_has_intersections(ctl_pts):
         if len(intersections) != 0:
             return True
     return False
+
+

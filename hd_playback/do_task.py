@@ -21,6 +21,7 @@ parser.add_argument("--cloud_proc_mod", default="hd_utils.cloud_proc_funcs")
     
 parser.add_argument("--execution", type=int, default=0)
 parser.add_argument("--animation", type=int, default=0)
+parser.add_argument("--simulation", type=int, default=0)
 parser.add_argument("--parallel", type=int, default=1)
 parser.add_argument("--cloud", type=int, default=0)
 parser.add_argument("--downsample", help="downsample traj.", type=int, default=1)
@@ -44,6 +45,7 @@ parser.add_argument("--ar_demo_file",type=str, default="")
 parser.add_argument("--ar_run_file",type=str, default="")
 
 parser.add_argument("--interactive",action="store_true")
+
 
 args = parser.parse_args()
 
@@ -84,7 +86,8 @@ except ImportError:
 
 from hd_rapprentice import registration, animate_traj, ros2rave, \
      plotting_openrave, task_execution, \
-     planning, tps, resampling
+     planning, tps, resampling, \
+     ropesim, rope_initialization
 from hd_utils import yes_or_no, ros_utils as ru, func_utils, clouds, math_utils as mu
 from hd_utils.pr2_utils import get_kinect_transform
 from hd_utils.colorize import *
@@ -105,8 +108,9 @@ cloud_proc_func = getattr(cloud_proc_mod, args.cloud_proc_func)
 class Globals:
     robot = None
     env = None
-
     pr2 = None
+    sim = None
+    viewer = None
 
 
 DS_SIZE = .025
@@ -416,6 +420,10 @@ def main():
         Globals.env.StopSimulation()
         Globals.env.Load("robots/pr2-beta-static.zae")
         Globals.robot = Globals.env.GetRobots()[0]
+        
+        if args.simulation:
+            Globals.sim = ropesim.Simulation(Globals.env, Globals.robot)
+        
 
     Globals.viewer = trajoptpy.GetViewer(Globals.env)
     '''
@@ -423,25 +431,13 @@ def main():
     '''
     # As found from measuring
     if ADD_TABLE:
-#         if args.execution:
-#             tablePos = [0.60,0.0,0.70]
-#         else:
-#             tablePos = [0.60,0.0,0.40]
-#         tableHalfExtents = [0.50,1.00,0.06]
         if args.execution:
             Globals.env.Load('table.xml')
         else:
             Globals.env.Load('table_sim.xml')
         body = Globals.env.GetKinBody('table')
         Globals.viewer.SetTransparency(body,0.4)
-#     
-#     
-#         with Globals.env:
-#             body = openravepy.RaveCreateKinBody(Globals.env,'')
-#             body.SetName('table')
-#             body.InitFromBoxes(np.array([tablePos + tableHalfExtents]),False)
-#             Globals.env.AddKinBody(body,True)
-        
+
 
     # get rgbd from pr2?
     if not args.fake_data_segment or not args.fake_data_demo:
@@ -508,6 +504,10 @@ def main():
             T_w_k = get_kinect_transform(Globals.robot)
             init_tfm = T_w_k.dot(init_tfm)
 
+            
+
+    curr_step = 0
+
     while True:
         '''
         Acquire point cloud
@@ -519,17 +519,27 @@ def main():
             l_vals = PR2.Arm.L_POSTURES['side']
             Globals.robot.SetDOFValues(l_vals, Globals.robot.GetManipulator('leftarm').GetArmIndices())
             Globals.robot.SetDOFValues(PR2.mirror_arm_joints(l_vals), Globals.robot.GetManipulator('rightarm').GetArmIndices())
-            
-            fake_seg = demofile[args.fake_data_demo][args.fake_data_segment]
-            new_xyz = np.squeeze(fake_seg["cloud_xyz"])
 
-            hmat = openravepy.matrixFromAxisAngle(args.fake_data_transform[3:6])
-            hmat[:3,3] = args.fake_data_transform[0:3]
-            if args.use_ar_init: hmat = init_tfm.dot(hmat)
+            if args.simulation and curr_step > 1:
+                # for following steps in rope simulation, using simulation result
+                new_xyz = Globals.sim.observe_cloud()
+            else:          
+                fake_seg = demofile[args.fake_data_demo][args.fake_data_segment]
+                new_xyz = np.squeeze(fake_seg["cloud_xyz"])
+        
+                hmat = openravepy.matrixFromAxisAngle(args.fake_data_transform[3:6])
+                hmat[:3,3] = args.fake_data_transform[0:3]
+                if args.use_ar_init: hmat = init_tfm.dot(hmat)
+        
+                # if not rope simulation
+                new_xyz = new_xyz.dot(hmat[:3,:3].T) + hmat[:3,3][None,:]
+                
+                # if the first step in rope simulation
+                if args.simulation: # curr_step == 1
+                    rope_nodes = rope_initialization.find_path_through_point_cloud(new_xyz)
+                    Globals.sim.create(rope_nodes)
+                    new_xyz = Globals.sim.observe_cloud()
 
-            new_xyz = new_xyz.dot(hmat[:3,:3].T) + hmat[:3,3][None,:]
-            #r2r = ros2rave.RosToRave(Globals.robot, np.asarray(fake_seg["joint_states"]["name"]))
-            #r2r.set_values(Globals.robot, np.asarray(fake_seg["joint_states"]["position"][0]))
         else:
             Globals.pr2.head.set_pan_tilt(0,1.2)
             Globals.pr2.rarm.goto_posture('side')
@@ -796,7 +806,15 @@ def main():
                 success &= exec_traj_maybesim(bodypart2traj)
                 time.sleep(5)
                 
+            if args.simulation:
+                Globals.sim.rope.GetNodes()
+                
             if not success: break
+            
+        if args.simulation:
+            Globals.sim.settle(animate=args.animation)
+            Globals.sim.rope.GetNodes()
+                        
             
         redprint("Demo %s Segment %s result: %s"%(demo_name, seg_name, success))
         
