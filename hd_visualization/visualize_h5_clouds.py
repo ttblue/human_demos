@@ -37,9 +37,10 @@ if args.demo_name == '':
             print xyz.shape
         
             ax = fig.gca(projection='3d')
+            ax.set_autoscale_on(False)
             ax.plot(xyz[:,0], xyz[:,1], xyz[:,2], 'o')
-    
             
+
             fig.show()
             raw_input()
             fig.clf()
@@ -51,6 +52,7 @@ else:
         xyz = np.squeeze(xyz)
         
         ax = fig.gca(projection='3d')
+        ax.set_autoscale_on(False)
         ax.plot(xyz[:,0], xyz[:,1], xyz[:,2], 'o')
     
             
