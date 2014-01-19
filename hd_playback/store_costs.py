@@ -129,7 +129,7 @@ def save_costs(segs, keys, cost_file, num_segs=None):
         name = get_name(keys[y])
         ts = time.time()
         print 'Segment '+name
-        seg_costs = Parallel(n_jobs=4,verbose=51)(delayed(all_costs)(new_seg, segs[i], get_name(keys[i])) for i in range(num_segs) if i != y )
+        seg_costs = Parallel(n_jobs=-2,verbose=0)(delayed(all_costs)(new_seg, segs[i], get_name(keys[i])) for i in range(num_segs) if i != y )
         te = time.time()
         print "Time: %f"%(te-ts)
         costs[name] = {name_seg:cost for name_seg,cost in seg_costs}
@@ -156,7 +156,7 @@ def save_costs_symmetric(segs, keys, cost_file, num_segs=None):
 
         ts = time.time()
         print 'Segment '+name_keys[y]
-        seg_costs = Parallel(n_jobs=4,verbose=51)(delayed(all_costs)(new_seg, segs[i], name_keys[i]) for i in range(y+1, num_segs))
+        seg_costs = Parallel(n_jobs=-2,verbose=0)(delayed(all_costs)(new_seg, segs[i], name_keys[i]) for i in range(y+1, num_segs))
         te = time.time()
         print "Time: %f"%(te-ts)
 
@@ -182,7 +182,6 @@ def extract_segs(demofile, num_segs=None):
                     seg = demofile[demo_name][seg_name]
                     pc = clouds.downsample(np.asarray(seg['cloud_xyz']), leaf_size)
                     segs.append((pc, np.asarray(seg['l']['tfms_s'])[:,0:3,3], np.asarray(seg['r']['tfms_s'])[:,0:3,3]))
-                    print demo_name, seg_name
                     seg_num += 1
                     if num_segs is not None and seg_num >= num_segs: return keys, segs
     
