@@ -55,6 +55,7 @@ if args.demo_name == '':
     for demo in demos_info["demos"]:
         demo_name = demo["demo_name"]
         for seg_name in demofile[demo_name]:
+            if seg_name == "done": continue
             print demo_name, seg_name
             xyz = demofile[demo_name][seg_name]["cloud_xyz"]
             xyz = np.squeeze(xyz)
@@ -82,6 +83,7 @@ if args.demo_name == '':
                 fig.clf()
 else:
     for seg_name in demofile[args.demo_name]:
+        if seg_name == "done": continue
         print seg_name
         xyz = demofile[args.demo_name][seg_name]["cloud_xyz"]
         xyz = np.squeeze(xyz)

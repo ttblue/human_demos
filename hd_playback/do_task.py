@@ -814,7 +814,7 @@ def main():
         if args.simulation:
             Globals.sim.settle(animate=args.animation)
             Globals.sim.rope.GetNodes()
-                        
+                    
             
         redprint("Demo %s Segment %s result: %s"%(demo_name, seg_name, success))
         

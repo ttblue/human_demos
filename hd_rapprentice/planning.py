@@ -27,7 +27,7 @@ def plan_follow_traj(robot, manip_name, ee_link, new_hmats, old_traj, end_pose_c
         },
         {
             "type" : "collision",
-            "params" : {"coeffs" : [10],"dist_pen" : [0.01]}
+            "params" : {"coeffs" : [1],"dist_pen" : [0.01]}
         }                
         ],
         "constraints" : [ 

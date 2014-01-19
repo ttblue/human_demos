@@ -191,7 +191,7 @@ def largest_connected_component(G):
     sgs = nx.connected_component_subgraphs(G)
     return sgs[0]
 
-def skeletonize_point_cloud(xyzs, point_conn_dist = .025, cluster_size = .04):
+def skeletonize_point_cloud(xyzs, point_conn_dist = .03, cluster_size = .06):
     G = points_to_graph(xyzs, point_conn_dist)
     S = skeletonize_graph(G, cluster_size)
     return S
