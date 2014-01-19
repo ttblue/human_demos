@@ -74,10 +74,10 @@ def main(demo_type, n_clusters, num_seg=None):
     costs = get_costs(cost_file)
 
     weights = {}    
-    weights['tps'] = 1.0
+    weights['tps'] = 0.5
     #weights['tps_scaled'] = 1.0
-    weights['traj'] = 1.0
-    weights['traj_f'] = 1.0
+    weights['traj'] = 1.2
+    weights['traj_f'] = 1.2
     #weights['traj_f_scaled'] = 0.5 
  
     seg_num = 0
@@ -98,7 +98,7 @@ def main(demo_type, n_clusters, num_seg=None):
     mat = generate_sim_matrix(costs, weights,keys)
     print mat
     
-    labels = spectral_clustering(mat, n_clusters = n_clusters, eigen_solver='arpack')#,assign_labels='discretize')
+    labels = spectral_clustering(mat, n_clusters = n_clusters, eigen_solver='arpack',assign_labels='discretize')
     names = {i:[] for i in xrange(args.num_clusters)}
     images = {i:[] for i in xrange(args.num_clusters)}
     

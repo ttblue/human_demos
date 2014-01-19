@@ -31,9 +31,11 @@ Save Traj cost + reg params.
 
 tps_rot_reg = 1e-3
 tps_n_iter = 30
-traj_n = 15
-traj_bend_c = 0.05
-traj_rot_c = [1e-3, 1e-3, 1e-3]
+
+traj_n = 10
+traj_bend_c = 0.1
+#traj_rot_c = [1e-3, 1e-3, 1e-3]
+traj_rot_c = 1e-5
 traj_scale_c = 0.1
 
 
@@ -54,40 +56,37 @@ def lerp (x, xp, fp, first=None):
     
     return fp_interp
 
-def registration_cost(xyz0, xyz1, scale=False, return_f=False):
-    if scale:
-        xyz0, params0 = registration.unit_boxify(xyz0)
-        xyz1, params1 = registration.unit_boxify(xyz1)
-    
-    f,g = registration.tps_rpm_bij(xyz0, xyz1, rot_reg=tps_rot_reg, n_iter=tps_n_iter)
+
+"""Doing min of what I need"""
+def registration_cost(xyz0_p, xyz1_p):
+    f,g = registration.tps_rpm_bij(xyz0_p[0], xyz1_p[0], rot_reg=tps_rot_reg, n_iter=tps_n_iter)
     cost = registration.tps_reg_cost(f) + registration.tps_reg_cost(g)
-    if scale and return_f:
-        f = registration.unscale_tps(f, params0, params1)
-        g = registration.unscale_tps(g, params1, params0)
+    f = registration.unscale_tps(f, xyz0_p[1], xyz1_p[1])
+    g = registration.unscale_tps(g, xyz1_p[1], xyz0_p[1])
 
-    if return_f:
-        return cost, f, g
-    else: return cost
+    return cost, f, g
 
-def traj_cost(traj1, traj2, n, f=None, find_corr=False):
+def traj_cost(traj1, traj2, f, g):
     """
-    Downsamples traj to have n points from start to end.
+    Downsampled traj to have n points from start to end.
     """
     
-    ts1 = np.linspace(0,traj1.shape[0],n)
-    ts2 = np.linspace(0,traj2.shape[0],n)
+    fo = registration.fit_ThinPlateSpline(traj1, traj2, traj_bend_c, traj_rot_c)
+    go = registration.fit_ThinPlateSpline(traj2, traj1, traj_bend_c, traj_rot_c)
+    cost = (registration.tps_reg_cost(fo)+registration.tps_reg_cost(go))/2
     
-    xyz1 = lerp(ts1, range(traj1.shape[0]), traj1)
-    if f is not None:
-        xyz1 = f.transform_points(xyz1)
-    xyz2 = lerp(ts2, range(traj2.shape[0]), traj2)
+    if f is not None and g is not None:
+        traj1_f = f.transform_points(traj1)
+        traj2_g = g.transform_points(traj2)
+        fn1 = registration.fit_ThinPlateSpline(traj1_f, traj2, traj_bend_c, traj_rot_c)
+        gn1 = registration.fit_ThinPlateSpline(traj2, traj1_f, traj_bend_c, traj_rot_c)
+        fn2 = registration.fit_ThinPlateSpline(traj1, traj2_g, traj_bend_c, traj_rot_c)
+        gn2 = registration.fit_ThinPlateSpline(traj2_g, traj1, traj_bend_c, traj_rot_c)
+        cost_fg = (registration.tps_reg_cost(fn1)+registration.tps_reg_cost(gn1)+
+                   registration.tps_reg_cost(fn2) +registration.tps_reg_cost(gn2))/4
+        return cost, cost_fg
 
-    if find_corr:
-        return registration_cost(xyz1, xyz2)
-    else:
-        f = registration.fit_ThinPlateSpline_RotReg(xyz1, xyz2, traj_bend_c, traj_rot_c, traj_scale_c)
-        g = registration.fit_ThinPlateSpline_RotReg(xyz2, xyz1, traj_bend_c, traj_rot_c, traj_scale_c)
-        return (registration.tps_reg_cost(f)+registration.tps_reg_cost(g))/2
+    return cost
 
 
 
@@ -95,13 +94,13 @@ def all_costs(seg1, seg2, name):
     
     costs = {}
     #tps_c, f, _ = registration_cost(seg1[0], seg2[0], return_f=True)
-    tps_scaled_c, f_scaled, _ = registration_cost(seg1[0], seg2[0], scale=True, return_f=True)
+    tpsc, f, g = registration_cost(seg1[0], seg2[0])
+    lc, lfc = traj_cost(seg1[1], seg2[1], f, g)
+    rc, rfc = traj_cost(seg1[2], seg2[2], f, g)
 
-    costs['tps'] = tps_scaled_c
-    #costs['tps_scaled'] = tps_scaled_c
-    costs['traj'] = {'l': traj_cost(seg1[1],seg2[1], traj_n),'r': traj_cost(seg1[2],seg2[2], traj_n)}
-    #costs['traj_f'] = {'l': traj_cost(seg1[1],seg2[1], traj_n, f=f),'r': traj_cost(seg1[2],seg2[2], traj_n, f=f)}
-    costs['traj_f'] = {'l': traj_cost(seg1[1],seg2[1], traj_n, f=f_scaled),'r': traj_cost(seg1[2],seg2[2], traj_n, f=f_scaled)} 
+    costs['tps'] = tpsc
+    costs['traj'] = {'l': lc,'r': rc}
+    costs['traj_f'] = {'l': lfc,'r': rfc} 
 
     return name, costs
 
@@ -112,12 +111,16 @@ def get_name(demo_seg):
     except:
         return demo+'-'+seg
 
+
+"""
+Old, don't use.
+"""
 def save_costs(segs, keys, cost_file, num_segs=None):
     costs = {}
     costs['parameters'] = {}
-    costs['parameters']['tps'] = {'tps_rot_reg':1e-3, 'tps_n_iter':50}
-    costs['parameters']['traj'] = {'traj_n':20, 'traj_bend_c':0.05,
-                                   'traj_rot_c':[1e-3, 1e-3, 1e-3], 'traj_scale_c':0.1}
+    costs['parameters']['tps'] = {'tps_rot_reg':tps_rot_reg, 'tps_n_iter':tps_n_iter}
+    costs['parameters']['traj'] = {'traj_n':traj_n, 'traj_bend_c':traj_bend_c,
+                                   'traj_rot_c':traj_rot_c}#, 'traj_scale_c':traj_scale_c}
     
     costs['costs'] = {}
     
@@ -153,16 +156,14 @@ def save_costs_symmetric(segs, keys, cost_file, num_segs=None):
     for y in xrange(num_segs):
         new_seg = segs[y]
         name = name_keys[y]
-
         ts = time.time()
         print 'Segment '+name_keys[y]
-        seg_costs = Parallel(n_jobs=-2,verbose=0)(delayed(all_costs)(new_seg, segs[i], name_keys[i]) for i in range(y+1, num_segs))
+        seg_costs = Parallel(n_jobs=4,verbose=51)(delayed(all_costs)(new_seg, segs[i], name_keys[i]) for i in range(y+1, num_segs))
         te = time.time()
         print "Time: %f"%(te-ts)
 
-        costs[name][name] = {c:0.0 for c in ['tps','tps_scaled', 'traj','traj_f', 'traj_f_scaled']}
+        costs[name][name] = {'tps':0.0, 'traj':{'l':0.0,'r':0.0}, 'traj':{'l':0.0,'r':0.0}}
         for name_seg, cost in seg_costs:
-            #costs[name_seg][name] = cost
             costs[name][name_seg] = cost
         
     data['costs'] = costs
@@ -181,7 +182,13 @@ def extract_segs(demofile, num_segs=None):
                     keys[seg_num] = (demo_name, seg_name)
                     seg = demofile[demo_name][seg_name]
                     pc = clouds.downsample(np.asarray(seg['cloud_xyz']), leaf_size)
-                    segs.append((pc, np.asarray(seg['l']['tfms_s'])[:,0:3,3], np.asarray(seg['r']['tfms_s'])[:,0:3,3]))
+                    pc, params = registration.unit_boxify(pc)
+                    ltraj = np.asarray(seg['l']['tfms_s'])[:,0:3,3]
+                    ltraj = lerp(np.linspace(0,ltraj.shape[0],traj_n), range(ltraj.shape[0]), ltraj)
+                    rtraj = np.asarray(seg['r']['tfms_s'])[:,0:3,3]
+                    rtraj = lerp(np.linspace(0,rtraj.shape[0],traj_n), range(rtraj.shape[0]), rtraj)
+                    
+                    segs.append(((pc, params), ltraj, rtraj))
                     seg_num += 1
                     if num_segs is not None and seg_num >= num_segs: return keys, segs
     
