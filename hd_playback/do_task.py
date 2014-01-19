@@ -174,13 +174,46 @@ def binarize_gripper(angle, pot_angle_threshold):
     else: return closed_angle
     
     
-def set_gripper_maybesim(lr, value):
+def set_gripper_maybesim(lr, is_open, prev_is_open):
+    mult = 1 if args.execution else 5
+    open_angle = .08 * mult
+    closed_angle = (0 if not args.simulation else .02) * mult
+    
+    target_val = open_angle if is_open else closed_angle
+
     if args.execution:
         gripper = {"l":Globals.pr2.lgrip, "r":Globals.pr2.rgrip}[lr]
-        gripper.set_angle(value)
+        gripper.set_angle(target_val)
         Globals.pr2.join_all()
-    else:
-        Globals.robot.SetDOFValues([value*5], [Globals.robot.GetJoint("%s_gripper_l_finger_joint"%lr).GetDOFIndex()])
+        
+    elif not args.simulation:
+        Globals.robot.SetDOFValues([target_val], [Globals.robot.GetJoint("%s_gripper_l_finger_joint"%lr).GetDOFIndex()])
+        
+    elif args.simulation:
+        # release constraints if necessary
+        if is_open and not prev_is_open:
+            Globals.sim.release_rope(lr)
+
+        # execute gripper open/close trajectory
+        joint_ind = Globals.robot.GetJoint("%s_gripper_l_finger_joint"%lr).GetDOFIndex()
+        start_val = Globals.robot.GetDOFValues([joint_ind])[0]
+        joint_traj = np.linspace(start_val, target_val, np.ceil(abs(target_val - start_val) / .02))
+        for val in joint_traj:
+            Globals.robot.SetDOFValues([val], [joint_ind])
+            Globals.sim.step()
+            if args.animation:
+                Globals.viewer.Step()
+                if args.interactive: Globals.viewer.Idle()
+        # add constraints if necessary
+        if not is_open and prev_is_open:
+            
+            if not Globals.sim.grab_rope(lr):
+                redprint("Grab failed")
+                return False
+            else:
+                blueprint("Grab succeeded")
+        
+        
     return True
 
 
@@ -509,6 +542,9 @@ def main():
     curr_step = 0
 
     while True:
+        
+        curr_step += 1
+        print "step %i"%(curr_step)
         '''
         Acquire point cloud
         '''
@@ -796,9 +832,15 @@ def main():
             redprint("Executing joint trajectory for demo %s segment %s, part %i using arms '%s'"%(demo_name, seg_name, i_miniseg, bodypart2traj.keys()))
             
             for lr in 'lr':
-                success &= set_gripper_maybesim(lr, binarize_gripper(seg_info[lr]["pot_angles"][i_start], args.pot_threshold))
+                gripper_open = binarize_gripper(seg_info[lr]["pot_angles"][i_start], args.pot_threshold)
+                prev_gripper_open = binarize_gripper(seg_info[lr]["pot_angles"][i_start-1], args.pot_threshold) if i_start != 0 else False
+                if not set_gripper_maybesim(lr, gripper_open, prev_gripper_open):
+                    redprint("Grab %s failed"%lr)
+                    success = False
                 # Doesn't actually check if grab occurred, unfortunately
                 
+            if args.simulation:
+                Globals.sim.rope.GetNodes()
             
             if not success: break
             
@@ -818,7 +860,7 @@ def main():
             
         redprint("Demo %s Segment %s result: %s"%(demo_name, seg_name, success))
         
-        if args.fake_data_demo and args.fake_data_segment: break
+        if args.fake_data_demo and args.fake_data_segment and not args.simulation: break
 
 
 if __name__ == "__main__":
