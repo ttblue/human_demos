@@ -302,7 +302,7 @@ def view_tracking_on_rviz(demo_type, demo_name, tps_model_fname, freq=30.0, spee
 
     # Remove segment "done", it is just a single frame
     segs = sorted(traj[grippers[0]].keys())
-    segs.remove('done')
+    if 'done' in segs: segs.remove('done')
     
     sleeper = rospy.Rate(freq)
     T_far = np.eye(4)

@@ -217,8 +217,27 @@ def set_gripper_maybesim(lr, is_open, prev_is_open):
     return True
 
 
+def unwrap_arm_traj_in_place(traj):
+    assert traj.shape[1] == 7
+    for i in [2,4,6]:
+        traj[:,i] = np.unwrap(traj[:,i])
+    return traj
+
+def unwrap_in_place(t):
+    # TODO: do something smarter than just checking shape[1]
+    if t.shape[1] == 7:
+        unwrap_arm_traj_in_place(t)
+    elif t.shape[1] == 14:
+        unwrap_arm_traj_in_place(t[:,:7])
+        unwrap_arm_traj_in_place(t[:,7:])
+    else:
+        raise NotImplementedError
+
 def exec_traj_maybesim(bodypart2traj):
-    if args.animation:
+    def sim_callback(i):
+        Globals.sim.step()
+    
+    if args.animation or args.simulation:
         dof_inds = []
         trajs = []
         for (part_name, traj) in bodypart2traj.items():
@@ -227,7 +246,25 @@ def exec_traj_maybesim(bodypart2traj):
             trajs.append(traj)
         full_traj = np.concatenate(trajs, axis=1)
         Globals.robot.SetActiveDOFs(dof_inds)
-        animate_traj.animate_traj(full_traj, Globals.robot, restore=False,pause=True)
+        
+        if args.simulation:
+            # make the trajectory slow enough for the simulation
+            full_traj = ropesim.retime_traj(Globals.robot, dof_inds, full_traj)
+            
+            # in simulation mode, we must make sure to gradually move to the new starting position
+            curr_vals = Globals.robot.GetActiveDOFValues()
+            transition_traj = np.r_[[curr_vals], [full_traj[0]]]
+            unwrap_in_place(transition_traj)
+            transition_traj = ropesim.retime_traj(Globals.robot, dof_inds, transition_traj, max_cart_vel=.01)
+            animate_traj.animate_traj(transition_traj, Globals.robot, restore=False, pause=args.interactive,
+                callback=sim_callback if args.simulation else None, step_viewer=args.animation)
+            full_traj[0] = transition_traj[-1]
+            unwrap_in_place(full_traj)
+        
+        animate_traj.animate_traj(full_traj, Globals.robot, restore=False, pause=args.interactive,
+                                  callback=sim_callback if args.simulation else None, step_viewer=args.animation)
+        
+        
     if args.execution:
         if not args.prompt or yes_or_no("execute?"):
             pr2_trajectories.follow_body_traj(Globals.pr2, bodypart2traj)
@@ -287,7 +324,7 @@ def find_closest_auto(demofile, new_xyz, init_tfm=None, n_jobs=3):
                 avg += demo_xyz.shape[0]
                 demo_clouds.append(demo_xyz)
     
-    raw_input(avg/len(demo_clouds))
+    # raw_input(avg/len(demo_clouds))
     if args.parallel:
         costs = Parallel(n_jobs=n_jobs,verbose=51)(delayed(registration_cost)(demo_cloud, new_xyz) for demo_cloud in demo_clouds)
     else:
@@ -544,7 +581,6 @@ def main():
     while True:
         
         curr_step += 1
-        print "step %i"%(curr_step)
         '''
         Acquire point cloud
         '''
@@ -656,8 +692,8 @@ def main():
         handles.extend(plotting_openrave.draw_grid(Globals.env, f.transform_points, old_xyz.min(axis=0)-np.r_[0,0,.1], old_xyz.max(axis=0)+np.r_[0,0,.1], xres = .1, yres = .1, zres = .04))
         
         print 'time: %f'%(t2-t1)
-        raw_input()
-        Globals.viewer.Idle()
+        #raw_input()
+        #Globals.viewer.Idle()
 
 #         import IPython
 #         .embed()
@@ -861,6 +897,8 @@ def main():
         redprint("Demo %s Segment %s result: %s"%(demo_name, seg_name, success))
         
         if args.fake_data_demo and args.fake_data_segment and not args.simulation: break
+        
+    raw_input()
 
 
 if __name__ == "__main__":
