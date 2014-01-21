@@ -13,6 +13,9 @@ Run in simulation choosing the closest demo, single threaded
 Actually run on the robot without pausing or animating
 ./do_task.py demo_full/demo_full.h5 --execution=1 --animation=0
 
+
+
+
 """
 parser = argparse.ArgumentParser(usage=usage)
 parser.add_argument("--demo_type", type=str)
@@ -43,6 +46,7 @@ parser.add_argument("--pot_threshold",type=float, default=15)
 parser.add_argument("--use_ar_init", action="store_true", default=False)
 parser.add_argument("--ar_demo_file",type=str, default="")
 parser.add_argument("--ar_run_file",type=str, default="")
+parser.add_argument("--use_base", action="store_true", default=False)
 
 parser.add_argument("--interactive",action="store_true")
 
@@ -240,7 +244,11 @@ def exec_traj_maybesim(bodypart2traj):
     if args.animation or args.simulation:
         dof_inds = []
         trajs = []
+        base_hmats = None
         for (part_name, traj) in bodypart2traj.items():
+            if part_name == "base":
+                base_hmats = [planning.base_pose_to_mat(base_dofs) for base_dofs in traj]
+                continue
             manip_name = {"larm":"leftarm","rarm":"rightarm"}[part_name]
             dof_inds.extend(Globals.robot.GetManipulator(manip_name).GetArmIndices())
             trajs.append(traj)
@@ -249,19 +257,21 @@ def exec_traj_maybesim(bodypart2traj):
         
         if args.simulation:
             # make the trajectory slow enough for the simulation
-            full_traj = ropesim.retime_traj(Globals.robot, dof_inds, full_traj)
+            full_traj, base_hmats = ropesim.retime_traj(Globals.robot, dof_inds, full_traj, base_hmats)
             
             # in simulation mode, we must make sure to gradually move to the new starting position
             curr_vals = Globals.robot.GetActiveDOFValues()
             transition_traj = np.r_[[curr_vals], [full_traj[0]]]
+            transition_base_hmats = base_hmats.append(Globals.robot.GetTransform())
+            
             unwrap_in_place(transition_traj)
-            transition_traj = ropesim.retime_traj(Globals.robot, dof_inds, transition_traj, max_cart_vel=.01)
-            animate_traj.animate_traj(transition_traj, Globals.robot, restore=False, pause=args.interactive,
+            transition_traj, transition_base_hmats = ropesim.retime_traj(Globals.robot, dof_inds, transition_traj, transition_base_hmats, max_cart_vel=.01)
+            animate_traj.animate_traj(transition_traj, transition_base_hmats, Globals.robot, restore=False, pause=args.interactive,
                 callback=sim_callback if args.simulation else None, step_viewer=args.animation)
             full_traj[0] = transition_traj[-1]
             unwrap_in_place(full_traj)
         
-        animate_traj.animate_traj(full_traj, Globals.robot, restore=False, pause=args.interactive,
+        animate_traj.animate_traj(full_traj, base_hmats, Globals.robot, restore=False, pause=args.interactive,
                                   callback=sim_callback if args.simulation else None, step_viewer=args.animation)
         
         
@@ -827,42 +837,78 @@ def main():
                 
             ### Generate full-body trajectory
             bodypart2traj = {}
-            for lr in 'lr':
-                manip_name = {"l":"leftarm", "r":"rightarm"}[lr]
-
-                ee_link_name = "%s_gripper_tool_frame"%lr
-                new_ee_traj = eetraj[ee_link_name][i_start:i_end+1]
+            
+            if args.use_base:
                 
-                if args.execution: Globals.pr2.update_rave()
-
-                """
-                Dirty hack.
-                """
-                now_val = binarize_gripper(seg_info[lr]["pot_angles"][i_end], args.pot_threshold)
-                next_val = binarize_gripper(seg_info[lr]["pot_angles"][i_end+1], args.pot_threshold)
+                new_hmats = {}
+                init_traj = {}
                 
-                if next_val < now_val:
-                    end_pose_constraint = True
+                for lr in 'lr':
+                    ee_link_name = "%s_gripper_tool_frame"%lr
+                    new_ee_traj = eetraj[ee_link_name][i_start:i_end+1]    
+                
+                    manip_name = {"l":"leftarm", "r":"rightarm"}[lr]
+                    new_hmats[manip_name] = new_ee_traj
+                    init_traj[manip_name] = downsample_objects(init_joint_trajs[lr], args.downsample)
+                
+                
+                active_dofs = np.r_[Globals.robot.GetManipulator("rightarm").GetArmIndices(), Globals.robot.GetManipulator("leftarm").GetArmIndices()]
+                
+                allow_base = True
+                if allow_base:
+                    Globals.robot.SetActiveDOFs(active_dofs, 
+                                                openravepy.DOFAffine.X + openravepy.DOFAffine.Y + openravepy.DOFAffine.RotationAxis,
+                                                [0, 0, 1])
                 else:
-                    end_pose_constraint = False
-                """
-                End dirty hack.
-                """
+                    Globals.robot.SetActiveDOFs(active_dofs)                
+                    
+                new_joint_traj, _ = planning.plan_fullbody(Globals.robot, Globals.env, new_hmats, init_traj, allow_base=allow_base)
                 
-                new_ee_traj = downsample_objects(new_ee_traj, args.downsample)
-                init_joints = downsample_objects(init_joint_trajs[lr], args.downsample)
+                part_names = {"leftarm":"larm", "rightarm":"rarm", "base":"base"}
+                
+                for bodypart_name in new_joint_traj:
+                    bodypart2traj[part_names[bodypart_name]] = new_joint_traj[bodypart_name]
+                    
 
-                new_joint_traj = planning.plan_follow_traj(Globals.robot, manip_name,
-                                                           Globals.robot.GetLink(ee_link_name),
-                                                           new_ee_traj, init_joints     ,
-                                                           end_pose_constraint=end_pose_constraint)
-                
-                prev_vals[lr] = new_joint_traj[-1]
-                #handles.append(Globals.env.drawlinestrip(new_ee_traj[:,:3,3], 2, (0,1,0,1))
-                
-                
-                part_name = {"l":"larm", "r":"rarm"}[lr]
-                bodypart2traj[part_name] = new_joint_traj
+
+            else:
+                for lr in 'lr':
+                    manip_name = {"l":"leftarm", "r":"rightarm"}[lr]
+    
+                    ee_link_name = "%s_gripper_tool_frame"%lr
+                    new_ee_traj = eetraj[ee_link_name][i_start:i_end+1]
+                    
+                    if args.execution: Globals.pr2.update_rave()
+    
+                    """
+                    Dirty hack.
+                    """
+                    now_val = binarize_gripper(seg_info[lr]["pot_angles"][i_end], args.pot_threshold)
+                    next_val = binarize_gripper(seg_info[lr]["pot_angles"][i_end+1], args.pot_threshold)
+                    
+                    if next_val < now_val:
+                        end_pose_constraint = True
+                    else:
+                        end_pose_constraint = False
+                    """
+                    End dirty hack.
+                    """
+                    
+                    new_ee_traj = downsample_objects(new_ee_traj, args.downsample)
+                    init_joints = downsample_objects(init_joint_trajs[lr], args.downsample)
+        
+                    
+                    new_joint_traj = planning.plan_follow_traj(Globals.robot, manip_name,
+                                                               Globals.robot.GetLink(ee_link_name),
+                                                               new_ee_traj, init_joints,
+                                                               end_pose_constraint=end_pose_constraint)
+                    
+                    prev_vals[lr] = new_joint_traj[-1]
+                    #handles.append(Globals.env.drawlinestrip(new_ee_traj[:,:3,3], 2, (0,1,0,1))
+                    
+                    
+                    part_name = {"l":"larm", "r":"rarm"}[lr]
+                    bodypart2traj[part_name] = new_joint_traj
                 
                        
             redprint("Executing joint trajectory for demo %s segment %s, part %i using arms '%s'"%(demo_name, seg_name, i_miniseg, bodypart2traj.keys()))
@@ -878,7 +924,7 @@ def main():
             if args.simulation:
                 Globals.sim.rope.GetNodes()
             
-            if not success: break
+           # if not success: break
             
             if len(bodypart2traj) > 0:
                 success &= exec_traj_maybesim(bodypart2traj)
@@ -887,11 +933,13 @@ def main():
             if args.simulation:
                 Globals.sim.rope.GetNodes()
                 
-            if not success: break
+            #if not success: break
             
         if args.simulation:
             Globals.sim.settle(animate=args.animation)
             Globals.sim.rope.GetNodes()
+            
+        Globals.viewer.Idle()
                     
             
         redprint("Demo %s Segment %s result: %s"%(demo_name, seg_name, success))
