@@ -18,8 +18,8 @@ stop segment:
     stop recording current segment -- human trajectory from this point no longer relevant.
 new segment:
     robot look + begin segment
-stop recording:
-    done with current demonstration
+check demo:
+    check the demo with visualization in rviz
 finish recording:
     save current demonstration
 cancel recording:
@@ -54,9 +54,9 @@ def demos_to_annotations(stamps, commands):
                     "begin segment": ["robot look"],
                     "stop segment": ["begin segment", "new segment"],
                     "new segment": ["stop segment","begin recording"],
-                    "stop recording": ["stop segment"],
-                    "finish recording": ["stop recording", "stop segment"],
-                    "cancel recording": ["stop recording", "begin recording", "robot look", "begin segment", "stop segment", "new segment"],
+                    "check demo": ["stop segment"],
+                    "finish recording": ["check demo", "stop segment"],
+                    "cancel recording": ["check demo", "begin recording", "robot look", "begin segment", "stop segment", "new segment"],
                     #  should never reach cancel recording.
                     "done session": ["finish recording", "cancel recording", "all start"]} #not relevant, should not reach here.
 
@@ -83,7 +83,7 @@ def demos_to_annotations(stamps, commands):
                 subseq['look'] = stamp
                 subseq['start'] = stamp
                 state = command
-            elif command == "stop recording":
+            elif command == "check demo":
                 state = command
             elif command == "finish recording":
                 # final frame
