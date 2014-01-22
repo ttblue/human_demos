@@ -31,6 +31,7 @@ from hd_calib.camera_calibration import CameraCalibrator
 from hd_calib.calibration_pipeline import CalibratedTransformPublisher, gripper_trans_marker_tooltip
 import hd_calib.get_marker_transforms as gmt
 from hd_calib import gripper_lite
+from hd_rapprentice import PR2
 from hd_utils import conversions
 from hd_utils.colorize import *
 from hd_utils.utils import avg_transform
@@ -42,6 +43,9 @@ s_mins = None
 s_maxes = None
 T_bf_hb = None
 hydra_rel_tfm = {}
+
+HEIGHT_DIFF = 1.015-0.780+0.05
+X_DIFF = 0.0
 
 env = None
 robot = None
@@ -339,9 +343,23 @@ def check_ik (lr, tfm):
         robot = env.GetRobots()[0]
         manips = {'left':robot.GetManipulator('leftarm'),
                   'right':robot.GetManipulator('rightarm')}
+        l_vals = PR2.Arm.L_POSTURES['side']
+        robot.SetDOFValues(l_vals, manips['left'].GetArmIndices())
+        robot.SetDOFValues(PR2.mirror_arm_joints(l_vals), manips['left'].GetArmIndices())
         # Maybe add table
     ee_tfm = T_bf_hb.dot(tfm).dot(hydra_rel_tfm[lr]).dot(tfm_gtf_ee)
+    # account for height difference
+    ee_tfm[2,3] -= HEIGHT_DIFF
+#     ee_tfm[0,3] += X_DIFF
+#z: 1.30
+    print lr, ee_tfm
     
+    #hack for peace of mind -- I want to be able to hear myself think while I do this
+    if ee_tfm[0,3] < 0.25:  
+        return True
+    else:
+        print ee_tfm[0,3]
+        
     iksol = manips[lr].FindIKSolution(opr.IkParameterization(ee_tfm, opr.IkParameterizationType.Transform6D), 
                                       opr.IkFilterOptions.IgnoreEndEffectorEnvCollisions)
     
@@ -410,7 +428,7 @@ def feedback_loop (method='simple'):
                     hydra_viol += lr
             
             if hydra_viol:
-                subprocess.call("espeak -v en 'Hydra %s invalid.'"%hydra_viol, stdout=devnull, stderr=devnull, shell=True)
+                subprocess.call("espeak -v en '%s invalid.'"%hydra_viol, stdout=devnull, stderr=devnull, shell=True)
                 warn_rate.sleep()
 
         sleeper.sleep()
@@ -422,7 +440,7 @@ if __name__=="__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--method", help="Choose from simple or ik.", default="simple", type=str)
     parser.add_argument("--initialize", help="Initialize the feedback files.", action="store_true",default=False)
-    parser.add_argument("--time_thresh", help="Time thresh after which to complain.", default=2.0, type=int)
+    parser.add_argument("--time_thresh", help="Time thresh after which to complain.", default=1.0, type=int)
     parser.add_argument("--calib_file", help="Path to calibration file for IK init.", type=str)
     parser.add_argument("--ntfm", help="Number of transforms for initializing IK.", type=int, default=5)
     parser.add_argument("--navg", help="Number of transforms to average for initializing simple/IK.", type=int, default=30)

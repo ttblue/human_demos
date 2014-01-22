@@ -1,6 +1,7 @@
 import bulletsimpy
 import numpy as np
 from hd_rapprentice import retiming
+from hd_rapprentice.planning import mat_to_base_pose, base_pose_to_mat
 from hd_utils import math_utils
 import trajoptpy
 
@@ -41,7 +42,7 @@ def in_grasp_region(robot, lr, pt):
 
     return True
 
-def retime_traj(robot, inds, traj, max_cart_vel=.02, upsample_time=.1):
+def retime_traj(robot, inds, traj, base_hmats, max_cart_vel=.02, upsample_time=.1):
     """retime a trajectory so that it executes slowly enough for the simulation"""
     cart_traj = np.empty((len(traj), 6))
     leftarm, rightarm = robot.GetManipulator("leftarm"), robot.GetManipulator("rightarm")
@@ -54,7 +55,16 @@ def retime_traj(robot, inds, traj, max_cart_vel=.02, upsample_time=.1):
     times = retiming.retime_with_vel_limits(cart_traj, np.repeat(max_cart_vel, 6))
     times_up = np.linspace(0, times[-1], times[-1]/upsample_time) if times[-1] > upsample_time else times
     traj_up = math_utils.interp2d(times_up, times, traj)
-    return traj_up
+    
+    if base_hmats != None:
+        base_traj = [mat_to_base_pose(base_hmat) for base_hmat in base_hmats]
+        base_traj_up = math_utils.interp2d(times_up, times, base_traj)
+        base_hmats_up = [base_pose_to_mat(base_pose) for base_pose in base_traj_up]
+    else:
+        base_hmats_up = None
+    
+    
+    return traj_up, base_hmats_up
 
 
 class Simulation(object):

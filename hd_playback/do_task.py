@@ -78,6 +78,8 @@ import os, numpy as np, h5py, time, os.path as osp
 import cPickle
 import numpy as np
 import importlib
+from numpy.linalg import norm
+
 
 import cloudprocpy, trajoptpy, openravepy
 
@@ -121,6 +123,7 @@ DS_SIZE = .025
 
 def smaller_ang(x):
     return (x + np.pi)%(2*np.pi) - np.pi
+
 def closer_ang(x,a,dir=0):
     """                                                
     find angle y (==x mod 2*pi) that is close to a                             
@@ -134,6 +137,12 @@ def closer_ang(x,a,dir=0):
         return a + (x-a)%(2*np.pi)
     elif dir == -1:
         return a + (x-a)%(2*np.pi) - 2*np.pi
+    
+def closer_angs(x_array,a_array,dir=0):
+    
+    return [closer_ang(x, a) for (x, a) in zip(x_array, a_array)]
+        
+    
 
 
 def split_trajectory_by_gripper(seg_info, pot_angle_threshold, thresh=5):
@@ -256,19 +265,36 @@ def exec_traj_maybesim(bodypart2traj):
         Globals.robot.SetActiveDOFs(dof_inds)
         
         if args.simulation:
+
             # make the trajectory slow enough for the simulation
             full_traj, base_hmats = ropesim.retime_traj(Globals.robot, dof_inds, full_traj, base_hmats)
             
             # in simulation mode, we must make sure to gradually move to the new starting position
             curr_vals = Globals.robot.GetActiveDOFValues()
             transition_traj = np.r_[[curr_vals], [full_traj[0]]]
-            transition_base_hmats = base_hmats.append(Globals.robot.GetTransform())
+            
+            if base_hmats != None:
+                transition_base_hmats = [Globals.robot.GetTransform()] + [base_hmats[0]]
+            else:
+                transition_base_hmats = None
             
             unwrap_in_place(transition_traj)
+            
+
+            
             transition_traj, transition_base_hmats = ropesim.retime_traj(Globals.robot, dof_inds, transition_traj, transition_base_hmats, max_cart_vel=.01)
             animate_traj.animate_traj(transition_traj, transition_base_hmats, Globals.robot, restore=False, pause=args.interactive,
                 callback=sim_callback if args.simulation else None, step_viewer=args.animation)
+
+
+            
             full_traj[0] = transition_traj[-1]
+            
+            
+            if base_hmats != None:
+                base_hmats[0] = transition_base_hmats[-1]
+            
+            
             unwrap_in_place(full_traj)
         
         animate_traj.animate_traj(full_traj, base_hmats, Globals.robot, restore=False, pause=args.interactive,
@@ -740,7 +766,7 @@ def main():
         l_vals = PR2.Arm.L_POSTURES['side']
         for (i_miniseg, (i_start, i_end)) in enumerate(zip(miniseg_starts, miniseg_ends)):
 
-            if args.execution=="real": Globals.pr2.update_rave()
+            if args.execution =="real": Globals.pr2.update_rave()
             
             redprint("Generating joint trajectory for demo %s segment %s, part %i"%(demo_name, seg_name, i_miniseg))
             
@@ -766,17 +792,50 @@ def main():
                     for (i, pose_matrix) in enumerate(eetraj[link_name][i_start:i_end+1]):
                         
                         rot_pose_matrix = pose_matrix.dot(tfm_gtf_ee)
-                        sol = manip.FindIKSolution(openravepy.IkParameterization(rot_pose_matrix, ik_type),
-                                                   #openravepy.IkFilterOptions.IgnoreEndEffectorEnvCollisions,
-                                                   openravepy.IkFilterOptions.CheckEnvCollisions)
+                        sols = manip.FindIKSolutions(openravepy.IkParameterization(rot_pose_matrix, ik_type),
+                                                    openravepy.IkFilterOptions.IgnoreEndEffectorSelfCollisions | openravepy.IkFilterOptions.IgnoreEndEffectorEnvCollisions | openravepy.IkFilterOptions.CheckEnvCollisions)
+                        
+                        
                         all_x.append(i)
                         
-                        if sol != None:
+                        if sols != []:
                             x.append(i)
-                            init_joint_traj.append(sol)
+                            
+                            reference_sol = None
+                            for sol in reversed(init_joint_traj):
+                                if sol != None:
+                                    reference_sol = sol
+                                    break
+                            if reference_sol is None:
+                                if prev_vals[lr] is not None:
+                                    reference_sol = prev_vals[lr]
+                                else:
+                                    reference_sol = l_vals if lr == 'l' else PR2.mirror_arm_joints(l_vals)
+                        
+                            
+                            sols = [closer_angs(sol, reference_sol) for sol in sols]
+                            norm_differences = [norm(np.asarray(reference_sol) - np.asarray(sol), 2) for sol in sols]
+                            min_index = norm_differences.index(min(norm_differences))
+                            
+                            init_joint_traj.append(sols[min_index])
+                            
                             blueprint("Openrave IK succeeds")
                         else:
                             redprint("Openrave IK fails")
+                        
+                        
+                        
+                                
+                            
+                            
+                        
+#                         
+#                         if sol != None:
+#                             x.append(i)
+#                             init_joint_traj.append(sol)
+#                             blueprint("Openrave IK succeeds")
+#                         else:
+#                             redprint("Openrave IK fails")
 
 
                     if len(x) == 0:
@@ -833,7 +892,10 @@ def main():
                     redprint("use default all zero initialization instead")
                     init_joint_traj = np.zeros((i_end+1-i_start, 7))
                     init_joint_trajs[lr] = init_joint_traj
-                    
+         
+         
+         
+                init_joint_trajs[lr] = unwrap_arm_traj_in_place(init_joint_trajs[lr])           
                 
             ### Generate full-body trajectory
             bodypart2traj = {}
@@ -877,9 +939,7 @@ def main():
     
                     ee_link_name = "%s_gripper_tool_frame"%lr
                     new_ee_traj = eetraj[ee_link_name][i_start:i_end+1]
-                    
-                    if args.execution: Globals.pr2.update_rave()
-    
+                        
                     """
                     Dirty hack.
                     """
@@ -911,6 +971,8 @@ def main():
                     bodypart2traj[part_name] = new_joint_traj
                 
                        
+            if args.execution: Globals.pr2.update_rave()
+
             redprint("Executing joint trajectory for demo %s segment %s, part %i using arms '%s'"%(demo_name, seg_name, i_miniseg, bodypart2traj.keys()))
             
             for lr in 'lr':
