@@ -12,12 +12,12 @@ class streamize_pc():
     """
     A class that takes in a bag file and a topic. 
     Returns the latest point cloud available with that frequency. 
- 
+
     Returns a iterator for point clouds indexed by a time-frequency:
     =============================================================
        On each call of 'next', it increments its time counter by
        1./freq and returns the last of all pointclouds b/w  t, t+1/f.
-    
+
        If no object is present in [t,t+1/f], it returns None.
 
     It assumes, that time-stamps are sorted.
@@ -82,7 +82,7 @@ class streamize_pc():
         self.ts = 0.0
         
         self.num_seen = 1
-    
+
 
     def next(self):
         if self.done:

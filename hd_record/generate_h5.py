@@ -16,6 +16,7 @@ import cv2
 import shutil
 import argparse
 from hd_utils.defaults import demo_files_dir, demo_names, master_name, verify_name
+from hd_utils.extraction_utils import get_video_frames
 
 
 parser = argparse.ArgumentParser()
@@ -30,26 +31,6 @@ args = parser.parse_args()
 
 cloud_proc_mod = importlib.import_module(args.cloud_proc_mod)
 cloud_proc_func = getattr(cloud_proc_mod, args.cloud_proc_func)
-
-
-def get_video_frames(video_dir, frame_stamps):
-    
-    video_stamps = np.loadtxt(osp.join(video_dir,demo_names.stamps_name))
-    frame_inds = np.searchsorted(video_stamps, frame_stamps)
-    
-    if frame_inds[-1] >= len(video_stamps):
-        frame_inds[-1] = len(video_stamps) - 1
-    
-    rgbs = []
-    depths = []
-    for frame_ind in frame_inds:
-        rgb = cv2.imread(osp.join(video_dir,demo_names.rgb_name%frame_ind))
-        assert rgb is not None
-        rgbs.append(rgb)
-        depth = cv2.imread(osp.join(video_dir,demo_names.depth_name%frame_ind),2)
-        assert depth is not None
-        depths.append(depth)
-    return rgbs, depths
 
 
 # add rgbd for one demonstration
@@ -136,7 +117,7 @@ def add_traj_to_hdf(traj, annotation, hdfroot, demo_name):
             lr_group["pot_angles"] = traj[lr][seg_name]["pot_angles"]
             lr_group["stamps"] = traj[lr][seg_name]["stamps"]
             lr_group["covars"] = traj[lr][seg_name]["covars"]
-            lr_group["covars_s"] = traj[lr][seg_name]["covars_s"]        
+            #lr_group["covars_s"] = traj[lr][seg_name]["covars_s"]        
 
 
 task_dir = osp.join(demo_files_dir, args.demo_type)
