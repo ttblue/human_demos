@@ -55,7 +55,6 @@ class HydraCalibrator:
     def get_hydra_transform(self):
         tfms = gmt.get_hydra_transforms('hydra_base', [self.calib_hydra])
         if tfms is None: return None
-        print tfms
         return tfms[self.calib_hydra]
     
     def get_ar_transform (self):
@@ -93,12 +92,10 @@ class HydraCalibrator:
             print colorize('\tGetting averaging transform : %d of %d ...'%(j+1,n_avg), "blue", True)
 
             calib_tfm = self.calib_func()
-            print calib_tfm
             hydra_tfm = self.get_hydra_transform()
             if calib_tfm is None or hydra_tfm is None:
                 if calib_tfm is None:
                     yellowprint('Could not find all required AR transforms.')
-                    print hydra_tfm
                 else:
                     yellowprint('Could not find all required hydra transforms.')
                 thresh -= 1
@@ -148,7 +145,7 @@ class HydraCalibrator:
         self.initialize_calibration(calib_type)
         i = 0
         while i < n_obs:
-            yellowprint ("Transform %d out of %d."%(i,n_obs))
+            yellowprint ("Transform %d out of %d."%(i+1,n_obs))
             if self.process_observation(n_avg):
                 i += 1
         self.calibrated = self.finish_calibration(calib_type)

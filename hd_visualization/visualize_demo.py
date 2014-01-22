@@ -388,7 +388,7 @@ def view_tracking_on_rviz(demo_type, demo_name, tps_model_fname, freq=30.0, spee
             
             time.sleep(1.0/freq)
             
-def view_hydra_demo_on_rviz (demo_type, demo_name, freq, speed, prompt, verbose):
+def view_hydra_demo_on_rviz (demo_type, demo_name, freq, speed, prompt=False, verbose=False):
     """
     Uses hydra_only.data for the segment to quickly visualize the demo.
     @demo_type, @demo_name: demo identification.
