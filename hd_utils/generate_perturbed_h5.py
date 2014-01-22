@@ -12,8 +12,6 @@ from hd_utils.yes_or_no import yes_or_no
 parser = argparse.ArgumentParser()
 parser.add_argument("--demo_type", help="Type of demonstration", type=str)
 parser.add_argument("--demo_name", help="Name of demonstration", type=str, default='')
-parser.add_argument("--cloud_proc_func", default="extract_red")
-parser.add_argument("--cloud_proc_mod", default="hd_utils.cloud_proc_funcs")
 parser.add_argument("--perturb_fname", help="File saved perturb point clouds")
 parser.add_argument("--overwrite", action="store_true")
 args = parser.parse_args()
@@ -27,7 +25,6 @@ h5file = osp.join(demotype_dir, args.demo_type+".h5")
 
 
 perturb_h5file = osp.join(demotype_dir, args.perturb_fname+".h5") 
-print perturb_h5file
 if args.overwrite:
     if osp.exists(perturb_h5file):
         os.unlink(perturb_h5file)
