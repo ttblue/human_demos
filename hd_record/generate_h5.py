@@ -21,13 +21,12 @@ from hd_utils.defaults import demo_files_dir, demo_names, master_name, verify_na
 parser = argparse.ArgumentParser()
 parser.add_argument("--demo_type", help="Type of demonstration")
 parser.add_argument("--cloud_proc_func", default="extract_red")
-parser.add_argument("--cloud_proc_mod", default="hd_utils.cloud_proc_funs")
-parser.add_argument("--no_clouds")
+parser.add_argument("--cloud_proc_mod", default="hd_utils.cloud_proc_funcs")
+parser.add_argument("--no_clouds", action="store_true")
 parser.add_argument("--clouds_only", action="store_true")
 parser.add_argument("--verify", action="store_true")
+parser.add_argument("--visualize", action="store_true")
 args = parser.parse_args()
-
-
 
 cloud_proc_mod = importlib.import_module(args.cloud_proc_mod)
 cloud_proc_func = getattr(cloud_proc_mod, args.cloud_proc_func)
@@ -66,6 +65,8 @@ def add_rgbd_to_hdf(video_dir, annotation, hdfroot, demo_name):
     
     for (i_seg, seg_info) in enumerate(annotation):
         
+        if seg_info["name"] == "done": continue
+        
         if seg_info["name"] in demo_group.keys():
             seg_group = demo_group[seg_info["name"]]
         else:
@@ -88,6 +89,8 @@ def add_traj_to_hdf_full_demo(traj, annotation, hdfroot, demo_name):
     demo_group = hdfroot.create_group(demo_name)
          
     for seg_info in annotation:
+        if seg_info["name"] == "done": continue
+        
         seg_group = demo_group.create_group(seg_info["name"]) 
          
         start = seg_info["start"]
@@ -121,6 +124,8 @@ def add_traj_to_hdf(traj, annotation, hdfroot, demo_name):
     
     for seg_info in annotation:
         seg_name = seg_info["name"]
+        if seg_name == "done": continue
+        
         seg_group = demo_group.create_group(seg_name)
         
         for lr in traj:
@@ -155,41 +160,42 @@ else:
     hdf = h5py.File(h5path)
     
     
-    demos_info = task_info['demos']
-    
-    for demo_info in demos_info:
-        demo_name = demo_info['demo_name']
-        demo_dir = osp.join(task_dir, demo_name)
-        
-        rgbd_dir = osp.join(demo_dir, demo_names.video_dir%(1))
+demos_info = task_info['demos']
 
-        annotation_file = osp.join(demo_dir,"ann.yaml")
-        traj_file = osp.join(demo_dir, "demo.traj")
-        
-        with open(annotation_file, "r") as fh: annotations = yaml.load(fh)
-        with open(traj_file, "r") as fh: traj = cp.load(fh)
-        
-        add_traj_to_hdf(traj, annotations, hdf, demo_name)    
-    
-        # assumes the first camera contains the rgbd info        
-        add_rgbd_to_hdf(rgbd_dir, annotations, hdf, demo_name)
 
+for demo_info in demos_info:
+    demo_name = demo_info['demo_name']
+    print demo_name
+    demo_dir = osp.join(task_dir, demo_name)
     
+    rgbd_dir = osp.join(demo_dir, demo_names.video_dir%(1))
+
+    annotation_file = osp.join(demo_dir,"ann.yaml")
+    traj_file = osp.join(demo_dir, "demo.traj")
+    
+    with open(annotation_file, "r") as fh: annotations = yaml.load(fh)
+    with open(traj_file, "r") as fh: traj = cp.load(fh)
+    
+    add_traj_to_hdf(traj, annotations, hdf, demo_name)    
+
+    # assumes the first camera contains the rgbd info        
+    add_rgbd_to_hdf(rgbd_dir, annotations, hdf, demo_name)
     
 # now should extract point cloud
-if not args.no_clouds:
-    for (demo_name, demo_info) in hdf.items():
-        
-        for (seg_name, seg_info) in demo_info.items():
-        
-            for field in ["cloud_xyz", "cloud_proc_func", "cloud_proc_mod", "cloud_proc_code"]:
-                if field in seg_info: del seg_info[field]
-            
-            seg_info["cloud_xyz"] = cloud_proc_func(np.asarray(seg_info["rgb"]), np.asarray(seg_info["depth"]))
+for (demo_name, demo_info) in hdf.items():
     
-            seg_info["cloud_proc_func"] = args.cloud_proc_func
-            seg_info["cloud_proc_mod"] = args.cloud_proc_mod
-            seg_info["cloud_proc_code"] = inspect.getsource(cloud_proc_func)
+    for (seg_name, seg_info) in demo_info.items():
+    
+        for field in ["cloud_xyz", "cloud_proc_func", "cloud_proc_mod", "cloud_proc_code"]:
+            if field in seg_info: del seg_info[field]
+            
+        print "gen point clouds: %s %s"%(demo_name, seg_name)
+        
+        seg_info["cloud_xyz"] = cloud_proc_func(np.asarray(seg_info["rgb"]), np.asarray(seg_info["depth"]), np.eye(4))
+        
+        seg_info["cloud_proc_func"] = args.cloud_proc_func
+        seg_info["cloud_proc_mod"] = args.cloud_proc_mod
+        seg_info["cloud_proc_code"] = inspect.getsource(cloud_proc_func)
             
             
 if args.verify:

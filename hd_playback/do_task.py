@@ -13,6 +13,9 @@ Run in simulation choosing the closest demo, single threaded
 Actually run on the robot without pausing or animating
 ./do_task.py demo_full/demo_full.h5 --execution=1 --animation=0
 
+
+
+
 """
 parser = argparse.ArgumentParser(usage=usage)
 parser.add_argument("--demo_type", type=str)
@@ -21,6 +24,7 @@ parser.add_argument("--cloud_proc_mod", default="hd_utils.cloud_proc_funcs")
     
 parser.add_argument("--execution", type=int, default=0)
 parser.add_argument("--animation", type=int, default=0)
+parser.add_argument("--simulation", type=int, default=0)
 parser.add_argument("--parallel", type=int, default=1)
 parser.add_argument("--cloud", type=int, default=0)
 parser.add_argument("--downsample", help="downsample traj.", type=int, default=1)
@@ -36,14 +40,16 @@ parser.add_argument("--fake_data_transform", type=float, nargs=6, metavar=("tx",
     default=[0,0,0,0,0,0], help="translation=(tx,ty,tz), axis-angle rotation=(rx,ry,rz)")
 
 
-parser.add_argument("--trajopt_init",type=str,default="all_zero")
+parser.add_argument("--trajopt_init",type=str,default="openrave_ik")
 parser.add_argument("--pot_threshold",type=float, default=15)
 
 parser.add_argument("--use_ar_init", action="store_true", default=False)
 parser.add_argument("--ar_demo_file",type=str, default="")
 parser.add_argument("--ar_run_file",type=str, default="")
+parser.add_argument("--use_base", action="store_true", default=False)
 
 parser.add_argument("--interactive",action="store_true")
+
 
 args = parser.parse_args()
 
@@ -84,7 +90,8 @@ except ImportError:
 
 from hd_rapprentice import registration, animate_traj, ros2rave, \
      plotting_openrave, task_execution, \
-     planning, tps, resampling
+     planning, tps, resampling, \
+     ropesim, rope_initialization
 from hd_utils import yes_or_no, ros_utils as ru, func_utils, clouds, math_utils as mu
 from hd_utils.pr2_utils import get_kinect_transform
 from hd_utils.colorize import *
@@ -105,8 +112,9 @@ cloud_proc_func = getattr(cloud_proc_mod, args.cloud_proc_func)
 class Globals:
     robot = None
     env = None
-
     pr2 = None
+    sim = None
+    viewer = None
 
 
 DS_SIZE = .025
@@ -170,27 +178,103 @@ def binarize_gripper(angle, pot_angle_threshold):
     else: return closed_angle
     
     
-def set_gripper_maybesim(lr, value):
+def set_gripper_maybesim(lr, is_open, prev_is_open):
+    mult = 1 if args.execution else 5
+    open_angle = .08 * mult
+    closed_angle = (0 if not args.simulation else .02) * mult
+    
+    target_val = open_angle if is_open else closed_angle
+
     if args.execution:
         gripper = {"l":Globals.pr2.lgrip, "r":Globals.pr2.rgrip}[lr]
-        gripper.set_angle(value)
+        gripper.set_angle(target_val)
         Globals.pr2.join_all()
-    else:
-        Globals.robot.SetDOFValues([value*5], [Globals.robot.GetJoint("%s_gripper_l_finger_joint"%lr).GetDOFIndex()])
+        
+    elif not args.simulation:
+        Globals.robot.SetDOFValues([target_val], [Globals.robot.GetJoint("%s_gripper_l_finger_joint"%lr).GetDOFIndex()])
+        
+    elif args.simulation:
+        # release constraints if necessary
+        if is_open and not prev_is_open:
+            Globals.sim.release_rope(lr)
+
+        # execute gripper open/close trajectory
+        joint_ind = Globals.robot.GetJoint("%s_gripper_l_finger_joint"%lr).GetDOFIndex()
+        start_val = Globals.robot.GetDOFValues([joint_ind])[0]
+        joint_traj = np.linspace(start_val, target_val, np.ceil(abs(target_val - start_val) / .02))
+        for val in joint_traj:
+            Globals.robot.SetDOFValues([val], [joint_ind])
+            Globals.sim.step()
+            if args.animation:
+                Globals.viewer.Step()
+                if args.interactive: Globals.viewer.Idle()
+        # add constraints if necessary
+        if not is_open and prev_is_open:
+            
+            if not Globals.sim.grab_rope(lr):
+                redprint("Grab failed")
+                return False
+            else:
+                blueprint("Grab succeeded")
+        
+        
     return True
 
 
+def unwrap_arm_traj_in_place(traj):
+    assert traj.shape[1] == 7
+    for i in [2,4,6]:
+        traj[:,i] = np.unwrap(traj[:,i])
+    return traj
+
+def unwrap_in_place(t):
+    # TODO: do something smarter than just checking shape[1]
+    if t.shape[1] == 7:
+        unwrap_arm_traj_in_place(t)
+    elif t.shape[1] == 14:
+        unwrap_arm_traj_in_place(t[:,:7])
+        unwrap_arm_traj_in_place(t[:,7:])
+    else:
+        raise NotImplementedError
+
 def exec_traj_maybesim(bodypart2traj):
-    if args.animation:
+    def sim_callback(i):
+        Globals.sim.step()
+    
+    if args.animation or args.simulation:
         dof_inds = []
         trajs = []
+        base_hmats = None
         for (part_name, traj) in bodypart2traj.items():
+            if part_name == "base":
+                base_hmats = [planning.base_pose_to_mat(base_dofs) for base_dofs in traj]
+                continue
             manip_name = {"larm":"leftarm","rarm":"rightarm"}[part_name]
             dof_inds.extend(Globals.robot.GetManipulator(manip_name).GetArmIndices())
             trajs.append(traj)
         full_traj = np.concatenate(trajs, axis=1)
         Globals.robot.SetActiveDOFs(dof_inds)
-        animate_traj.animate_traj(full_traj, Globals.robot, restore=False,pause=True)
+        
+        if args.simulation:
+            # make the trajectory slow enough for the simulation
+            full_traj, base_hmats = ropesim.retime_traj(Globals.robot, dof_inds, full_traj, base_hmats)
+            
+            # in simulation mode, we must make sure to gradually move to the new starting position
+            curr_vals = Globals.robot.GetActiveDOFValues()
+            transition_traj = np.r_[[curr_vals], [full_traj[0]]]
+            transition_base_hmats = base_hmats.append(Globals.robot.GetTransform())
+            
+            unwrap_in_place(transition_traj)
+            transition_traj, transition_base_hmats = ropesim.retime_traj(Globals.robot, dof_inds, transition_traj, transition_base_hmats, max_cart_vel=.01)
+            animate_traj.animate_traj(transition_traj, transition_base_hmats, Globals.robot, restore=False, pause=args.interactive,
+                callback=sim_callback if args.simulation else None, step_viewer=args.animation)
+            full_traj[0] = transition_traj[-1]
+            unwrap_in_place(full_traj)
+        
+        animate_traj.animate_traj(full_traj, base_hmats, Globals.robot, restore=False, pause=args.interactive,
+                                  callback=sim_callback if args.simulation else None, step_viewer=args.animation)
+        
+        
     if args.execution:
         if not args.prompt or yes_or_no("execute?"):
             pr2_trajectories.follow_body_traj(Globals.pr2, bodypart2traj)
@@ -225,12 +309,16 @@ def registration_cost(xyz0, xyz1):
     return cost
 
 
-def find_closest_auto(demofile, new_xyz):
+def find_closest_auto(demofile, new_xyz, init_tfm=None, n_jobs=3):
     if args.parallel:
         from joblib import Parallel, delayed
         
     demo_clouds = []
     
+    DS_LEAF_SIZE = 0.045
+    new_xyz = clouds.downsample(new_xyz,DS_LEAF_SIZE)
+    
+    avg = 0.0
     
     keys = {}
     seg_num = 0
@@ -239,10 +327,16 @@ def find_closest_auto(demofile, new_xyz):
             for seg_name in demofile[demo_name]:
                 keys[seg_num] = (demo_name, seg_name)
                 seg_num += 1
-                demo_clouds.append(np.asarray(demofile[demo_name][seg_name]["cloud_xyz"]))
-            
+                demo_xyz = clouds.downsample(np.asarray(demofile[demo_name][seg_name]["cloud_xyz"]),DS_LEAF_SIZE)
+                if init_tfm is not None:
+                    demo_xyz = demo_xyz.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
+                print demo_xyz.shape
+                avg += demo_xyz.shape[0]
+                demo_clouds.append(demo_xyz)
+    
+    # raw_input(avg/len(demo_clouds))
     if args.parallel:
-        costs = Parallel(n_jobs=3,verbose=100)(delayed(registration_cost)(demo_cloud, new_xyz) for demo_cloud in demo_clouds)
+        costs = Parallel(n_jobs=n_jobs,verbose=51)(delayed(registration_cost)(demo_cloud, new_xyz) for demo_cloud in demo_clouds)
     else:
         costs = []
         
@@ -406,6 +500,10 @@ def main():
         Globals.env.StopSimulation()
         Globals.env.Load("robots/pr2-beta-static.zae")
         Globals.robot = Globals.env.GetRobots()[0]
+        
+        if args.simulation:
+            Globals.sim = ropesim.Simulation(Globals.env, Globals.robot)
+        
 
     Globals.viewer = trajoptpy.GetViewer(Globals.env)
     '''
@@ -413,32 +511,20 @@ def main():
     '''
     # As found from measuring
     if ADD_TABLE:
-#         if args.execution:
-#             tablePos = [0.60,0.0,0.70]
-#         else:
-#             tablePos = [0.60,0.0,0.40]
-#         tableHalfExtents = [0.50,1.00,0.06]
         if args.execution:
             Globals.env.Load('table.xml')
         else:
             Globals.env.Load('table_sim.xml')
         body = Globals.env.GetKinBody('table')
         Globals.viewer.SetTransparency(body,0.4)
-#     
-#     
-#         with Globals.env:
-#             body = openravepy.RaveCreateKinBody(Globals.env,'')
-#             body.SetName('table')
-#             body.InitFromBoxes(np.array([tablePos + tableHalfExtents]),False)
-#             Globals.env.AddKinBody(body,True)
-        
+
 
     # get rgbd from pr2?
     if not args.fake_data_segment or not args.fake_data_demo:
         grabber = cloudprocpy.CloudGrabber()
         grabber.startRGBD()
 
-    
+    init_tfm = None
     if args.use_ar_init:
         # Get ar marker from demo:
         if args.ar_demo_file == "":
@@ -498,7 +584,13 @@ def main():
             T_w_k = get_kinect_transform(Globals.robot)
             init_tfm = T_w_k.dot(init_tfm)
 
+            
+
+    curr_step = 0
+
     while True:
+        
+        curr_step += 1
         '''
         Acquire point cloud
         '''
@@ -509,17 +601,27 @@ def main():
             l_vals = PR2.Arm.L_POSTURES['side']
             Globals.robot.SetDOFValues(l_vals, Globals.robot.GetManipulator('leftarm').GetArmIndices())
             Globals.robot.SetDOFValues(PR2.mirror_arm_joints(l_vals), Globals.robot.GetManipulator('rightarm').GetArmIndices())
-            
-            fake_seg = demofile[args.fake_data_demo][args.fake_data_segment]
-            new_xyz = np.squeeze(fake_seg["cloud_xyz"])
 
-            hmat = openravepy.matrixFromAxisAngle(args.fake_data_transform[3:6])
-            hmat[:3,3] = args.fake_data_transform[0:3]
-            if args.use_ar_init: hmat = init_tfm.dot(hmat)
+            if args.simulation and curr_step > 1:
+                # for following steps in rope simulation, using simulation result
+                new_xyz = Globals.sim.observe_cloud()
+            else:          
+                fake_seg = demofile[args.fake_data_demo][args.fake_data_segment]
+                new_xyz = np.squeeze(fake_seg["cloud_xyz"])
+        
+                hmat = openravepy.matrixFromAxisAngle(args.fake_data_transform[3:6])
+                hmat[:3,3] = args.fake_data_transform[0:3]
+                if args.use_ar_init: hmat = init_tfm.dot(hmat)
+        
+                # if not rope simulation
+                new_xyz = new_xyz.dot(hmat[:3,:3].T) + hmat[:3,3][None,:]
+                
+                # if the first step in rope simulation
+                if args.simulation: # curr_step == 1
+                    rope_nodes = rope_initialization.find_path_through_point_cloud(new_xyz)
+                    Globals.sim.create(rope_nodes)
+                    new_xyz = Globals.sim.observe_cloud()
 
-            new_xyz = new_xyz.dot(hmat[:3,:3].T) + hmat[:3,3][None,:]
-            #r2r = ros2rave.RosToRave(Globals.robot, np.asarray(fake_seg["joint_states"]["name"]))
-            #r2r.set_values(Globals.robot, np.asarray(fake_seg["joint_states"]["position"][0]))
         else:
             Globals.pr2.head.set_pan_tilt(0,1.2)
             Globals.pr2.rarm.goto_posture('side')
@@ -550,7 +652,7 @@ def main():
         if args.select_manual:
             (demo_name, seg_name) = find_closest_manual(demofile, new_xyz)
         else:
-            (demo_name, seg_name) = find_closest_auto(demofile, new_xyz)
+            (demo_name, seg_name) = find_closest_auto(demofile, new_xyz, init_tfm)
         
         seg_info = demofile[demo_name][seg_name]
         redprint("closest demo: %s, %s"%(demo_name, seg_name))
@@ -579,12 +681,15 @@ def main():
             # Transform the old clouds approximately into PR2's frame
             old_xyz = old_xyz.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
             
+        DS_LEAF_SIZE = 0.04
+        new_xyz = clouds.downsample(new_xyz, DS_LEAF_SIZE)
+        old_xyz = clouds.downsample(old_xyz, DS_LEAF_SIZE)
+    
     
         color_old = [(1,0,0,1) for _ in range(len(old_xyz))]
         color_new = [(0,0,1,1) for _ in range(len(new_xyz))]
         handles.append(Globals.env.plot3(old_xyz,5,np.array(color_old)))
         handles.append(Globals.env.plot3(new_xyz,5,np.array(color_new)))
-        
 
         t1 = time.time()
         scaled_old_xyz, src_params = registration.unit_boxify(old_xyz)
@@ -597,9 +702,11 @@ def main():
         handles.extend(plotting_openrave.draw_grid(Globals.env, f.transform_points, old_xyz.min(axis=0)-np.r_[0,0,.1], old_xyz.max(axis=0)+np.r_[0,0,.1], xres = .1, yres = .1, zres = .04))
         
         print 'time: %f'%(t2-t1)
+        #raw_input()
+        #Globals.viewer.Idle()
 
 #         import IPython
-#         IPython.embed()
+#         .embed()
 
         eetraj = {}
         for lr in 'lr':
@@ -730,62 +837,116 @@ def main():
                 
             ### Generate full-body trajectory
             bodypart2traj = {}
-            for lr in 'lr':
-                manip_name = {"l":"leftarm", "r":"rightarm"}[lr]
-
-                ee_link_name = "%s_gripper_tool_frame"%lr
-                new_ee_traj = eetraj[ee_link_name][i_start:i_end+1]
+            
+            if args.use_base:
                 
-                if args.execution: Globals.pr2.update_rave()
-
-                """
-                Dirty hack.
-                """
-                now_val = binarize_gripper(seg_info[lr]["pot_angles"][i_end], args.pot_threshold)
-                next_val = binarize_gripper(seg_info[lr]["pot_angles"][i_end+1], args.pot_threshold)
+                new_hmats = {}
+                init_traj = {}
                 
-                if next_val < now_val:
-                    end_pose_constraint = True
+                for lr in 'lr':
+                    ee_link_name = "%s_gripper_tool_frame"%lr
+                    new_ee_traj = eetraj[ee_link_name][i_start:i_end+1]    
+                
+                    manip_name = {"l":"leftarm", "r":"rightarm"}[lr]
+                    new_hmats[manip_name] = new_ee_traj
+                    init_traj[manip_name] = downsample_objects(init_joint_trajs[lr], args.downsample)
+                
+                
+                active_dofs = np.r_[Globals.robot.GetManipulator("rightarm").GetArmIndices(), Globals.robot.GetManipulator("leftarm").GetArmIndices()]
+                
+                allow_base = True
+                if allow_base:
+                    Globals.robot.SetActiveDOFs(active_dofs, 
+                                                openravepy.DOFAffine.X + openravepy.DOFAffine.Y + openravepy.DOFAffine.RotationAxis,
+                                                [0, 0, 1])
                 else:
-                    end_pose_constraint = False
-                """
-                End dirty hack.
-                """
+                    Globals.robot.SetActiveDOFs(active_dofs)                
+                    
+                new_joint_traj, _ = planning.plan_fullbody(Globals.robot, Globals.env, new_hmats, init_traj, allow_base=allow_base)
                 
-                new_ee_traj = downsample_objects(new_ee_traj, args.downsample)
-                init_joints = downsample_objects(init_joint_trajs[lr], args.downsample)
+                part_names = {"leftarm":"larm", "rightarm":"rarm", "base":"base"}
+                
+                for bodypart_name in new_joint_traj:
+                    bodypart2traj[part_names[bodypart_name]] = new_joint_traj[bodypart_name]
+                    
 
-                new_joint_traj = planning.plan_follow_traj(Globals.robot, manip_name,
-                                                           Globals.robot.GetLink(ee_link_name),
-                                                           new_ee_traj, init_joints     ,
-                                                           end_pose_constraint=end_pose_constraint)
-                
-                prev_vals[lr] = new_joint_traj[-1]
-                #handles.append(Globals.env.drawlinestrip(new_ee_traj[:,:3,3], 2, (0,1,0,1))
-                
-                
-                part_name = {"l":"larm", "r":"rarm"}[lr]
-                bodypart2traj[part_name] = new_joint_traj
+
+            else:
+                for lr in 'lr':
+                    manip_name = {"l":"leftarm", "r":"rightarm"}[lr]
+    
+                    ee_link_name = "%s_gripper_tool_frame"%lr
+                    new_ee_traj = eetraj[ee_link_name][i_start:i_end+1]
+                    
+                    if args.execution: Globals.pr2.update_rave()
+    
+                    """
+                    Dirty hack.
+                    """
+                    now_val = binarize_gripper(seg_info[lr]["pot_angles"][i_end], args.pot_threshold)
+                    next_val = binarize_gripper(seg_info[lr]["pot_angles"][i_end+1], args.pot_threshold)
+                    
+                    if next_val < now_val:
+                        end_pose_constraint = True
+                    else:
+                        end_pose_constraint = False
+                    """
+                    End dirty hack.
+                    """
+                    
+                    new_ee_traj = downsample_objects(new_ee_traj, args.downsample)
+                    init_joints = downsample_objects(init_joint_trajs[lr], args.downsample)
+        
+                    
+                    new_joint_traj = planning.plan_follow_traj(Globals.robot, manip_name,
+                                                               Globals.robot.GetLink(ee_link_name),
+                                                               new_ee_traj, init_joints,
+                                                               end_pose_constraint=end_pose_constraint)
+                    
+                    prev_vals[lr] = new_joint_traj[-1]
+                    #handles.append(Globals.env.drawlinestrip(new_ee_traj[:,:3,3], 2, (0,1,0,1))
+                    
+                    
+                    part_name = {"l":"larm", "r":"rarm"}[lr]
+                    bodypart2traj[part_name] = new_joint_traj
                 
                        
             redprint("Executing joint trajectory for demo %s segment %s, part %i using arms '%s'"%(demo_name, seg_name, i_miniseg, bodypart2traj.keys()))
             
             for lr in 'lr':
-                success &= set_gripper_maybesim(lr, binarize_gripper(seg_info[lr]["pot_angles"][i_start], args.pot_threshold))
+                gripper_open = binarize_gripper(seg_info[lr]["pot_angles"][i_start], args.pot_threshold)
+                prev_gripper_open = binarize_gripper(seg_info[lr]["pot_angles"][i_start-1], args.pot_threshold) if i_start != 0 else False
+                if not set_gripper_maybesim(lr, gripper_open, prev_gripper_open):
+                    redprint("Grab %s failed"%lr)
+                    success = False
                 # Doesn't actually check if grab occurred, unfortunately
                 
+            if args.simulation:
+                Globals.sim.rope.GetNodes()
             
-            if not success: break
+           # if not success: break
             
             if len(bodypart2traj) > 0:
                 success &= exec_traj_maybesim(bodypart2traj)
                 time.sleep(5)
                 
-            if not success: break
+            if args.simulation:
+                Globals.sim.rope.GetNodes()
+                
+            #if not success: break
+            
+        if args.simulation:
+            Globals.sim.settle(animate=args.animation)
+            Globals.sim.rope.GetNodes()
+            
+        Globals.viewer.Idle()
+                    
             
         redprint("Demo %s Segment %s result: %s"%(demo_name, seg_name, success))
         
-        if args.fake_data_demo and args.fake_data_segment: break
+        if args.fake_data_demo and args.fake_data_segment and not args.simulation: break
+        
+    raw_input()
 
 
 if __name__ == "__main__":

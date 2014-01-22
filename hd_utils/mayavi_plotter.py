@@ -1,6 +1,6 @@
 import numpy as np
 import mayavi_utils
-from rapprentice.colorize import *
+from hd_utils.colorize import colorize
 from mayavi import mlab
 from multiprocessing import Process,Pipe
 from threading import Lock

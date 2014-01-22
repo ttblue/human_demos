@@ -72,6 +72,8 @@ feedback_dir = osp.join(hd_data_dir,'demo_feedback')
 simple_feedback_name = 'simple_fb.cp'
 ik_feedback_name = 'ik_fb.cp'
 
+similarity_costs_dir = osp.join(hd_data_dir,'sim_costs')
+
 master_name = 'master.yaml'
 latest_demo_name = 'latest_demo.txt'
 verify_name = 'verify'

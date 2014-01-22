@@ -110,13 +110,16 @@ def get_first_state(tf_streams, freq, start_time):
             if t <= dt + start_time:
                 tfs0.append(tfs[ti])
                 
-
-    if len(tfs0)==0:
-        redprint("Cannot find initial state for KF: no data found within dT in all streams")    
-
-    x0 =  state_from_tfms_no_velocity([avg_transform(tfs0)])
+                
     I3 = np.eye(3)
     S0 = scl.block_diag(1e-3*I3, 1e-2*I3, 1e-3*I3, 1e-3*I3)
+                
+    if len(tfs0)==0:
+        redprint("Cannot find initial state for KF: no data found within dT in all streams")
+        x0 = state_from_tfms_no_velocity([])
+    else:    
+        x0 =  state_from_tfms_no_velocity([avg_transform(tfs0)])
+
     return (x0, S0)
 
 
