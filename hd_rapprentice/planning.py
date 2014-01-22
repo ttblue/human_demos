@@ -211,18 +211,29 @@ def plan_fullbody(robot, env, new_hmats_by_bodypart, old_traj_by_bodypart,
         elif manip == 'base':
             link = 'base_footprint'
             
+        if manip in ['rightarm', 'leftarm']:
+            end_pose = openravepy.poseFromMatrix(poses[-1])
+            
+            constraints.append({"type":"pose",
+                                "params":{
+                                          "xyz":end_pose[4:7].tolist(),
+                                          "wxyz":end_pose[0:4].tolist(),
+                                          "link":link,
+                                          "pos_coeffs":[10,10,10],
+                                          "rot_coeffs":[10,10,10]}})
+            
         
         poses = [openravepy.poseFromMatrix(hmat) for hmat in poses]
     
         for t, pose in enumerate(poses):
-            constraints.append({
+            costs.append({
                              "type": "pose",
                              "params": {"xyz": pose[4:].tolist(),
                                         "wxyz": pose[:4].tolist(),
-                                      "link": link,
-                                      "pos_coeffs": [20, 20, 20],
-                                      "rot_coeffs": [20, 20, 20],
-                                      "timestep": t}
+                                        "link": link,
+                                        "pos_coeffs": [20, 20, 20],
+                                        "rot_coeffs": [20, 20, 20],
+                                        "timestep": t}
                              })
             
 
