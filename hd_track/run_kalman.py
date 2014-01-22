@@ -406,7 +406,6 @@ def low_pass(x, freq=30.):
     removes high-frequency content from an array X.
     can be used to smooth out the kalman filter estimates.
     """
-    
     fs      = freq  # sampling freq (Hz)
     lowcut  = 0.0   # lower-most freq (Hz)
     highcut = 3.0   # higher-most freq (Hz)
@@ -418,9 +417,8 @@ def low_pass(x, freq=30.):
     
     x_filt = filtfilt(b, a, x, axis=0)
     x_filt = np.squeeze(x_filt)
-    #assert len(x_filt)==len(x)
     return  x_filt
-    
+
 
 def run_KF(KF, nsteps, freq, hydra_strm, cam_dat, hydra_covar, cam_covars, do_smooth, plot, plot_title, block):
     """
@@ -471,6 +469,7 @@ def run_KF(KF, nsteps, freq, hydra_strm, cam_dat, hydra_covar, cam_covars, do_sm
         xs_kf_xyz = np.array(xs_kf)[:,0:3] 
         xs_lp_xyz = low_pass(xs_kf_xyz, freq)
         xs_smthr  = np.c_[xs_lp_xyz, np.squeeze(np.array(xs_kf))[:,3:]].tolist()
+        covars_smthr = None
 
         if 's' in plot:
             kf_strm   = streamize(state_to_hmat(xs_kf), np.array(ts_kf), 1./hydra_strm.dt, hydra_strm.favg)
@@ -478,7 +477,7 @@ def run_KF(KF, nsteps, freq, hydra_strm, cam_dat, hydra_covar, cam_covars, do_sm
             plot_tf_streams([kf_strm, sm_strm, hydra_strm]+cam_strms, ['kf', 'smoother', 'hydra']+cam_dat.keys(), styles=['-','-','.','.','.','.'], title=plot_title, block=block)
             #plot_tf_streams([hydra_strm]+cam_strms, ['hydra']+cam_dat.keys(), block=block)
 
-        return (ts_kf, xs_kf, covars_kf, xs_smthr, covars_kf)
+        return (ts_kf, xs_kf, covars_kf, xs_smthr, covars_smthr)
     else:
         if 's' in plot:
             kf_strm   = streamize(state_to_hmat(xs_kf), np.array(ts_kf), 1./hydra_strm.dt, hydra_strm.favg)
