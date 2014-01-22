@@ -59,7 +59,7 @@ hd_path = os.getenv('HD_DIR')
 data_dir = os.getenv('HD_DEMO_DATA_DIR')
 hd_data_dir = os.getenv('HD_DATA_DIR')
 calib_files_dir = osp.join(hd_data_dir, 'calib')
-demo_files_dir =  osp.join(data_dir, 'demos')
+demo_files_dir  =  osp.join(data_dir, 'demos')
 
 '''
 Default names for files inside each demo directory and others.

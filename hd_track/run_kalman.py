@@ -19,6 +19,7 @@ from hd_track.kalman_tuning import state_from_tfms_no_velocity
 from hd_track.streamer import streamize, get_corresponding_data, stream_soft_next, time_shift_stream
 from hd_track.demo_data_prep import *
 from hd_track.tps_correct    import *
+from scipy.signal import butter, filtfilt
 
 
 def initialize_motion_covariance(freq):
@@ -38,34 +39,35 @@ def initialize_motion_covariance(freq):
     
     return motion_covar
 
+def get_smoother_motion_covariance(freq):
+    kf_motion_covar = initialize_motion_covariance(freq)
+    kf_motion_covar *= 1e-1
+    return kf_motion_covar
+
 def initialize_covariances(freq, demo_dir):
     """
     Initialize empirical estimates of covariances:
     
      -- Cameras and the hydra observe just the xyzrpy (no velocities).
      -- Motion covariance is for all 12 variables.
-     
-     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-         TODO : CHANGE here for different covariances for rgb/rgbd
-     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     """
     cam_types = get_cam_types(demo_dir)
     cam_tfms = get_cam_tfms(demo_dir)
     
     
     rgbd_cam_xyz_std    = [0.01, 0.01, 0.01] # 1cm
-    rgb_cam_xyz_std    = [0.05, 0.05, 0.1] # 1cm
-    hydra_xyz_std  = [0.02, 0.02, 0.02] # 2cm <-- use small std after tps-correction.
-    
+    rgb_cam_xyz_std     = [0.05, 0.05, 0.05] # 1cm
+    hydra_xyz_std       = [0.08, 0.08, 0.08] # 3cm <-- use small std after tps-correction.
+
     rgbd_cam_rpy_std    = np.deg2rad(15)
-    rgb_cam_rpy_std    = np.deg2rad(15)
-    hydra_rpy_std  = np.deg2rad(5)
+    rgb_cam_rpy_std     = np.deg2rad(15)
+    hydra_rpy_std       = np.deg2rad(5)
 
 
     I3 = np.eye(3)
     
-    rgbd_covar = scl.block_diag(np.diag(np.square(rgbd_cam_xyz_std)), np.square(rgbd_cam_rpy_std)*I3)
-    rgb_covar = scl.block_diag(np.diag(np.square(rgb_cam_xyz_std)), np.square(rgb_cam_rpy_std)*I3)
+    rgbd_covar  = scl.block_diag(np.diag(np.square(rgbd_cam_xyz_std)), np.square(rgbd_cam_rpy_std)*I3)
+    rgb_covar   = scl.block_diag(np.diag(np.square(rgb_cam_xyz_std)), np.square(rgb_cam_rpy_std)*I3)
     hydra_covar = scl.block_diag(np.diag(np.square(hydra_xyz_std)), np.square(hydra_rpy_std)*I3)
 
     
@@ -387,9 +389,7 @@ def initialize_KFs(kf_data, freq):
             for cinfo in cam_dat.values():
                 cam_strms.append(cinfo['stream'])
                 
-#             print "initialize_KF"
-#             print hydra_strm.get_start_time(), cam_strms[0].get_start_time(), cam_strms[1].get_start_time(), cam_strms[2].get_start_time()
-#             print hydra_strm.get_data()[1][0], cam_strms[0].get_data()[1][0], cam_strms[1].get_data()[1][0], cam_strms[2].get_data()[1][0] 
+
 
             x0, S0 = get_first_state(cam_strms + [hydra_strm], freq=1./hydra_strm.dt, start_time=kf_data[lr][i]['shifted_seg_start_times'])
 
@@ -401,7 +401,28 @@ def initialize_KFs(kf_data, freq):
     return KFs
 
 
-def run_KF(KF, nsteps, freq, hydra_strm, cam_dat, hydra_covar, cam_covars, do_smooth, plot, block):
+def low_pass(x, freq=30.):
+    """
+    removes high-frequency content from an array X.
+    can be used to smooth out the kalman filter estimates.
+    """
+    
+    fs      = freq  # sampling freq (Hz)
+    lowcut  = 0.0   # lower-most freq (Hz)
+    highcut = 3.0   # higher-most freq (Hz)
+
+    nyq = 0.5 * fs  # nyquist frequency
+    low = lowcut / nyq
+    high = highcut / nyq
+    b, a = butter(4, high, btype='low')
+    
+    x_filt = filtfilt(b, a, x, axis=0)
+    x_filt = np.squeeze(x_filt)
+    #assert len(x_filt)==len(x)
+    return  x_filt
+    
+
+def run_KF(KF, nsteps, freq, hydra_strm, cam_dat, hydra_covar, cam_covars, do_smooth, plot, plot_title, block):
     """
     Runs the Kalman filter/smoother for NSTEPS using
     {hydra/rgb/rgbd}_covar as the measurement covariances.
@@ -424,9 +445,6 @@ def run_KF(KF, nsteps, freq, hydra_strm, cam_dat, hydra_covar, cam_covars, do_sm
     cam_types = [cinfo['type'] for cinfo in cam_dat.values()]
     cam_snext = [stream_soft_next(cstrm) for cstrm in cam_strms]
     
-#     import IPython
-#     IPython.embed()
-    
     for i in xrange(nsteps):
         KF.register_tf_observation(hydra_snext(), hydra_covar, do_control_update=True)
 
@@ -436,31 +454,37 @@ def run_KF(KF, nsteps, freq, hydra_strm, cam_dat, hydra_covar, cam_covars, do_sm
 
         xs_kf.append(KF.x_filt)
         covars_kf.append(KF.S_filt)
-        ts_kf.append(KF.t_filt)    
-
+        ts_kf.append(KF.t_filt)
+        
     hydra_strm.reset()
     for cstrm in cam_strms:
         cstrm.reset()
     if do_smooth:
-        A,R  = KF.get_motion_mats(dt)
-        xs_smthr, covars_smthr = smoother(A, R, xs_kf, covars_kf)
         
+        '''
+        # UNCOMMENT BELOW TO RUN KALMAN SMOOTHER:
+        A,_  = KF.get_motion_mats(dt)
+        R    = get_smoother_motion_covariance(freq)
+        xs_smthr, covars_smthr = smoother(A, R, xs_kf, covars_kf)
+        '''
+        ### do low-pass filtering for smoothing:
+        xs_kf_xyz = np.array(xs_kf)[:,0:3] 
+        xs_lp_xyz = low_pass(xs_kf_xyz, freq)
+        xs_smthr  = np.c_[xs_lp_xyz, np.squeeze(np.array(xs_kf))[:,3:]].tolist()
+
         if 's' in plot:
             kf_strm   = streamize(state_to_hmat(xs_kf), np.array(ts_kf), 1./hydra_strm.dt, hydra_strm.favg)
             sm_strm   = streamize(state_to_hmat(xs_smthr), np.array(ts_kf), 1./hydra_strm.dt, hydra_strm.favg)
-            plot_tf_streams([kf_strm, sm_strm, hydra_strm]+cam_strms, ['kf', 'smoother', 'hydra']+cam_dat.keys(), block=block)
+            plot_tf_streams([kf_strm, sm_strm, hydra_strm]+cam_strms, ['kf', 'smoother', 'hydra']+cam_dat.keys(), styles=['-','-','.','.','.','.'], title=plot_title, block=block)
             #plot_tf_streams([hydra_strm]+cam_strms, ['hydra']+cam_dat.keys(), block=block)
 
-        
-        return (ts_kf, xs_kf, covars_kf, xs_smthr, covars_smthr)
+        return (ts_kf, xs_kf, covars_kf, xs_smthr, covars_kf)
     else:
         if 's' in plot:
             kf_strm   = streamize(state_to_hmat(xs_kf), np.array(ts_kf), 1./hydra_strm.dt, hydra_strm.favg)
-            plot_tf_streams([kf_strm, hydra_strm]+cam_strms, ['kf', 'hydra']+cam_dat.keys(), block=block)
+            plot_tf_streams([kf_strm, hydra_strm]+cam_strms, ['kf', 'hydra']+cam_dat.keys(), styles=['-','-','.','.','.','.'], title=plot_title, block=block)
             #plot_tf_streams([hydra_strm]+cam_strms, ['hydra']+cam_dat.keys(), block=block)
         return (ts_kf, xs_kf, covars_kf, None, None)
-
-
 
 def filter_traj(demo_dir, tps_model_fname, save_tps, do_smooth, plot, block):
     """
@@ -500,8 +524,10 @@ def filter_traj(demo_dir, tps_model_fname, save_tps, do_smooth, plot, block):
             ts, xs_kf, covars_kf, xs_smthr, covars_smthr = run_KF(KF, nsteps, freq,
                                                                   hydra_strm, cam_dat,
                                                                   hydra_covar, cam_covars,
-                                                                  do_smooth, plot, block)
-            
+                                                                  do_smooth,
+                                                                  plot, plot_title='seg %d : %s'%(iseg, {'l':'left', 'r':'right'}[lr]),
+                                                                  block=block)
+
             for i in range(len(ts)):
                 ts[i] -= time_shifts['camera1']
                                 
@@ -596,7 +622,7 @@ def filter_traj(demo_dir, tps_model_fname, save_tps, do_smooth, plot, block):
 
 
 if __name__=='__main__':
-    
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--demo_type", help="Type of demonstration")
     parser.add_argument("--demo_name", help="Name of demo", default='', type=str)
@@ -607,17 +633,15 @@ if __name__=='__main__':
     parser.add_argument("--tps_fname", help="tps file name to be used", default='', type=str)
     parser.add_argument("--block", help="block plotting", action='store_true', default=False)
     parser.add_argument("--overwrite", help="overwrite if demo.traj already exists", action='store_true', default=False)
-    
+
     args = parser.parse_args()
-    
-    
+
     demo_type_dir = osp.join(demo_files_dir, args.demo_type)
     demo_master_file = osp.join(demo_type_dir, master_name)
-    
+
     with open(demo_master_file, 'r') as fh:
         demos_info = yaml.load(fh)
-        
-        
+
     if args.demo_name == '':
         for demo in demos_info["demos"]:
             demo_dir = osp.join(demo_type_dir, demo["demo_name"])
