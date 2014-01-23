@@ -118,6 +118,8 @@ def load_init_config(config_num):
     if perturb_pts_idx >= len(perturb_file[perturb_file.keys()[perturb_demo_idx]]['perturbs'].keys()):
         perturb_pts_idx = 0
         perturb_demo_idx += 1
+        if perturb_demo_idx >= len(perturb_file.keys()):
+            perturb_demo_idx = 0
         
     perturb_dat = perturb_file[perturb_file.keys()[perturb_demo_idx]]['perturbs']
     perturb_pts = perturb_dat[perturb_dat.keys()[perturb_pts_idx]][...]
