@@ -95,10 +95,14 @@ def main(demo_type, n_clusters, num_seg=None):
         if done:
             break
 
+    ts = time.time()
     mat = generate_sim_matrix(costs, weights,keys)
+    print 'Time taken to generate sim matrix: %f'%(time.time() - ts)
     print mat
     
+    ts = time.time()
     labels = spectral_clustering(mat, n_clusters = n_clusters, eigen_solver='arpack',assign_labels='discretize')
+    print 'Time taken to cluster: %f'%(time.time() - ts)
     names = {i:[] for i in xrange(args.num_clusters)}
     images = {i:[] for i in xrange(args.num_clusters)}
     
