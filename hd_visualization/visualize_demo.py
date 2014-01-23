@@ -223,6 +223,8 @@ def view_demo_on_rviz(demo_type, demo_name, freq, speed=1.0, main='h', prompt=Fa
         next_est = {lr:{} for lr in grippers}
         tfms = []
         ang_vals  = []
+        
+        if main != 'h': main = int(main)
 
         for lr in grippers:
             next_est[lr]['h'] = dat_snext[lr]['h']()
