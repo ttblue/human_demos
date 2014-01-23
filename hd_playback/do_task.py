@@ -47,6 +47,7 @@ parser.add_argument("--use_ar_init", action="store_true", default=False)
 parser.add_argument("--ar_demo_file",type=str, default="")
 parser.add_argument("--ar_run_file",type=str, default="")
 parser.add_argument("--use_base", action="store_true", default=False)
+parser.add_argument("--early_stop_portion", help="stop early in the final segment to avoid bullet simulation problem", type=float, default=0.5)
 
 parser.add_argument("--interactive",action="store_true")
 
@@ -315,16 +316,31 @@ def find_closest_manual(demofile, _new_xyz):
     print "choose from the following options (type an integer)"
     seg_num = 0
     keys = {}
+    is_finalsegs = {}
     for demo_name in demofile:
         if demo_name != "ar_demo":
+            if 'done' in demofile[demo_name].keys():
+                final_seg_id = len(demofile[demo_name].keys()) - 2
+            else:
+                final_seg_id = len(demofile[demo_name].keys()) - 1
+                
+            
             for seg_name in demofile[demo_name]:
                 if seg_name != 'done':
                     keys[seg_num] = (demo_name, seg_name)
                     print "%i: %s, %s"%(seg_num, demo_name, seg_name)
+                    
+                    if seg_name == "seg%02d"%(final_seg_id):
+                        is_finalsegs[seg_num] = True
+                    else:
+                        is_finalsegs[seg_num] = False
+
                     seg_num += 1
+                    
+                    
                 
     choice_ind = task_execution.request_int_in_range(seg_num)
-    return keys[choice_ind]
+    return keys[choice_ind], is_finalsegs[choice_ind]
 
 
 def registration_cost(xyz0, xyz1):
@@ -347,11 +363,25 @@ def find_closest_auto(demofile, new_xyz, init_tfm=None, n_jobs=3):
     avg = 0.0
     
     keys = {}
+    is_finalsegs = {}
+
     seg_num = 0
     for demo_name in demofile:
         if demo_name != "ar_demo":
+            if 'done' in demofile[demo_name].keys():
+                final_seg_id = len(demofile[demo_name].keys()) - 2
+            else:
+                final_seg_id = len(demofile[demo_name].keys()) - 1
+
             for seg_name in demofile[demo_name]:
                 keys[seg_num] = (demo_name, seg_name)
+                
+                if seg_name == "seg%02d"%(final_seg_id):
+                    is_finalsegs[seg_num] = True
+                else:
+                    is_finalsegs[seg_num] = False
+
+                
                 seg_num += 1
                 demo_xyz = clouds.downsample(np.asarray(demofile[demo_name][seg_name]["cloud_xyz"]),DS_LEAF_SIZE)
                 if init_tfm is not None:
@@ -388,7 +418,7 @@ def find_closest_auto(demofile, new_xyz, init_tfm=None, n_jobs=3):
         cv2.waitKey()
     
     ibest = np.argmin(costs)
-    return keys[ibest]
+    return keys[ibest], is_finalsegs[ibest]
 
 def find_closest_cloud(demofile, new_xyz):
     """
@@ -676,9 +706,10 @@ def main():
         '''
         redprint("Finding closest demonstration")
         if args.select_manual:
-            (demo_name, seg_name) = find_closest_manual(demofile, new_xyz)
+            (demo_name, seg_name), is_final_seg = find_closest_manual(demofile, new_xyz)
         else:
-            (demo_name, seg_name) = find_closest_auto(demofile, new_xyz, init_tfm)
+            (demo_name, seg_name), is_final_seg = find_closest_auto(demofile, new_xyz, init_tfm)
+
         
         seg_info = demofile[demo_name][seg_name]
         redprint("closest demo: %s, %s"%(demo_name, seg_name))
@@ -749,7 +780,6 @@ def main():
 
         
             eetraj[link_name] = new_ee_traj
-#             eetraj[link_name] = np.asarray(old_ee_traj)
             
             handles.append(Globals.env.drawlinestrip(old_ee_traj[:,:3,3], 2, (1,0,0,1)))
             handles.append(Globals.env.drawlinestrip(new_ee_traj[:,:3,3], 2, (0,1,0,1)))
@@ -762,6 +792,9 @@ def main():
         success = True
         redprint("mini segments: %s %s"%(miniseg_starts, miniseg_ends))
         
+        segment_len = miniseg_ends[-1] - miniseg_starts[0] + 1
+        portion = max(args.early_stop_portion, miniseg_ends[0] / float(segment_len))
+        
         prev_vals = {lr:None for lr in 'lr'}
         l_vals = PR2.Arm.L_POSTURES['side']
         for (i_miniseg, (i_start, i_end)) in enumerate(zip(miniseg_starts, miniseg_ends)):
@@ -771,12 +804,36 @@ def main():
             redprint("Generating joint trajectory for demo %s segment %s, part %i"%(demo_name, seg_name, i_miniseg))
             
             
+            
+            ### adaptive resampling based on xyz in end_effector
+            end_trans_trajs = np.zeros([i_end+1-i_start, 6])
+            
+            for lr in 'lr':    
+                ee_link_name = "%s_gripper_tool_frame"%lr
+                for i in xrange(i_start,i_end+1):
+                    if lr == 'l':
+                        end_trans_trajs[i-i_start, :3] = eetraj[ee_link_name][i][:3,3]
+                    else:
+                        end_trans_trajs[i-i_start, 3:] = eetraj[ee_link_name][i][:3,3]
+                        
+            
+            adaptive_times, end_trans_trajs = resampling.adaptive_resample2(end_trans_trajs, 0.001)
+            
+            ee_hmats = {}
+            for lr in 'lr':
+                ee_link_name = "%s_gripper_tool_frame"%lr
+                ee_hmats[ee_link_name] = resampling.interp_hmats(adaptive_times, range(i_end+1-i_start), eetraj[ee_link_name][i_start:i_end+1])
+                
+            len_miniseg = len(adaptive_times)
+            
+            
+            
             ### trajopt init traj
             init_joint_trajs = {}
             for lr in 'lr':
                 link_name = "%s_gripper_tool_frame"%lr
                 if args.trajopt_init == 'all_zero':
-                    init_joint_traj = np.zeros((i_end+1-i_start, 7))
+                    init_joint_traj = np.zeros((len_miniseg, 7))
                     init_joint_trajs[lr] = init_joint_traj
                     
                 elif args.trajopt_init == 'openrave_ik':
@@ -789,11 +846,11 @@ def main():
                     all_x = []
                     x = []
 
-                    for (i, pose_matrix) in enumerate(eetraj[link_name][i_start:i_end+1]):
+                    for (i, pose_matrix) in enumerate(ee_hmats[link_name]):
                         
                         rot_pose_matrix = pose_matrix.dot(tfm_gtf_ee)
                         sols = manip.FindIKSolutions(openravepy.IkParameterization(rot_pose_matrix, ik_type),
-                                                    openravepy.IkFilterOptions.IgnoreEndEffectorSelfCollisions | openravepy.IkFilterOptions.IgnoreEndEffectorEnvCollisions | openravepy.IkFilterOptions.CheckEnvCollisions)
+                                                     openravepy.IkFilterOptions.CheckEnvCollisions)
                         
                         
                         all_x.append(i)
@@ -821,14 +878,7 @@ def main():
                             
                             blueprint("Openrave IK succeeds")
                         else:
-                            redprint("Openrave IK fails")
-                        
-                        
-                        
-                                
-                            
-                            
-                        
+                            redprint("Openrave IK fails")                        
 #                         
 #                         if sol != None:
 #                             x.append(i)
@@ -844,7 +894,7 @@ def main():
                         else:
                             vals = l_vals if lr == 'l' else PR2.mirror_arm_joints(l_vals)
                         
-                        init_joint_traj_interp = np.tile(vals,(i_end+1-i_start, 1))
+                        init_joint_traj_interp = np.tile(vals,(len_miniseg, 1))
                     else:
                         if prev_vals[lr] is not None:
                             init_joint_traj_interp = lerp(all_x, x, init_joint_traj, first=prev_vals[lr])
@@ -866,7 +916,7 @@ def main():
                     all_x = []
                     x = []
                     
-                    for (i, pose_matrix) in enumerate(eetraj[link_name][i_start:i_end+1]):
+                    for (i, pose_matrix) in enumerate(ee_hmats[link_name]):
                         sol = trajopt_ik.inverse_kinematics(Globals.robot, manip_name, link_name, pose_matrix)
                         
                         all_x.append(i)
@@ -890,13 +940,13 @@ def main():
                 else:
                     redprint("trajopt initialization method %s not supported"%(args.trajopt_init))
                     redprint("use default all zero initialization instead")
-                    init_joint_traj = np.zeros((i_end+1-i_start, 7))
+                    init_joint_traj = np.zeros((len_miniseg, 7))
                     init_joint_trajs[lr] = init_joint_traj
          
          
          
-                init_joint_trajs[lr] = unwrap_arm_traj_in_place(init_joint_trajs[lr])           
-                
+                init_joint_trajs[lr] = unwrap_arm_traj_in_place(init_joint_trajs[lr])
+                            
             ### Generate full-body trajectory
             bodypart2traj = {}
             
@@ -907,7 +957,7 @@ def main():
                 
                 for lr in 'lr':
                     ee_link_name = "%s_gripper_tool_frame"%lr
-                    new_ee_traj = eetraj[ee_link_name][i_start:i_end+1]    
+                    new_ee_traj = downsample_objects(new_hmats[ee_link_name], args.downsample)
                 
                     manip_name = {"l":"leftarm", "r":"rightarm"}[lr]
                     new_hmats[manip_name] = new_ee_traj
@@ -938,7 +988,7 @@ def main():
                     manip_name = {"l":"leftarm", "r":"rightarm"}[lr]
     
                     ee_link_name = "%s_gripper_tool_frame"%lr
-                    new_ee_traj = eetraj[ee_link_name][i_start:i_end+1]
+                    new_ee_traj = ee_hmats[ee_link_name]
                         
                     """
                     Dirty hack.
@@ -988,8 +1038,19 @@ def main():
             
            # if not success: break
             
-            if len(bodypart2traj) > 0:
-                success &= exec_traj_maybesim(bodypart2traj)
+            if len(bodypart2traj['larm']) > 0:
+                if is_final_seg and miniseg_ends[i_miniseg] < portion * segment_len:
+                    success &= exec_traj_maybesim(bodypart2traj)
+                elif is_final_seg:
+                    if miniseg_starts[i_miniseg] > portion * segment_len:
+                        pass
+                    else:
+                        sub_bodypart2traj = {}
+                        for lr in bodypart2traj:
+                            sub_bodypart2traj[lr] = bodypart2traj[lr][: int(portion * len(bodypart2traj[lr]))]
+                        success &= exec_traj_maybesim(sub_bodypart2traj)
+                else:
+                    success &= exec_traj_maybesim(bodypart2traj)
                 time.sleep(5)
                 
             if args.simulation:
