@@ -70,7 +70,7 @@ for demo_info in demos_info:
         demo_group['rgb'] = rgb_imgs[0]
         demo_group['depth'] = depth_imgs[0]
         
-    if 'perturbs' in perturb_demofile.keys():
+    if 'perturbs' in demo_group.keys():
         perturb_group = demo_group['perturbs']
     else:
         perturb_group = demo_group.create_group('perturbs')
