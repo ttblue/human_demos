@@ -7,7 +7,7 @@ from hd_utils import clouds
 from hd_utils.defaults import asus_xtion_pro_f
 from hd_utils.pr2_utils import get_kinect_transform
 
-def extract_color(rgb, depth, mask, T_w_k, use_outlier_removal=True, outlier_thresh=2, outlier_k=50):
+def extract_color(rgb, depth, mask, T_w_k, use_outlier_removal=True, outlier_thresh=2, outlier_k=20):
     """
     extract red points and downsample
     """
@@ -31,11 +31,8 @@ def extract_color(rgb, depth, mask, T_w_k, use_outlier_removal=True, outlier_thr
     z0 = xyz_k[:,:,2]
 
     height_mask = (xyz_w[:,:,2] > .8) & (xyz_w[:,:,2] < 1.3)
-    
-    # remove white wall!
-    width_mask = (xyz_w[:,:,0] > -0.56)
-    
-    good_mask = color_mask & height_mask & valid_mask & width_mask
+        
+    good_mask = color_mask & height_mask & valid_mask
     good_mask = skim.remove_small_objects(good_mask,min_size=64)
 
     if DEBUG_PLOTS:
@@ -50,6 +47,7 @@ def extract_color(rgb, depth, mask, T_w_k, use_outlier_removal=True, outlier_thr
 
     good_xyz = xyz_w[good_mask]
     
+
     xyz = clouds.downsample(good_xyz, .025)
     if use_outlier_removal:
         xyz = clouds.remove_outliers(xyz, outlier_thresh, outlier_k)

@@ -12,27 +12,22 @@ def searchsortednearest(a,v):
     closer_inds[lower_is_better] = lower_inds[lower_is_better]
     return closer_inds
 
+
 def get_video_frames(video_dir, frame_stamps):
-    video_stamps = np.loadtxt(osp.join(video_dir, demo_names.stamps_name))
     
-    frame_inds = searchsortednearest(video_stamps, frame_stamps)
+    video_stamps = np.loadtxt(osp.join(video_dir,demo_names.stamps_name))
+    frame_inds = np.searchsorted(video_stamps, frame_stamps)
     
-    from glob import glob
-    rgbnames = glob(osp.join(video_dir, demo_names.rgb_regexp))
-    depthnames = glob(osp.join(video_dir, demo_names.depth_regexp))
-        
-    ind2rgbfname = dict([(int(osp.splitext(osp.basename(fname))[0][3:]), fname) for fname in rgbnames])
-    ind2depthfname = dict([(int(osp.splitext(osp.basename(fname))[0][5:]), fname) for fname in depthnames])
-    
-    #print ind2depthfname
+    if frame_inds[-1] >= len(video_stamps):
+        frame_inds[-1] = len(video_stamps) - 1
     
     rgbs = []
     depths = []
     for frame_ind in frame_inds:
-        rgb = cv2.imread(ind2rgbfname[frame_ind])
+        rgb = cv2.imread(osp.join(video_dir,demo_names.rgb_name%frame_ind))
         assert rgb is not None
         rgbs.append(rgb)
-        depth = cv2.imread(ind2depthfname[frame_ind],2)
+        depth = cv2.imread(osp.join(video_dir,demo_names.depth_name%frame_ind),2)
         assert depth is not None
         depths.append(depth)
     return rgbs, depths
