@@ -7,6 +7,7 @@ Script to record demos with rgbd data.
 import argparse
 import subprocess
 import os, os.path as osp
+import numpy as np
 import rospy, roslib
 import time, shutil
 import yaml
@@ -98,13 +99,14 @@ def load_init_config(config_num):
         with open(p) as fh: init_data = pickle.load(fh)
     
     try:
-        points = init_data[config_num] 
-        return points
+        print config_num
+        points = init_data[config_num]
+        return points - np.array([0,0,0.08])
     except:
         redprint("Something went wrong in the init.")
         return None
 
-"""
+    """
     
     Loads point cloud for demo_config.
     Assume it returns points. Need to put it in correct frame here.
@@ -130,7 +132,7 @@ def load_init_config(config_num):
     perturb_pts_idx += 1
 
     return perturb_pts
-"""
+    """
 
 def display_init_config(points, old=False, clear=False):
     """
@@ -364,7 +366,7 @@ def record_pipeline ( calib_file, num_cameras, num_demos, use_voice, use_init=Tr
         time.sleep(1.2)
         
         if use_init:
-            init_config = load_init_config(demo_num)
+            init_config = load_init_config(demo_num-1)
             if init_config is None:
                 greenprint("No init config. Provide random init config.")
                 subprocess.call("espeak -v en 'Provide random init config.'", stdout=devnull, stderr=devnull, shell=True)
@@ -395,14 +397,12 @@ def record_pipeline ( calib_file, num_cameras, num_demos, use_voice, use_init=Tr
         else:
             status = raw_input("Hit enter when ready to record demo (or q/Q to quit). ")
 
+        save_image_services[cam](cam_stop_request)
         display_init_config(points=None, old=False, clear=True)
 
         if status in ["done session", "q","Q"]:
             greenprint("Done recording for this session.")
             break
-
-
-
 
         # Initialize names and record
         demo_name = demo_names.base_name%(demo_num)
