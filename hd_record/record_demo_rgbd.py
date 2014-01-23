@@ -67,6 +67,13 @@ demo_num = 0
 
 num_saved = 0
 
+
+perturb_demo_idx = 0
+perturb_pts_idx  = 0
+
+import h5py
+
+
 voice_cmd = "roslaunch pocketsphinx demo_recording.launch"
 
 class voice_alerts ():
@@ -85,6 +92,7 @@ class voice_alerts ():
     def get_latest_msg (self):
         return self.segment_state
 
+
 def load_init_config(config_num):
     """
     Loads point cloud for demo_config.
@@ -92,12 +100,23 @@ def load_init_config(config_num):
     
     Returns None if not available.
     """
-    return None
-    x = [np.array([i,i,i])/10.0 for i in range(10)]
-    return x
-    if config_num is None:
+    global perturb_demo_idx, perturb_pts_idx
+    
+    perturb_fname  = osp.join(demo_type_dir, 'perturb.h5')
+    perturb_file   = h5py.File(perturb_fname)
+    
+    if perturb_demo_idx >= len(perturb_file.keys()):
         return None
-    return None
+    if perturb_pts_idx >= len(perturb_file[perturb_file.keys()[perturb_demo_idx]]['perturbs'].keys()):
+        perturb_pts_idx = 0
+        perturb_demo_idx += 1
+        
+    perturb_dat = perturb_file[perturb_file.keys()[perturb_demo_idx]]['perturbs']
+    perturb_pts = perturb_dat[perturb_dat.keys()[perturb_pts_idx]][...]
+    perturb_pts_idx += 1
+
+    return perturb_pts
+
 
 def display_init_config(points, old=False, clear=False):
     """
@@ -124,7 +143,6 @@ def display_init_config(points, old=False, clear=False):
     
     if points is None:
         return
-
     
 #         rviz_marker.type = Marker.SPHERE
     
