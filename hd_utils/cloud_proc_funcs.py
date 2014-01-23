@@ -33,7 +33,7 @@ def extract_color(rgb, depth, mask, T_w_k, use_outlier_removal=True, outlier_thr
     height_mask = (xyz_w[:,:,2] > .8) & (xyz_w[:,:,2] < 1.3)
         
     good_mask = color_mask & height_mask & valid_mask
-    good_mask = skim.remove_small_objects(good_mask,min_size=64)
+    #good_mask = skim.remove_small_objects(good_mask,min_size=64)
 
     if DEBUG_PLOTS:
         cv2.imshow("z0",z0/z0.max())
@@ -48,11 +48,11 @@ def extract_color(rgb, depth, mask, T_w_k, use_outlier_removal=True, outlier_thr
     good_xyz = xyz_w[good_mask]
     
 
-    xyz = clouds.downsample(good_xyz, .025)
-    if use_outlier_removal:
-        xyz = clouds.remove_outliers(xyz, outlier_thresh, outlier_k)
+    #xyz = clouds.downsample(good_xyz, .05)
+#     if use_outlier_removal:
+#         xyz = clouds.remove_outliers(xyz, outlier_thresh, outlier_k)
 
-    return xyz 
+    return good_xyz
 
 
 def extract_red(rgb, depth, T_w_k):
