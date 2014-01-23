@@ -72,7 +72,10 @@ feedback_dir = osp.join(hd_data_dir,'demo_feedback')
 simple_feedback_name = 'simple_fb.cp'
 ik_feedback_name = 'ik_fb.cp'
 
+perturbation_file = 'perturb.cp'
+
 similarity_costs_dir = osp.join(hd_data_dir,'sim_costs')
+matrix_file = '%s_matrix.cp'
 
 master_name = 'master.yaml'
 latest_demo_name = 'latest_demo.txt'
