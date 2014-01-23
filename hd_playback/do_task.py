@@ -957,7 +957,7 @@ def main():
                 
                 for lr in 'lr':
                     ee_link_name = "%s_gripper_tool_frame"%lr
-                    new_ee_traj = downsample_objects(new_hmats[ee_link_name], args.downsample)
+                    new_ee_traj = downsample_objects(ee_hmats[ee_link_name], args.downsample)
                 
                     manip_name = {"l":"leftarm", "r":"rightarm"}[lr]
                     new_hmats[manip_name] = new_ee_traj
