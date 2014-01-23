@@ -5,14 +5,11 @@ Script to record demos with rgbd data.
 '''
 
 import argparse
-import subprocess, signal
+import subprocess
 import os, os.path as osp
-import itertools
 import rospy, roslib
-import time, os, shutil
-import numpy as np
+import time, shutil
 import yaml
-import threading
 
 roslib.load_manifest('pocketsphinx')
 from pocketsphinx.msg import Segment
@@ -67,11 +64,10 @@ demo_num = 0
 
 num_saved = 0
 
+init_data = None
 
 perturb_demo_idx = 0
 perturb_pts_idx  = 0
-
-import h5py
 
 
 voice_cmd = "roslaunch pocketsphinx demo_recording.launch"
@@ -94,11 +90,19 @@ class voice_alerts ():
 
 
 def load_init_config(config_num):
-	p = osp.join(demo_type_dir,'initial.h5')
-	with open(p) as fh:
-		l = pickle.load(p)
-	return l[config_num]
-
+    global init_data
+    if config_num is None: return None
+    if init_data is None:
+        import cPickle as pickle
+        p = osp.join(demo_files_dir,perturbation_file)
+        with open(p) as fh: init_data = pickle.load(fh)
+    
+    try:
+        points = init_data[config_num] 
+        return points
+    except:
+        redprint("Something went wrong in the init.")
+        return None
 
 """
     
@@ -322,7 +326,7 @@ def record_demo (demo_name, use_voice):
         return False
 
 
-def record_pipeline ( calib_file, num_cameras, num_demos, use_voice):
+def record_pipeline ( calib_file, num_cameras, num_demos, use_voice, use_init=True):
     """
     Either records n demos or until person says he is done.
     @calib_file: file to load calibration from. "", -- default -- means using the one in the master file
@@ -359,18 +363,21 @@ def record_pipeline ( calib_file, num_cameras, num_demos, use_voice):
         print '\n\n'
         time.sleep(1.2)
         
-        init_config = load_init_config(demo_num)
-        if init_config is None:
-            greenprint("No init config. Provide random init config.")
-            subprocess.call("espeak -v en 'Provide random init config.'", stdout=devnull, stderr=devnull, shell=True)
+        if use_init:
+            init_config = load_init_config(demo_num)
+            if init_config is None:
+                greenprint("No init config. Provide random init config.")
+                subprocess.call("espeak -v en 'Provide random init config.'", stdout=devnull, stderr=devnull, shell=True)
+            else:
+                display_init_config(init_config, old=False)
+                for cam in camera_types:
+                    if camera_types[cam] == 'rgbd':
+                        save_image_services[cam](cam_publish_request)
+                greenprint("Please place rope in proper position.")
+                subprocess.call("espeak -v en 'Please place rope in position on screen.'", stdout=devnull, stderr=devnull, shell=True)
         else:
-            display_init_config(init_config, old=False)
-            for cam in camera_types:
-                if camera_types[cam] == 'rgbd':
-                    save_image_services[cam](cam_publish_request)
-            greenprint("Please place rope in proper position.")
-            subprocess.call("espeak -v en 'Please place rope in position on screen.'", stdout=devnull, stderr=devnull, shell=True)
-            
+            greenprint("Ready.")
+            subprocess.call("espeak -v en 'Provide random init config.'", stdout=devnull, stderr=devnull, shell=True)
         
         if use_voice:
             time.sleep(1.2)
@@ -378,7 +385,7 @@ def record_pipeline ( calib_file, num_cameras, num_demos, use_voice):
                 """
                 Wait for user to place rope.
                 """
-                if init_config is not None:
+                if use_init and init_config is not None:
                     display_init_config(init_config, old=True)
                 status = cmd_checker.get_latest_msg()
                 if  status in ["begin recording","done session"]:
@@ -582,6 +589,7 @@ if __name__ == '__main__':
     parser.add_argument("num_cameras", help="Number of cameras in setup.", default=2, type=int)
     parser.add_argument("--downsample", help="Downsample rgbd data by factor.", default=1, type=int)
     parser.add_argument("--use_voice", help="Use voice for recording.", default=1, type=int)
+    parser.add_argument("--use_init", help="Use initial configs.", action="store_false", default=True)
     
     parser.add_argument("--single_demo", help="Single or multiple demos?", action="store_true", default=False)
     parser.add_argument("--config_num", help="Index of random config.", default=-1, type=int)
@@ -603,4 +611,4 @@ if __name__ == '__main__':
                             num_cameras = args.num_cameras, use_voice = use_voice, config_num=config_num)
     else:
         record_pipeline (calib_file = args.calib_file, num_cameras = args.num_cameras, 
-                         num_demos = args.num_demos,use_voice = use_voice)
+                         num_demos = args.num_demos,use_voice = use_voice, use_init=args.use_init)
