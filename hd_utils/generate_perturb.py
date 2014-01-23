@@ -12,14 +12,12 @@ from hd_utils.extraction_utils import get_video_frames
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--demo_type", help="Type of demonstration", type=str)
-parser.add_argument("--demo_name", help="Name of demonstration", type=str, default='')
 parser.add_argument("--cloud_proc_func", default="extract_red")
 parser.add_argument("--cloud_proc_mod", default="hd_utils.cloud_proc_funcs")
 parser.add_argument("--perturb_fname", help="File saved perturb point clouds", default="perturb")
 parser.add_argument("--perturb_num", help="Number of random perturbations", type=int, default=1)
 parser.add_argument("--max_perturb_attempt", help="Number of maximum attempts for perturbation", type=int, default=5)
-parser.add_argument("--first",help="Lower bound for demo range.", default=0, type=int)
-parser.add_argument("--last",help="Upper bound for demo range.", default=-1, type=int)
+parser.add_argument("--overwrite", action="store_true")
 
 args = parser.parse_args()
 
@@ -30,10 +28,18 @@ cloud_proc_func = getattr(cloud_proc_mod, args.cloud_proc_func)
 
 demotype_dir = osp.join(demo_files_dir, args.demo_type)
 perturb_h5file = osp.join(demotype_dir, args.perturb_fname+".h5")
- 
-if osp.exists(perturb_h5file):
-    os.unlink(perturb_h5file)
-perturb_demofile = h5py.File(perturb_h5file)
+
+
+if args.overwrite:
+    if osp.exists(perturb_h5file):
+        os.unlink(perturb_h5file)
+    perturb_demofile = h5py.File(perturb_h5file)
+else:
+    if osp.exists(perturb_h5file):
+        perturb_demofile = h5py.File(perturb_h5file, "r+")
+    else:
+        perturb_demofile = h5py.File(perturb_h5file)
+
 
 task_dir = osp.join(demo_files_dir, args.demo_type)
 task_file = osp.join(task_dir, master_name)
@@ -44,7 +50,6 @@ demos_info = task_info['demos']
 
 
 fig = pylab.figure()
-
 
 for demo_info in demos_info:
 
@@ -58,11 +63,17 @@ for demo_info in demos_info:
     look_stamps = [seg_info['look'] for seg_info in annotations]
     rgb_imgs, depth_imgs= get_video_frames(rgbd_dir, look_stamps)
     
-    demo_group = perturb_demofile.create_group(demo_name)
-    demo_group['rgb'] = rgb_imgs[0]
-    demo_group['depth'] = depth_imgs[0]
-    
-    perturb_group = demo_group.create_group('perturbs')
+    if demo_name in perturb_demofile.keys():
+        demo_group = perturb_demofile[demo_name]
+    else:
+        demo_group = perturb_demofile.create_group(demo_name)
+        demo_group['rgb'] = rgb_imgs[0]
+        demo_group['depth'] = depth_imgs[0]
+        
+    if 'perturbs' in demo_group.keys():
+        perturb_group = demo_group['perturbs']
+    else:
+        perturb_group = demo_group.create_group('perturbs')
     
     n_perturb_existed = len(perturb_group.keys())
     
@@ -104,9 +115,12 @@ for demo_info in demos_info:
             n_perturb_existed += 1
       
         n_perturbed_attempt += 1      
-    
-    
+
     fig.clf()
+    
+    if yes_or_no("Stop perturbation?"):
+        break
+    
     
     
     
