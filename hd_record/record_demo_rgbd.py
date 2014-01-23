@@ -31,7 +31,7 @@ from hd_calib import calibration_pipeline as cpipe
 from hd_utils.colorize import *
 
 from hd_utils.defaults import demo_files_dir, calib_files_dir, hd_data_dir, \
-                              demo_names, master_name, latest_demo_name
+                              demo_names, master_name, latest_demo_name, perturbation_file
 from hd_utils.utils import terminate_process_and_children
 from hd_utils.yes_or_no import yes_or_no
 
@@ -94,16 +94,24 @@ class voice_alerts ():
 
 
 def load_init_config(config_num):
-    """
+	p = osp.join(demo_type_dir,'initial.h5')
+	with open(p) as fh:
+		l = pickle.load(p)
+	return l[config_num]
+
+
+"""
+    
     Loads point cloud for demo_config.
     Assume it returns points. Need to put it in correct frame here.
     
     Returns None if not available.
-    """
-    global perturb_demo_idx, perturb_pts_idx
     
-    perturb_fname  = osp.join(demo_type_dir, 'perturb.h5')
-    perturb_file   = h5py.File(perturb_fname)
+    global perturb_demo_idx, perturb_pts_idx, perturb_file
+    
+    if perturb_file is None:
+        perturb_fname  = osp.join(demo_type_dir, perturbation_file)
+        perturb_file   = h5py.File(perturb_fname)
     
     if perturb_demo_idx >= len(perturb_file.keys()):
         return None
@@ -116,7 +124,7 @@ def load_init_config(config_num):
     perturb_pts_idx += 1
 
     return perturb_pts
-
+"""
 
 def display_init_config(points, old=False, clear=False):
     """
