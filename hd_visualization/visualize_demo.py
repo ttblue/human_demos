@@ -460,7 +460,6 @@ def view_hydra_demo_on_rviz (demo_type, demo_name, freq, speed, prompt=False, ve
             print "Time stamp: ", tmin+(0.0+i*speed)/freq
         
         ## show the point-cloud:
-        found_pc = False
         for cam in pc_strms:
             try:
                 pc = pc_strms[cam].next()
@@ -469,7 +468,6 @@ def view_hydra_demo_on_rviz (demo_type, demo_name, freq, speed, prompt=False, ve
                         print "pc%i ts:"%cam, pc.header.stamp.to_sec()
                     pc.header.stamp = rospy.Time.now()
                     pc_pubs[cam].publish(pc)
-                    found_pc = True
                 else:
                     if verbose:
                         print "pc%i ts:"%cam,None
@@ -504,6 +502,9 @@ def view_hydra_demo_on_rviz (demo_type, demo_name, freq, speed, prompt=False, ve
                 tfm_pubs[lr].publish(conversions.pose_to_stamped_pose(conversions.hmat_to_pose(ests[lr]), cam_frames[1]))
             
         sleeper.sleep()
+    
+    empty_cloud = PointCloud2()
+    for cam in pc_pubs: pc_pubs[cam].publish(empty_cloud)
 
    
 if __name__=='__main__':
