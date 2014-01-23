@@ -378,7 +378,7 @@ def record_pipeline ( calib_file, num_cameras, num_demos, use_voice, use_init=Tr
                 greenprint("Please place rope in proper position.")
                 subprocess.call("espeak -v en 'Please place rope in position on screen.'", stdout=devnull, stderr=devnull, shell=True)
         else:
-            greenprint("Ready.")
+            greenprint("No init config. Provide random init config.")
             subprocess.call("espeak -v en 'Provide random init config.'", stdout=devnull, stderr=devnull, shell=True)
         
         if use_voice:
