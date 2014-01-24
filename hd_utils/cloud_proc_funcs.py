@@ -59,7 +59,8 @@ def extract_color(rgb, depth, mask, T_w_k, xyz_mask=None, use_outlier_removal=Tr
 
 def extract_red(rgb, depth, T_w_k):
     red_mask = [lambda(x): (x<15)|(x>145), lambda(x): x>30, lambda(x): x>100]
-    return extract_color(rgb, depth, red_mask, T_w_k)
+    xyz_mask = (lambda(xyz): xyz[:, :, 2] > 0.9)
+    return extract_color(rgb, depth, red_mask, T_w_k, xyz_mask)
 
 def extract_white(rgb, depth, T_w_k):
     white_mask = [lambda(x): (x>0), lambda(x): x<30, lambda(x): (x>100)]

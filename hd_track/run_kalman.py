@@ -59,8 +59,8 @@ def initialize_covariances(freq, demo_dir):
     rgb_cam_xyz_std     = [0.2, 0.2, 0.4] # 1cm
     hydra_xyz_std       = [0.03, 0.03, 0.03] # 3cm <-- use small std after tps-correction.
 
-    rgbd_cam_rpy_std    = np.deg2rad(15)
-    rgb_cam_rpy_std     = np.deg2rad(15)
+    rgbd_cam_rpy_std    = np.deg2rad(30)
+    rgb_cam_rpy_std     = np.deg2rad(90)
     hydra_rpy_std       = np.deg2rad(5)
 
 

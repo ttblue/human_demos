@@ -49,7 +49,7 @@ def load_data(data_file, lr, freq=30.0):
     cam_info = {}
     for kname in dat[lr].keys():
         if 'cam' in kname:
-            #if kname != 'camera1': continue
+            if kname != 'camera1': continue
             tfs = [tt[0] for tt in dat[lr][kname]]
             ts  = [tt[1] for tt in dat[lr][kname]]
             
