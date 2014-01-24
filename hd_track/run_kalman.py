@@ -14,7 +14,7 @@ from hd_utils.utils import *
 from hd_utils.defaults import demo_files_dir, demo_names, master_name
 from hd_utils.yes_or_no import yes_or_no
 
-from hd_track.kalman import kalman, smoother
+from hd_track.kalman import kalman, smoother, closer_angle
 from hd_track.kalman_tuning import state_from_tfms_no_velocity
 from hd_track.streamer import streamize, get_corresponding_data, stream_soft_next, time_shift_stream
 from hd_track.demo_data_prep import *
@@ -420,6 +420,24 @@ def low_pass(x, freq=30.):
     return  x_filt
 
 
+def unbreak(rpy):
+    """
+    removes discontinuity in rpy (nx3 matrix).
+    """
+    if len(rpy)==1: return
+    
+    un_rpy      = np.empty(rpy.shape)
+    un_rpy[0,:] = rpy[0,:]
+    for i in xrange(1,len(rpy)):
+        if i==1:
+            a_prev = rpy[i-1,:]
+        else:
+            a_prev = un_rpy[i-1,:]
+        a_now  = rpy[i,:]
+        un_rpy[i,:] = closer_angle(a_now, a_prev)
+    return un_rpy
+
+
 def run_KF(KF, nsteps, freq, hydra_strm, cam_dat, hydra_covar, cam_covars, do_smooth, plot, plot_title, block):
     """
     Runs the Kalman filter/smoother for NSTEPS using
@@ -458,7 +476,7 @@ def run_KF(KF, nsteps, freq, hydra_strm, cam_dat, hydra_covar, cam_covars, do_sm
     for cstrm in cam_strms:
         cstrm.reset()
     if do_smooth:
-        
+
         '''
         # UNCOMMENT BELOW TO RUN KALMAN SMOOTHER:
         A,_  = KF.get_motion_mats(dt)
@@ -467,8 +485,12 @@ def run_KF(KF, nsteps, freq, hydra_strm, cam_dat, hydra_covar, cam_covars, do_sm
         '''
         ### do low-pass filtering for smoothing:
         xs_kf_xyz = np.array(xs_kf)[:,0:3] 
+        xs_kf_rpy = np.squeeze(np.array(xs_kf)[:,6:9])
+
         xs_lp_xyz = low_pass(xs_kf_xyz, freq)
-        xs_smthr  = np.c_[xs_lp_xyz, np.squeeze(np.array(xs_kf))[:,3:]].tolist()
+        xs_lp_rpy = low_pass(unbreak(xs_kf_rpy), freq)
+
+        xs_smthr  = np.c_[xs_lp_xyz, np.squeeze(np.array(xs_kf))[:,3:6], xs_lp_rpy, np.squeeze(np.array(xs_kf))[:,9:12]].tolist()
         covars_smthr = None
 
         if 's' in plot:
