@@ -26,7 +26,7 @@ from hd_calib import gripper_lite
 from hd_calib.calibration_pipeline import gripper_trans_marker_tooltip
 
 getMarkersPC = None
-getImageMarkers = None
+getImageMarkers = {}
 setCalib = None
 reqPC = MarkerPositionsRequest()
 reqImage = MarkerImagePositionsRequest()
@@ -36,12 +36,15 @@ bridge = None
 displayImages = False
 verbose = True
 
-def get_ar_marker_poses (msg, ar_markers = None, use_pc_service=True, track=False):
+def get_ar_marker_poses (msg, ar_markers = None, use_pc_service=True, model="", track=False):
     '''
     get poses according to ar_markers
     if ar_markers == None, then for all ar markers appeared in the point cloud
     '''
     global getMarkersPC, getImageMarkers, reqPC, reqImage, bridge
+    
+    if model is None:
+        return "No camera model provided for extraction."
     
     if rospy.get_name() == '/unnamed':
         rospy.init_node('ar_marker_poses', anonymous=True)
@@ -53,8 +56,8 @@ def get_ar_marker_poses (msg, ar_markers = None, use_pc_service=True, track=Fals
         reqPC.track = track
         res = getMarkersPC(reqPC)
     else:
-        if getImageMarkers is None:
-            getImageMarkers = rospy.ServiceProxy("getImageMarkers", MarkerImagePositions)
+        if model not in getImageMarkers:
+            getImageMarkers[model] = rospy.ServiceProxy("getImageMarkers"+model, MarkerImagePositions)
         if bridge is None:
             bridge = CvBridge()
     
@@ -181,13 +184,13 @@ def save_observations_rgbd(demo_type, demo_name, save_file=None):
                             tt_tfm = gr.get_tooltip_transform(ar, np.asarray(ar_tfms[ar]))
                             data[lr]['camera%i'%i].append((tfm_c1[i].dot(tt_tfm),stamps[ind]))
         else:
-            if setCalib is None: 
-                setCalib = rospy.ServiceProxy("setCalibInfo", SetCalibInfo)
-            reqCalib.camera_model = camera_models[i]
-            setCalib(reqCalib)
-            
-            if verbose:
-                yellowprint("Changed camera calibration parameters to model %s"%camera_models[i])
+#             if setCalib is None: 
+#                 setCalib = rospy.ServiceProxy("setCalibInfo", SetCalibInfo)
+#             reqCalib.camera_model = camera_models[i]
+#             setCalib(reqCalib)
+#             
+#             if verbose:
+#                 yellowprint("Changed camera calibration parameters to model %s"%camera_models[i])
 
             for ind in rgb_fnames:                
                 rgb = cv.LoadImage(rgb_fnames[ind])
@@ -197,7 +200,7 @@ def save_observations_rgbd(demo_type, demo_name, save_file=None):
                     cv.WaitKey(1)
 
                 assert rgb is not None
-                ar_tfms = get_ar_marker_poses(rgb,use_pc_service=False,track=True)
+                ar_tfms = get_ar_marker_poses(rgb,use_pc_service=False, model = camera_models[i], track=True)
 
                 if ar_tfms:
                     if verbose:
