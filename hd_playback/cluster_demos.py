@@ -17,10 +17,14 @@ from hd_utils.defaults import demo_files_dir, similarity_costs_dir
 
 np.set_printoptions(precision=6, suppress=True)
 
-
 """
 Clusters based on costs in file.
 """
+weights = {}
+weights['tps'] = 0.5
+weights['traj'] = 1.2
+weights['traj_f'] = 1.2
+
 
 def get_costs (cfile):
     with open(cfile) as fh: return pickle.load(fh)
@@ -42,7 +46,7 @@ def calc_sim(cost, weights):
                 val += sum(cost[c].values())*weights[c]
             else:
                 val += cost[c]*weights[c]
-    
+
     return val
 
 def generate_sim_matrix (data, weights, keys):
@@ -56,12 +60,17 @@ def generate_sim_matrix (data, weights, keys):
     name_keys = {i:get_name(keys[i]) for i in keys}
     
     for i in xrange(len(keys)):
-        cost_mat[i,i] = 0.0
         for j in xrange(i+1,len(keys)):
             cost_mat[i,j] = calc_sim(costs[name_keys[i]][name_keys[j]], weights)
-            cost_mat[j,i] = cost_mat[i,j] 
+    cost_mat = cost_mat + cost_mat.T # diagonal entries are 0. 
 
     return np.exp(-cost_mat)
+
+
+def cluster_demos(sm, keys, n_clusters, eigen_solver='arpack', assign_labels='discretize'):
+    labels = spectral_clustering(mat, n_clusters = n_clusters, eigen_solver=eigen_solver,assign_labels=assign_labels)
+    clusters = {i:{} for i in labels}
+    
 
 def main(demo_type, n_clusters, num_seg=None):
     demofile = h5py.File(osp.join(demo_files_dir, demo_type, demo_type+'.h5'), 'r')
@@ -73,12 +82,6 @@ def main(demo_type, n_clusters, num_seg=None):
     
     costs = get_costs(cost_file)
 
-    weights = {}    
-    weights['tps'] = 0.5
-    #weights['tps_scaled'] = 1.0
-    weights['traj'] = 1.2
-    weights['traj_f'] = 1.2
-    #weights['traj_f_scaled'] = 0.5 
  
     seg_num = 0
     keys = {}
