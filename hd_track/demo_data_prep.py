@@ -43,24 +43,32 @@ def load_data(data_file, lr, freq=30.0):
     demo_dir    = osp.dirname(data_file)
     cam_types   = get_cam_types(demo_dir)
     T_cam2hbase = dat['T_cam2hbase']
-
+    
+    cam_tmin = float('inf')
+    
     cam_info = {}
     for kname in dat[lr].keys():
         if 'cam' in kname:
-            if kname != 'camera1': continue
+            #if kname != 'camera1': continue
             tfs = [tt[0] for tt in dat[lr][kname]]
             ts  = [tt[1] for tt in dat[lr][kname]]
+            
             #ctype_name = int(kname[-1])
             ## don't append any empty-streams:
             if len(ts) > 0:
                 cam_strm = streamize(tfs, ts, freq, avg_transform)#, tstart=-1./freq)
                 cam_info[kname] = {'type'   : cam_types[kname],
                                    'stream' : cam_strm}
+                
+                cam_tmin = min(ts[0], cam_tmin)
 
     ## hydra data:
     hydra_tfs = [tt[0] for tt in dat[lr]['hydra']]     
     hydra_ts  = np.array([tt[1] for tt in dat[lr]['hydra']])
-
+    
+    if abs(cam_tmin - hydra_ts[0]) > 1000:
+        hydra_ts += (cam_tmin - hydra_ts[0])
+    
     if len(hydra_ts) <= 0:
         redprint("ERROR : No hydra data found in : %s"%(osp.basename(data_file)))
         sys.exit(-1)   
@@ -69,11 +77,17 @@ def load_data(data_file, lr, freq=30.0):
     ## potentiometer angles:
     pot_vals = np.array([tt[0] for tt in dat[lr]['pot_angles']])
     pot_ts   = np.array([tt[1] for tt in dat[lr]['pot_angles']])
+    
+    print cam_tmin, pot_ts[0]
+    if abs(cam_tmin - pot_ts[0]) > 1000:
+        pot_ts += (cam_tmin - pot_ts[0])
+    
     if len(pot_ts) <= 0:
         redprint("ERROR : No potentiometer data found in : %s"%(osp.basename(data_file)))
         sys.exit(-1)
     pot_strm = streamize(pot_vals, pot_ts, freq, np.mean)#, tstart=-1./freq)
-
+    
+    print hydra_ts[0], pot_ts[0]
 
     return (T_cam2hbase, cam_info, hydra_strm, pot_strm)
 
@@ -92,11 +106,13 @@ def segment_streams(ann_dat, strms, time_shifts, demo_dir, base_stream='camera1'
     """
     if base_stream not in time_shifts.keys():
         redprint("Cannot segment streams. Base time shift data is missing for : %s"%base_stream)
-
+        
     n_segs = len(ann_dat)
     start_times = np.array([seg_info['look']+time_shifts[base_stream] for seg_info in ann_dat])
     stop_times  = np.array([seg_info['stop']+time_shifts[base_stream] for seg_info in ann_dat])
     nsteps      = map(int, (stop_times - start_times) / strms[0].dt) 
+    
+    print start_times
     
     strm_segs = []
     for strm in strms:
@@ -280,7 +296,9 @@ def align_tf_streams(hydra_strm, cam_strm, wsize=0):
         if hydra_tfm != None:
             Xs_hy.append(hydra_tfm[0,3])
         else:
-            redprint("None hydra tfm!")
+            #redprint("None hydra tfm!")
+            if len(Xs_hy) > 0:
+                Xs_hy.append(Xs_hy[-1])
 
     ## chop-off wsized data from the start and end of the camera-data:
     start_idx, end_idx = 0, len(Xs_cam)-1

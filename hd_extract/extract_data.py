@@ -65,7 +65,7 @@ def get_ar_marker_poses (msg, ar_markers = None, use_pc_service=True, model="", 
         reqImage.img = img
         reqImage.track = track
         try:
-            res = getImageMarkers(reqImage)
+            res = getImageMarkers[model](reqImage)
         except Exception as e:
             redprint("Something went wrong with image" )
             print e
