@@ -127,6 +127,17 @@ def generate_traj(robot, env, costs, constraints, n_steps, init_traj, collisionf
     return traj, total_cost
 
 
+def is_fake_motion(hmats, thresh):
+    xyz_traj = [hmat[:3,3] for hmat in hmats]
+    xyz_traj = np.asarray(xyz_traj)
+    
+    xyz_min = np.amin(xyz_traj, 0)
+    xyz_max = np.amax(xyz_traj, 0)
+    
+    #print np.linalg.norm(xyz_min - xyz_max)
+    
+    return np.linalg.norm(xyz_min - xyz_max) < thresh
+
 def plan_fullbody(robot, env, new_hmats_by_bodypart, old_traj_by_bodypart,
                     allow_base=True,
                     init_data=None):
@@ -209,7 +220,12 @@ def plan_fullbody(robot, env, new_hmats_by_bodypart, old_traj_by_bodypart,
         elif manip == 'leftarm':
             link = 'l_gripper_tool_frame'
         elif manip == 'base':
-            link = 'base_footprint'
+            link = 'base_footprint'    
+        
+        if manip in ['rightarm', 'leftarm']: 
+            if is_fake_motion(poses, 0.1):
+                continue
+            
             
         if manip in ['rightarm', 'leftarm']:
             end_pose = openravepy.poseFromMatrix(poses[-1])
@@ -224,6 +240,9 @@ def plan_fullbody(robot, env, new_hmats_by_bodypart, old_traj_by_bodypart,
             
         
         poses = [openravepy.poseFromMatrix(hmat) for hmat in poses]
+        
+        
+        
     
         for t, pose in enumerate(poses):
             costs.append({

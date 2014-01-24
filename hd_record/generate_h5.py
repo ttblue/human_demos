@@ -17,6 +17,8 @@ import shutil
 import argparse
 from hd_utils.defaults import demo_files_dir, demo_names, master_name, verify_name
 from hd_utils.extraction_utils import get_video_frames
+from hd_utils import clouds
+
 
 
 parser = argparse.ArgumentParser()
@@ -172,7 +174,9 @@ for (demo_name, demo_info) in hdf.items():
             
         print "gen point clouds: %s %s"%(demo_name, seg_name)
         
-        seg_info["cloud_xyz"] = cloud_proc_func(np.asarray(seg_info["rgb"]), np.asarray(seg_info["depth"]), np.eye(4))
+        cloud = cloud_proc_func(np.asarray(seg_info["rgb"]), np.asarray(seg_info["depth"]), np.eye(4))
+        seg_info["full_cloud_xyz"] = cloud
+        seg_info["cloud_xyz"] = clouds.downsample(cloud, .01)
         
         seg_info["cloud_proc_func"] = args.cloud_proc_func
         seg_info["cloud_proc_mod"] = args.cloud_proc_mod

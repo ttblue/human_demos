@@ -7,7 +7,7 @@ from hd_utils import clouds
 from hd_utils.defaults import asus_xtion_pro_f
 from hd_utils.pr2_utils import get_kinect_transform
 
-def extract_color(rgb, depth, mask, T_w_k, use_outlier_removal=True, outlier_thresh=2, outlier_k=20):
+def extract_color(rgb, depth, mask, T_w_k, xyz_mask=None, use_outlier_removal=True, outlier_thresh=2, outlier_k=20):
     """
     extract red points and downsample
     """
@@ -30,7 +30,9 @@ def extract_color(rgb, depth, mask, T_w_k, use_outlier_removal=True, outlier_thr
     z = xyz_w[:,:,2]   
     z0 = xyz_k[:,:,2]
 
-    height_mask = (xyz_w[:,:,2] > .8) & (xyz_w[:,:,2] < 1.3)
+    # 'height' or distance from the camera
+    height_mask = (xyz_w[:,:,2] > 0.6) & (xyz_w[:,:,2] < 1.1)
+    if xyz_mask: height_mask = height_mask & xyz_mask(xyz_w)
         
     good_mask = color_mask & height_mask & valid_mask
     #good_mask = skim.remove_small_objects(good_mask,min_size=64)
@@ -57,11 +59,18 @@ def extract_color(rgb, depth, mask, T_w_k, use_outlier_removal=True, outlier_thr
 
 def extract_red(rgb, depth, T_w_k):
     red_mask = [lambda(x): (x<15)|(x>145), lambda(x): x>30, lambda(x): x>100]
-    return extract_color(rgb, depth, red_mask, T_w_k)
+    xyz_mask = (lambda(xyz): xyz[:, :, 2] > 0.9)
+    return extract_color(rgb, depth, red_mask, T_w_k, xyz_mask)
 
 def extract_white(rgb, depth, T_w_k):
     white_mask = [lambda(x): (x>0), lambda(x): x<30, lambda(x): (x>100)]
     return extract_color(rgb, depth, white_mask, T_w_k)
+
+def extract_yellow(rgb, depth, T_w_k):
+    yellow_mask = [lambda(x): (x>23)&(x<40), lambda(x): (x>200), lambda(x): x<100]
+    #xyz_mask = (lambda(xyz): xyz[:, :, 2] < 0.9)
+    xyz_mask = None
+    return extract_color(rgb, depth, yellow_mask, T_w_k, xyz_mask)
 
     
 def grabcut(rgb, depth, T_w_k):
