@@ -2,8 +2,8 @@ import os, os.path as osp
 import importlib
 import numpy as np
 import argparse
-from hd_utils.defaults import demo_files_dir, demo_names, master_name
-from hd_utils.extraction_utils import get_videos
+from defaults import demo_files_dir, demo_names, master_name
+from extraction_utils import get_videos
 from mpl_toolkits.mplot3d import axes3d
 import pylab, yaml, h5py
 from hd_utils.clouds_utils import sample_random_rope

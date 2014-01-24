@@ -496,14 +496,16 @@ def run_KF(KF, nsteps, freq, hydra_strm, cam_dat, hydra_covar, cam_covars, do_sm
         if 's' in plot:
             kf_strm   = streamize(state_to_hmat(xs_kf), np.array(ts_kf), 1./hydra_strm.dt, hydra_strm.favg)
             sm_strm   = streamize(state_to_hmat(xs_smthr), np.array(ts_kf), 1./hydra_strm.dt, hydra_strm.favg)
-            plot_tf_streams([kf_strm, sm_strm, hydra_strm]+cam_strms, ['kf', 'smoother', 'hydra']+cam_dat.keys(), styles=['-','-','.','.','.','.'], title=plot_title, block=block)
+            
+
+            plot_tf_streams([kf_strm, sm_strm, hydra_strm]+cam_strms, ['kf', 'smoother', 'hydra']+cam_dat.keys(), styles=['-','-','.']+['.' for i in xrange(len(cam_strms))], title=plot_title, block=block)
             #plot_tf_streams([hydra_strm]+cam_strms, ['hydra']+cam_dat.keys(), block=block)
 
         return (ts_kf, xs_kf, covars_kf, xs_smthr, covars_smthr)
     else:
         if 's' in plot:
             kf_strm   = streamize(state_to_hmat(xs_kf), np.array(ts_kf), 1./hydra_strm.dt, hydra_strm.favg)
-            plot_tf_streams([kf_strm, hydra_strm]+cam_strms, ['kf', 'hydra']+cam_dat.keys(), styles=['-','-','.','.','.','.'], title=plot_title, block=block)
+            plot_tf_streams([kf_strm, hydra_strm]+cam_strms, ['kf', 'hydra']+cam_dat.keys(), styles=['-','-','.']+['.' for i in xrange(len(cam_strms))], title=plot_title, block=block)
             #plot_tf_streams([hydra_strm]+cam_strms, ['hydra']+cam_dat.keys(), block=block)
         return (ts_kf, xs_kf, covars_kf, None, None)
 
