@@ -14,8 +14,6 @@ Actually run on the robot without pausing or animating
 ./do_task.py demo_full/demo_full.h5 --execution=1 --animation=0
 
 
-
-
 """
 parser = argparse.ArgumentParser(usage=usage)
 parser.add_argument("--demo_type", type=str)
