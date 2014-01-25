@@ -672,6 +672,7 @@ if __name__=='__main__':
             demo_dir = osp.join(demo_type_dir, demo["demo_name"])
             # Wait until extraction is done for current demo.
             while osp.isfile(osp.join(demo_dir, demo_names.extract_data_temp)):
+                print "Waiting for %s."%demo["demo_name"]
                 time.sleep(1)
             # Check if some other node is running kf/ks currently.
             if osp.isfile(osp.join(demo_dir, demo_names.run_kalman_temp)):

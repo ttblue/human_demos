@@ -68,7 +68,7 @@ def generate_sim_matrix (data, keys):
     
     for i in xrange(len(keys)):
         for j in xrange(i+1,len(keys)):
-            cost_mat[i,j] = calc_sim(costs[name_keys[i]][name_keys[j]], weights)
+            cost_mat[i,j] = calc_sim(costs[name_keys[i]][name_keys[j]])
     cost_mat = cost_mat + cost_mat.T # diagonal entries are 0. 
 
     return np.exp(-cost_mat)
@@ -81,7 +81,7 @@ def best_n_in_cluster(cluster, sm, n=None):
 #     for i in xrange(len(cluster)):
 #         for j in xrange(len(cluster)):
 #             costs[i][j] = sm[cluster[i]][cluster[j]]
-    cluster_sm = sm[np.ix_([cluster, cluster])]
+    cluster_sm = sm[np.ix_(cluster, cluster)]
     sum_sm = np.sum(cluster_sm, axis=1)
     ranking = np.argsort(-sum_sm)
     
@@ -121,25 +121,25 @@ def gen_h5_clusters (demo_type, cluster_data, keys):
     Save .h5 file.
     """
     cluster_path = osp.join(demo_files_dir, demo_type, demo_type+'_clusters.h5')
-    hdf = h5py.File(cluster_path)
+    hdf = h5py.File(cluster_path,'w')
     
     cgroup = hdf.create_group('clusters')
     for cluster in cluster_data:
-        cgroup[cluster] = cluster_data[cluster]
+        cgroup[str(cluster)] = cluster_data[cluster]
     
     kgroup = hdf.create_group('keys')
     for key in keys:
-        kgroup[key] = keys[key]    
-    
-    pass
+        kgroup[str(key)] = keys[key]
 
 def cluster_demos (demo_type, n_clusters, save_to_file=False, visualize=False):
     """
     Clusters and ranks demos.
     """
     demofile = h5py.File(osp.join(demo_files_dir, demo_type, demo_type+'.h5'), 'r')
-    cost_file = osp.join(similarity_costs_dir, demo_type)+'.costs'    
+    print "Loaded demo."
+    cost_file = osp.join(similarity_costs_dir, demo_type)+'.costs'
     costs = get_costs(cost_file)
+    print "Loaded costs."
  
     seg_num = 0
     keys = {}
@@ -150,8 +150,10 @@ def cluster_demos (demo_type, n_clusters, save_to_file=False, visualize=False):
                     keys[seg_num] = (demo_name, seg_name)
                     seg_num += 1
     
+    print "Generating sim matrix."
     sm = generate_sim_matrix(costs, keys)
     
+    print "Getting the cluster rankings"
     cdata = cluster_and_rank_demos(sm, n_clusters)
     
     if visualize:
@@ -200,14 +202,14 @@ def cluster_demos (demo_type, n_clusters, save_to_file=False, visualize=False):
     
 def main(demo_type, n_clusters, num_seg=None):
     demofile = h5py.File(osp.join(demo_files_dir, demo_type, demo_type+'.h5'), 'r')
-    
+    print "Loaded file."
     iden = ''
     if num_seg is not None:
         iden = str(num_seg)
     cost_file = osp.join(similarity_costs_dir, demo_type)+iden+'.costs'
     
     costs = get_costs(cost_file)
-
+    print "Got costs."
  
     seg_num = 0
     keys = {}
@@ -225,7 +227,7 @@ def main(demo_type, n_clusters, num_seg=None):
             break
 
     ts = time.time()
-    mat = generate_sim_matrix(costs, weights, keys)
+    mat = generate_sim_matrix(costs, keys)
     print 'Time taken to generate sim matrix: %f'%(time.time() - ts)
     print mat
     
