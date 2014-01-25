@@ -49,7 +49,6 @@ def extract_color(rgb, depth, mask, T_w_k, xyz_mask=None, use_outlier_removal=Tr
         cv2.waitKey()
 
     good_xyz = xyz_w[good_mask]
-    
 
     #xyz = clouds.downsample(good_xyz, .05)
 #     if use_outlier_removal:
