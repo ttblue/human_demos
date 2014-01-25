@@ -103,7 +103,7 @@ def main(demo_type, n_base, n_perts, load_sm = False):
 		rows.append(np.asarray(row))
 		cv2.imshow("clustering result", row)
 		kb = cv2.waitKey()
-		if kb == 1113939 or kb == 65361:
+		if kb == 1113939 or kb == 65363:
 			i = min(i+1,n_clusters-1)
 			inc = True
 		elif kb == 1113937 or kb == 65361:
