@@ -28,7 +28,7 @@ def best_n_in_cluster(cluster, sm, n=2):
 		for j in xrange(len(cluster)):
 			costs[i][j] = sm[cluster[i]][cluster[j]]
 	sum_costs = np.sum(costs, axis=1)
-	ranking = np.argsort(sum_costs)
+	ranking = np.argsort(-sum_costs)
 	print ranking
 	
 	if n ==1:
