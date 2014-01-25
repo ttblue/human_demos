@@ -7,8 +7,24 @@ DEBUG_PLOTS=False
 from hd_utils import clouds
 from hd_utils.defaults import asus_xtion_pro_f, hd_data_dir
 from hd_utils.pr2_utils import get_kinect_transform
+from hd_rapprentice.rope_initialization import points_to_graph
+import networkx as nx
 
-def extract_color(rgb, depth, mask, T_w_k, xyz_mask=None, use_outlier_removal=True, outlier_thresh=2, outlier_k=20):
+def remove_outlier_connected_component(xyz, max_dist = .03):
+    G = points_to_graph(xyz, max_dist)
+
+    components = nx.connected_components(G)
+    
+    xyz = []
+    max_component_len = len(components[0])
+    for component in components:
+        if len(component) > 0.5 * max_component_len:
+            xyz = xyz + [G.node[i]["xyz"] for i in component]
+        else: 
+            break
+    return xyz
+    
+def extract_color(rgb, depth, mask, T_w_k, xyz_mask=None, use_outlier_removal=False, outlier_thresh=2, outlier_k=20):
     """
     extract red points and downsample
     """
@@ -49,18 +65,19 @@ def extract_color(rgb, depth, mask, T_w_k, xyz_mask=None, use_outlier_removal=Tr
         cv2.waitKey()
 
     good_xyz = xyz_w[good_mask]
-
-    #xyz = clouds.downsample(good_xyz, .05)
-#     if use_outlier_removal:
-#         xyz = clouds.remove_outliers(xyz, outlier_thresh, outlier_k)
+    
+    if use_outlier_removal:
+        #good_xyz = clouds.remove_outliers(good_xyz, outlier_thresh, outlier_k)
+        #good_xyz = remove_outlier_connected_component(good_xyz)
+        good_xyz = clouds.cluster_filter(good_xyz, 0.03, int(0.5 * len(good_xyz)))
 
     return good_xyz
 
 
 def extract_red(rgb, depth, T_w_k):
     red_mask = [lambda(x): (x<15)|(x>145), lambda(x): x>30, lambda(x): x>100]
-    xyz_mask = (lambda(xyz): xyz[:, :, 2] > 0.9)
-    return extract_color(rgb, depth, red_mask, T_w_k, xyz_mask)
+    xyz_mask = (lambda(xyz): xyz[:, :, 2] > 0.95)
+    return extract_color(rgb, depth, red_mask, T_w_k, xyz_mask, True)
 
 def extract_white(rgb, depth, T_w_k):
     white_mask = [lambda(x): (x>0), lambda(x): x<30, lambda(x): (x>100)]
