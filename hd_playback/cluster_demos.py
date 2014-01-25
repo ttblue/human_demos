@@ -284,10 +284,9 @@ if __name__ == "__main__":
 
     if args.save:
         cluster_demos (args.demo_type, args.num_clusters, save_to_file=True, visualize=args.visualize)
-        return
-
-    if args.num_segs < 0:
-        ns = None
-    else:
-        ns = args.num_segs
-    main(args.demo_type, args.num_clusters, ns)
+    else:    
+        if args.num_segs < 0:
+            ns = None
+        else:
+            ns = args.num_segs
+        main(args.demo_type, args.num_clusters, ns)
