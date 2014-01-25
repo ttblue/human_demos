@@ -232,7 +232,12 @@ if __name__ == "__main__":
     parser.add_argument("--demo_type",help="Demo type.", type=str)
     parser.add_argument("--num_clusters", type=int)
     parser.add_argument("--num_segs", type=int, default=-1)
+    parser.add_argument("--save", action="store_true", default=False)
     args = parser.parse_args()
+
+    if args.save:
+        cluster_demos (args.demo_type, args.num_clusters, save_to_file=True)
+        return
 
     if args.num_segs < 0:
         ns = None
