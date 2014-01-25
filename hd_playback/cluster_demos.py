@@ -2,8 +2,6 @@ import h5py
 import numpy as np
 #from rapprentice import registration
 
-from joblib import Parallel, delayed
-import scipy.spatial.distance as ssd
 from sklearn.cluster import spectral_clustering
 import cPickle as pickle
 import argparse
@@ -11,8 +9,6 @@ import cv2, hd_rapprentice.cv_plot_utils as cpu
 import os.path as osp
 import time
 
-from hd_rapprentice import registration
-from hd_utils import clouds
 from hd_utils.defaults import demo_files_dir, similarity_costs_dir
 
 np.set_printoptions(precision=6, suppress=True)
@@ -68,7 +64,7 @@ def generate_sim_matrix (data, weights, keys):
 
 
 def cluster_demos(sm, keys, n_clusters, eigen_solver='arpack', assign_labels='discretize'):
-    labels = spectral_clustering(mat, n_clusters = n_clusters, eigen_solver=eigen_solver,assign_labels=assign_labels)
+    labels = spectral_clustering(sm, n_clusters = n_clusters, eigen_solver=eigen_solver,assign_labels=assign_labels)
     clusters = {i:{} for i in labels}
     
 
@@ -99,7 +95,7 @@ def main(demo_type, n_clusters, num_seg=None):
             break
 
     ts = time.time()
-    mat = generate_sim_matrix(costs, weights,keys)
+    mat = generate_sim_matrix(costs, weights, keys)
     print 'Time taken to generate sim matrix: %f'%(time.time() - ts)
     print mat
     
