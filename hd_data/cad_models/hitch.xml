@@ -1,0 +1,10 @@
+<KinBody name="hitch">
+  <Body name="tab" type="static">
+    <Geom type="cylinder">
+	<rotationaxis>1 0 0 90</rotationaxis>
+        <radius>0.016</radius>
+        <height>0.215</height>
+        <diffuseColor>1 1 0</diffuseColor>
+      </Geom>
+  </Body>
+</KinBody>

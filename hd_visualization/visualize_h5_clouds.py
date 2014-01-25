@@ -16,6 +16,7 @@ parser.add_argument("--demo_name", help="Name of demonstration", type=str, defau
 parser.add_argument("--cloud_proc_func", default="extract_red")
 parser.add_argument("--cloud_proc_mod", default="hd_utils.cloud_proc_funcs")
 parser.add_argument("--visualize_skeleton", action="store_true")
+parser.add_argument("--no_downsampled", action="store_true")
 args = parser.parse_args()
 
 
@@ -36,7 +37,10 @@ if args.demo_name == '':
             if seg_name == "done": continue
             print demo_name, seg_name
             
-            xyz = demofile[demo_name][seg_name]["cloud_xyz"]
+            if args.no_downsampled:
+                xyz = demofile[demo_name][seg_name]["full_cloud_xyz"]
+            else:
+                xyz = demofile[demo_name][seg_name]["cloud_xyz"]
             xyz = np.squeeze(xyz)
             print xyz.shape
         
@@ -57,7 +61,11 @@ else:
     for seg_name in demofile[args.demo_name]:
         if seg_name == "done": continue
         print seg_name
-        xyz = demofile[args.demo_name][seg_name]["cloud_xyz"]
+        if args.no_downsampled:
+            xyz = demofile[demo_name][seg_name]["full_cloud_xyz"]
+        else:
+            xyz = demofile[demo_name][seg_name]["cloud_xyz"]
+
         xyz = np.squeeze(xyz)
         
         ax = fig.gca(projection='3d')

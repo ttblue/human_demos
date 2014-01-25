@@ -49,6 +49,7 @@ parser.add_argument("--early_stop_portion", help="stop early in the final segmen
 parser.add_argument("--no_traj_resample", action="store_true", default=False)
 
 parser.add_argument("--interactive",action="store_true")
+parser.add_argument("--remove_table", action="store_true")
 
 
 args = parser.parse_args()
@@ -94,15 +95,15 @@ from hd_rapprentice import registration, animate_traj, ros2rave, \
      plotting_openrave, task_execution, \
      planning, tps, resampling, \
      ropesim, rope_initialization
-from hd_utils import yes_or_no, ros_utils as ru, func_utils, clouds, math_utils as mu
+from hd_utils import yes_or_no, ros_utils as ru, func_utils, clouds, math_utils as mu, cloud_proc_funcs
 from hd_utils.pr2_utils import get_kinect_transform
 from hd_utils.colorize import *
 from hd_utils.utils import avg_transform
 from hd_utils.defaults import demo_files_dir, hd_data_dir, asus_xtion_pro_f, \
         ar_init_dir, ar_init_demo_name, ar_init_playback_name, \
-        tfm_head_dof, tfm_bf_head, tfm_gtf_ee
-from hd_extract.extract_data import get_ar_marker_poses
+        tfm_head_dof, tfm_bf_head, tfm_gtf_ee, cad_files_dir
 
+from hd_extract.extract_data import get_ar_marker_poses
 
 
 
@@ -310,6 +311,7 @@ def exec_traj_maybesim(bodypart2traj):
 def find_closest_manual(demofile, _new_xyz):
     """for now, just prompt the user"""
     
+
     print "choose from the following options (type an integer)"
     seg_num = 0
     keys = {}
@@ -333,9 +335,7 @@ def find_closest_manual(demofile, _new_xyz):
                         is_finalsegs[seg_num] = False
 
                     seg_num += 1
-                    
-                    
-                
+
     choice_ind = task_execution.request_int_in_range(seg_num)
     return keys[choice_ind], is_finalsegs[choice_ind]
 
@@ -592,7 +592,6 @@ def downsample_objects(objs, factor):
     l = len(objs)
     return objs[0:l:factor]
 
-ADD_TABLE = True
 
 def main():
 
@@ -633,11 +632,13 @@ def main():
     Add table
     '''
     # As found from measuring
-    if ADD_TABLE:
+    if not args.remove_table:
+        a= osp.join(cad_files_dir, 'table.xml')
+        print a
         if args.execution:
-            Globals.env.Load('table.xml')
+            Globals.env.Load(osp.join(cad_files_dir, 'table.xml'))
         else:
-            Globals.env.Load('table_sim.xml')
+            Globals.env.Load(osp.join(cad_files_dir, 'table_sim.xml'))
         body = Globals.env.GetKinBody('table')
         Globals.viewer.SetTransparency(body,0.4)
 
@@ -706,6 +707,26 @@ def main():
             #T_w_k here should be different from rapprentice
             T_w_k = get_kinect_transform(Globals.robot)
             init_tfm = T_w_k.dot(init_tfm)
+            
+
+    if args.fake_data_demo and args.fake_data_segment:
+
+        if "hitch_pos" in demofile[args.fake_data_demo][args.fake_data_segment].keys():
+            Globals.env.Load(osp.join(cad_files_dir, 'hitch.xml'))
+            hitch_pos = demofile[args.fake_data_demo][args.fake_data_segment]['hitch_pos']
+            hitch_body = Globals.env.GetKinBody('hitch')
+            table_body = Globals.env.GetKinBody('table')
+            if init_tfm != None:
+                hitch_pos = init_tfm[:3,:3].dot(hitch_pos) + init_tfm[:3,3]
+            hitch_tfm = hitch_body.GetTransform()
+            hitch_tfm[:3, 3] = hitch_pos
+            hitch_height = hitch_body.GetLinks()[0].GetGeometries()[0].GetCylinderHeight()
+            table_z_extent = table_body.GetLinks()[0].GetGeometries()[0].GetBoxExtents()[2] 
+            table_height = table_body.GetLinks()[0].GetGeometries()[0].GetTransform()[2, 3]
+            hitch_tfm[2, 3] = table_height + table_z_extent + hitch_height/2.0
+            hitch_body.SetTransform(hitch_tfm)
+
+
 
             
 
@@ -728,6 +749,18 @@ def main():
             if args.simulation and curr_step > 1:
                 # for following steps in rope simulation, using simulation result
                 new_xyz = Globals.sim.observe_cloud(3)
+                new_xyz = clouds.downsample(new_xyz, .01)
+
+                
+                hitch = Globals.env.GetKinBody('hitch')
+                if hitch != None:
+                    pos = hitch.GetTransform()[:3,3]
+                    hitch_height = hitch_body.GetLinks()[0].GetGeometries()[0].GetCylinderHeight()
+                    pos[2] = pos[2] - hitch_height/2
+                    hitch_cloud = cloud_proc_funcs.generate_hitch_points(pos)
+                    hitch_cloud = clouds.downsample(hitch_cloud, .01)
+                    new_xyz = np.r_[new_xyz, hitch_cloud]
+                
             else:          
                 fake_seg = demofile[args.fake_data_demo][args.fake_data_segment]
                 new_xyz = np.squeeze(fake_seg["cloud_xyz"])
@@ -744,6 +777,17 @@ def main():
                     rope_nodes = rope_initialization.find_path_through_point_cloud(new_xyz)
                     Globals.sim.create(rope_nodes)
                     new_xyz = Globals.sim.observe_cloud(3)
+                    new_xyz = clouds.downsample(new_xyz, .01)
+                    
+                    hitch = Globals.env.GetKinBody('hitch')
+                    if hitch != None:
+                        pos = hitch.GetTransform()[:3,3]
+                        hitch_height = hitch_body.GetLinks()[0].GetGeometries()[0].GetCylinderHeight()
+                        pos[2] = pos[2] - hitch_height/2
+                        hitch_cloud = cloud_proc_funcs.generate_hitch_points(pos)
+                        hitch_cloud = clouds.downsample(hitch_cloud, .01)
+                        new_xyz = np.r_[new_xyz, hitch_cloud]
+
 
         else:
             Globals.pr2.head.set_pan_tilt(0,1.2)
