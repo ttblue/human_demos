@@ -3,7 +3,7 @@ import numpy as np, numpy.linalg as nlg
 import cv2, cv
 import time
 
-from hd_utils import ros_utils as ru, clouds, conversions, utils, chessboard_utils as cu
+from hd_utils import ros_utils as ru, clouds, conversions, utils#, chessboard_utils as cu
 from hd_utils.colorize import *
 from hd_utils.defaults import tfm_link_rof, asus_xtion_pro_f
 

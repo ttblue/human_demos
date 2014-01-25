@@ -47,6 +47,7 @@ def find_best(demos, sm):
 		best_demos.append(best_n_in_cluster(cluster, sm, n=1))
 	return best_demos
 
+
 def main(demo_type, n_base, n_perts, load_sm = False):
 	demofile = h5py.File(osp.join(demo_files_dir, demo_type, demo_type+'.h5'), 'r')
 	if load_sm:
@@ -102,7 +103,7 @@ def main(demo_type, n_base, n_perts, load_sm = False):
 		rows.append(np.asarray(row))
 		cv2.imshow("clustering result", row)
 		kb = cv2.waitKey()
-		if kb == 1113939 or kb == 65361:
+		if kb == 1113939 or kb == 65363:
 			i = min(i+1,n_clusters-1)
 			inc = True
 		elif kb == 1113937 or kb == 65361:

@@ -29,7 +29,7 @@ parser.add_argument("--downsample", help="downsample traj.", type=int, default=1
 
 parser.add_argument("--prompt", action="store_true")
 parser.add_argument("--show_neighbors", action="store_true")
-parser.add_argument("--select_manual", action="store_true")
+parser.add_argument("--select", default="manual")
 parser.add_argument("--log", action="store_true")
 
 parser.add_argument("--fake_data_demo", type=str)
@@ -125,25 +125,23 @@ DS_SIZE = .025
 def smaller_ang(x):
     return (x + np.pi)%(2*np.pi) - np.pi
 
-def closer_ang(x,a,dir=0):
+def closer_ang(x,a,dr=0):
     """                                                
     find angle y (==x mod 2*pi) that is close to a                             
     dir == 0: minimize absolute value of difference                            
     dir == 1: y > x                                                            
     dir == 2: y < x                                                            
     """
-    if dir == 0:
+    if dr == 0:
         return a + smaller_ang(x-a)
-    elif dir == 1:
+    elif dr == 1:
         return a + (x-a)%(2*np.pi)
-    elif dir == -1:
+    elif dr == -1:
         return a + (x-a)%(2*np.pi) - 2*np.pi
     
-def closer_angs(x_array,a_array,dir=0):
+def closer_angs(x_array,a_array,dr=0):
     
-    return [closer_ang(x, a) for (x, a) in zip(x_array, a_array)]
-        
-    
+    return [closer_ang(x, a, dr) for (x, a) in zip(x_array, a_array)]
 
 
 def split_trajectory_by_gripper(seg_info, pot_angle_threshold, thresh=5):
@@ -419,26 +417,92 @@ def find_closest_auto(demofile, new_xyz, init_tfm=None, n_jobs=3):
     ibest = np.argmin(costs)
     return keys[ibest], is_finalsegs[ibest]
 
-def find_closest_cloud(demofile, new_xyz):
-    """
-    recognition seems to be in john_python/lfd/recognition.py.
-    """
-    from hd_rapprentice import recognition
-    demo_clouds = []
+
+def find_closest_clusters(demofile, clusterfile, new_xyz, init_tfm=None, check_n=2, n_jobs=3):
+    if args.parallel:
+        from joblib import Parallel, delayed
     
+    DS_LEAF_SIZE = 0.045
+    new_xyz = clouds.downsample(new_xyz,DS_LEAF_SIZE)
+        
+    # Store all the best cluster clouds
+    cluster_clouds = {}
+    keys = clusterfile['keys']
+    clusters = clusterfile['clusters']
+    for cluster in clusters:
+        best_seg = clusters[cluster][0]
+        dname, sname = keys[best_seg]
+        cloud = clouds.downsample(np.asarray(demofile[dname][sname]["cloud_xyz"]),DS_LEAF_SIZE)
+        if init_tfm is not None:
+            cloud = cloud.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
+
+        cluster_clouds[cluster] = cloud
+
+    # Check the clusters with min costs
+    if args.parallel:
+        ccosts = Parallel(n_jobs=n_jobs,verbose=51)(delayed(registration_cost)(cluster_clouds[i], new_xyz) for i in cluster_clouds)
+    else:
+        ccosts = []
+        for (i,ds_cloud) in cluster_clouds.items():
+            ccosts.append(registration_cost(ds_cloud, new_xyz))
+            print "completed %i/%i"%(i+1, len(cluster_clouds))
     
-    keys = {}
-    seg_num = 0
-    for demo_name in demofile:
-        for seg_name in demofile[demo_name]:
-            keys[seg_num] = (demo_name, seg_name)
-            seg_num += 1
-            demo_clouds.append(np.asarray(demofile[demo_name][seg_name]["cloud_xyz"]))
-    tps_func_vec = recognition.make_func_vec(new_xyz, clouds)
-    costs = recognition.make_tps_dist_vec(tps_func_vec)
-    ibest = np.argmin(costs)
-    return keys[ibest]
+    print "Cluster costs: \n", ccosts
+
     
+    best_clusters = np.argsort(ccosts)
+    check_n = min(check_n, len(best_clusters))
+
+    is_finalsegs = {}    
+    check_clouds = {}
+    best_segs = []
+    for c in best_clusters[:check_n]:
+        cluster_segs = clusters[c]
+        best_segs.extend(cluster_segs)
+        for seg in cluster_segs:
+            dname,sname = keys[seg]
+            check_clouds[seg] = clouds.downsample(np.asarray(demofile[dname][sname]["cloud_xyz"]),DS_LEAF_SIZE)
+            if 'done' in demofile[dname].keys():
+                final_seg_id = len(demofile[dname].keys()) - 2
+            else:
+                final_seg_id = len(demofile[dname].keys()) - 1
+
+            if sname == "seg%02d"%(final_seg_id):
+                is_finalsegs[seg] = True
+            else:
+                is_finalsegs[seg] = False
+
+    # Check the clusters with min costs
+    if args.parallel:
+        costs = Parallel(n_jobs=n_jobs,verbose=51)(delayed(registration_cost)(check_clouds[i], new_xyz) for i in check_clouds)
+    else:
+        costs = []
+        for (i,ds_cloud) in check_clouds.items():
+            costs.append(registration_cost(ds_cloud, new_xyz))
+            print "completed %i/%i"%(i+1, len(check_clouds))
+    
+    print "Costs: \n", costs
+    
+    if args.show_neighbors:
+        nshow = min(5, len(check_clouds))
+        import cv2, hd_rapprentice.cv_plot_utils as cpu
+        sortinds = np.argsort(costs)[:nshow]
+        
+        near_rgbs = []
+        for i in sortinds:
+            (demo_name, seg_name) = keys[i]
+            near_rgbs.append(np.asarray(demofile[demo_name][seg_name]["rgb"]))
+        
+        bigimg = cpu.tile_images(near_rgbs, 1, nshow)
+        cv2.imshow("neighbors", bigimg)
+        print "press any key to continue"
+        cv2.waitKey()
+    
+    ibest = best_segs[np.argmin(costs)]
+    
+    return keys[ibest], is_finalsegs[ibest]
+
+
 
 def tpsrpm_plot_cb(x_nd, y_md, targ_Nd, corr_nm, wt_n, f):
     ypred_nd = f.transform_points(x_nd)
@@ -536,6 +600,10 @@ def main():
     h5file = osp.join(demotype_dir, args.demo_type+".h5")
 
     demofile = h5py.File(h5file, 'r')
+    
+    if args.select == "clusters":
+        c_h5file = osp.join(demotype_dir, args.demo_type+"_clusters.h5")
+        clusterfile = h5py.File(c_h5file, 'r') 
     
     trajoptpy.SetInteractive(args.interactive)
     
@@ -748,10 +816,12 @@ def main():
         Finding closest demonstration
         '''
         redprint("Finding closest demonstration")
-        if args.select_manual:
+        if args.select=="manual":
             (demo_name, seg_name), is_final_seg = find_closest_manual(demofile, new_xyz)
-        else:
+        elif args.select=="auto":
             (demo_name, seg_name), is_final_seg = find_closest_auto(demofile, new_xyz, init_tfm)
+        else:
+            (demo_name, seg_name), is_final_seg = find_closest_clusters(demofile, clusterfile, new_xyz, init_tfm)
 
         
         seg_info = demofile[demo_name][seg_name]
