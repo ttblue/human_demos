@@ -28,7 +28,7 @@ def best_n_in_cluster(cluster, sm, n=2):
 		for j in xrange(len(cluster)):
 			costs[i][j] = sm[cluster[i]][cluster[j]]
 	sum_costs = np.sum(costs, axis=1)
-	ranking = np.argsort(sum_costs)
+	ranking = np.argsort(-sum_costs)
 	print ranking
 	
 	if n ==1:
@@ -46,6 +46,7 @@ def find_best(demos, sm):
 		best_n_in_cluster(cluster, sm, n=1)
 		best_demos.append(best_n_in_cluster(cluster, sm, n=1))
 	return best_demos
+
 
 def main(demo_type, n_base, n_perts, load_sm = False):
 	demofile = h5py.File(osp.join(demo_files_dir, demo_type, demo_type+'.h5'), 'r')
@@ -102,13 +103,13 @@ def main(demo_type, n_base, n_perts, load_sm = False):
 		rows.append(np.asarray(row))
 		cv2.imshow("clustering result", row)
 		kb = cv2.waitKey()
-		if kb == 1113939:
+		if kb == 1113939 or kb == 65363:
 			i = min(i+1,n_clusters-1)
 			inc = True
-		elif kb == 1113937:
+		elif kb == 1113937 or kb == 65361:
 			i = max(i-1,0)
 			inc = False
-		elif kb == 1048689:
+		elif kb == 1048689 or kb == 113:
 			break
 	
 	bests = find_best(demos, sm)

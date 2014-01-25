@@ -29,7 +29,7 @@ from hd_calib import calibration_pipeline as cpipe
 from hd_utils.colorize import *
 
 from hd_utils.defaults import demo_files_dir, calib_files_dir, hd_data_dir, \
-                              demo_names, master_name, latest_demo_name, perturbation_file
+                              demo_names, master_name, latest_demo_name, perturbation_file, new_pert_file
 from hd_utils.utils import terminate_process_and_children
 from hd_utils.yes_or_no import yes_or_no
 
@@ -95,7 +95,10 @@ def load_init_config(config_num):
     if config_num is None: return None
     if init_data is None:
         import cPickle as pickle
-        p = osp.join(demo_files_dir,perturbation_file)
+        if args.use_new_pert:
+            p = osp.join(demo_files_dir, new_pert_file)
+        else:
+            p = osp.join(demo_files_dir, perturbation_file)
         with open(p) as fh: init_data = pickle.load(fh)
     
     try:
@@ -591,7 +594,8 @@ if __name__ == '__main__':
     parser.add_argument("num_cameras", help="Number of cameras in setup.", default=2, type=int)
     parser.add_argument("--downsample", help="Downsample rgbd data by factor.", default=1, type=int)
     parser.add_argument("--use_voice", help="Use voice for recording.", default=1, type=int)
-    parser.add_argument("--use_init", help="Use initial configs.", action="store_false", default=True)
+    parser.add_argument("--use_init", help="Use your own initial configs.", action="store_false", default=True)
+    parser.add_argument("--use_new_pert", help="Use initial configs.", action="store_true", default=False)
     
     parser.add_argument("--single_demo", help="Single or multiple demos?", action="store_true", default=False)
     parser.add_argument("--config_num", help="Index of random config.", default=-1, type=int)

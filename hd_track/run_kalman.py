@@ -1,6 +1,6 @@
 from __future__ import division
 
-import numpy as np
+import numpy as np, numpy.linalg as nlg
 import os, os.path as osp
 import cPickle as cp
 import scipy.linalg as scl
@@ -14,7 +14,7 @@ from hd_utils.utils import *
 from hd_utils.defaults import demo_files_dir, demo_names, master_name
 from hd_utils.yes_or_no import yes_or_no
 
-from hd_track.kalman import kalman, smoother
+from hd_track.kalman import kalman, smoother, closer_angle
 from hd_track.kalman_tuning import state_from_tfms_no_velocity
 from hd_track.streamer import streamize, get_corresponding_data, stream_soft_next, time_shift_stream
 from hd_track.demo_data_prep import *
@@ -55,12 +55,12 @@ def initialize_covariances(freq, demo_dir):
     cam_tfms = get_cam_tfms(demo_dir)
     
     
-    rgbd_cam_xyz_std    = [0.01, 0.01, 0.01] # 1cm
-    rgb_cam_xyz_std     = [0.05, 0.05, 0.05] # 1cm
-    hydra_xyz_std       = [0.08, 0.08, 0.08] # 3cm <-- use small std after tps-correction.
+    rgbd_cam_xyz_std    = [0.005, 0.005, 0.005] # 1cm
+    rgb_cam_xyz_std     = [0.2, 0.2, 0.4] # 1cm
+    hydra_xyz_std       = [0.03, 0.03, 0.03] # 3cm <-- use small std after tps-correction.
 
-    rgbd_cam_rpy_std    = np.deg2rad(15)
-    rgb_cam_rpy_std     = np.deg2rad(15)
+    rgbd_cam_rpy_std    = np.deg2rad(30)
+    rgb_cam_rpy_std     = np.deg2rad(90)
     hydra_rpy_std       = np.deg2rad(5)
 
 
@@ -84,7 +84,12 @@ def initialize_covariances(freq, demo_dir):
             for i in xrange(len(cam_tfms)):
                 tfm_info = cam_tfms[i]
                 if tfm_info['parent'] == 'camera1_link' and tfm_info['child'] == '%s_link'%(cam):
-                    R = scl.block_diag(tfm_info['tfm'][:3,:3], I3)
+                    # tfm_info is from camera link to camera link
+                    
+                    tfm_rof1_rof2 = nlg.inv(tfm_link_rof).dot(tfm_info['tfm']).dot(tfm_link_rof)
+                    R = scl.block_diag(tfm_rof1_rof2[:3,:3], I3)
+                    #R = scl.block_diag(I3, I3)
+                    
                     if cam_types[cam] == 'rgb':
                         cam_covars[cam] = R.dot(rgb_covar).dot(R.transpose())
                     else:
@@ -111,7 +116,6 @@ def get_first_state(tf_streams, freq, start_time):
         for ti, t in enumerate(ts):
             if t <= dt + start_time:
                 tfs0.append(tfs[ti])
-                
                 
     I3 = np.eye(3)
     S0 = scl.block_diag(1e-3*I3, 1e-2*I3, 1e-3*I3, 1e-3*I3)
@@ -388,7 +392,6 @@ def initialize_KFs(kf_data, freq):
             cam_strms= []
             for cinfo in cam_dat.values():
                 cam_strms.append(cinfo['stream'])
-                
 
 
             x0, S0 = get_first_state(cam_strms + [hydra_strm], freq=1./hydra_strm.dt, start_time=kf_data[lr][i]['shifted_seg_start_times'])
@@ -418,6 +421,24 @@ def low_pass(x, freq=30.):
     x_filt = filtfilt(b, a, x, axis=0)
     x_filt = np.squeeze(x_filt)
     return  x_filt
+
+
+def unbreak(rpy):
+    """
+    removes discontinuity in rpy (nx3 matrix).
+    """
+    if len(rpy)==1: return
+    
+    un_rpy      = np.empty(rpy.shape)
+    un_rpy[0,:] = rpy[0,:]
+    for i in xrange(1,len(rpy)):
+        if i==1:
+            a_prev = rpy[i-1,:]
+        else:
+            a_prev = un_rpy[i-1,:]
+        a_now  = rpy[i,:]
+        un_rpy[i,:] = closer_angle(a_now, a_prev)
+    return un_rpy
 
 
 def run_KF(KF, nsteps, freq, hydra_strm, cam_dat, hydra_covar, cam_covars, do_smooth, plot, plot_title, block):
@@ -458,7 +479,7 @@ def run_KF(KF, nsteps, freq, hydra_strm, cam_dat, hydra_covar, cam_covars, do_sm
     for cstrm in cam_strms:
         cstrm.reset()
     if do_smooth:
-        
+
         '''
         # UNCOMMENT BELOW TO RUN KALMAN SMOOTHER:
         A,_  = KF.get_motion_mats(dt)
@@ -467,8 +488,12 @@ def run_KF(KF, nsteps, freq, hydra_strm, cam_dat, hydra_covar, cam_covars, do_sm
         '''
         ### do low-pass filtering for smoothing:
         xs_kf_xyz = np.array(xs_kf)[:,0:3] 
+        xs_kf_rpy = np.squeeze(np.array(xs_kf)[:,6:9])
+
         xs_lp_xyz = low_pass(xs_kf_xyz, freq)
-        xs_smthr  = np.c_[xs_lp_xyz, np.squeeze(np.array(xs_kf))[:,3:]].tolist()
+        xs_lp_rpy = low_pass(unbreak(xs_kf_rpy), freq)
+
+        xs_smthr  = np.c_[xs_lp_xyz, np.squeeze(np.array(xs_kf))[:,3:6], xs_lp_rpy, np.squeeze(np.array(xs_kf))[:,9:12]].tolist()
         covars_smthr = None
 
         if 's' in plot:
@@ -505,7 +530,6 @@ def filter_traj(demo_dir, tps_model_fname, save_tps, do_smooth, plot, block):
                                                     plot=plot,
                                                     block=block)
 
-    print time_shifts
 
     _, cam_covars, hydra_covar =  initialize_covariances(freq, demo_dir)
 

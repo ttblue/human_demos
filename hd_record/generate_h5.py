@@ -17,6 +17,8 @@ import shutil
 import argparse
 from hd_utils.defaults import demo_files_dir, demo_names, master_name, verify_name
 from hd_utils.extraction_utils import get_video_frames
+from hd_utils import clouds
+
 
 
 parser = argparse.ArgumentParser()
@@ -27,10 +29,12 @@ parser.add_argument("--no_clouds", action="store_true")
 parser.add_argument("--clouds_only", action="store_true")
 parser.add_argument("--verify", action="store_true")
 parser.add_argument("--visualize", action="store_true")
+parser.add_argument("--has_hitch", action="store_true")
 args = parser.parse_args()
 
 cloud_proc_mod = importlib.import_module(args.cloud_proc_mod)
 cloud_proc_func = getattr(cloud_proc_mod, args.cloud_proc_func)
+hitch_proc_func = getattr(cloud_proc_mod, "extract_hitch")
 
 
 # add rgbd for one demonstration
@@ -172,12 +176,28 @@ for (demo_name, demo_info) in hdf.items():
             
         print "gen point clouds: %s %s"%(demo_name, seg_name)
         
-        seg_info["cloud_xyz"] = cloud_proc_func(np.asarray(seg_info["rgb"]), np.asarray(seg_info["depth"]), np.eye(4))
+        cloud = cloud_proc_func(np.asarray(seg_info["rgb"]), np.asarray(seg_info["depth"]), np.eye(4))
+
+        if args.has_hitch:
+            hitch_normal = clouds.clouds_plane(cloud)
+            
+            hitch, hitch_pos = hitch_proc_func(np.asarray(seg_info["rgb"]), np.asarray(seg_info["depth"]), np.eye(4), hitch_normal)
+            seg_info["full_hitch"] = hitch
+            seg_info["full_object"] = cloud
+            seg_info["hitch"] = clouds.downsample(hitch, .01)
+            seg_info["object"] = clouds.downsample(cloud, .01)
+            seg_info["hitch_pos"] = hitch_pos
+            seg_info["cloud_xyz"] = np.r_[seg_info["hitch"], seg_info["object"]]
+        else:
+            seg_info["full_cloud_xyz"] = cloud
+            seg_info["cloud_xyz"] = clouds.downsample(cloud, .01)
+            
         
         seg_info["cloud_proc_func"] = args.cloud_proc_func
         seg_info["cloud_proc_mod"] = args.cloud_proc_mod
         seg_info["cloud_proc_code"] = inspect.getsource(cloud_proc_func)
-            
+        
+hdf.close()      
             
 if args.verify:
     
@@ -232,3 +252,4 @@ if args.verify:
 
                 
                 cp.dump(traj, traj_fd)
+    hdf.close()

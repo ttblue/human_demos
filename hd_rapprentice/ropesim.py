@@ -75,9 +75,11 @@ class Simulation(object):
         self.bt_robot = None
         self.rope = None
         self.constraints = {"l": [], "r": []}
+        
+        bulletsimpy.friction = 1
 
         self.rope_params = bulletsimpy.CapsuleRopeParams()
-        self.rope_params.radius = 0.005
+        self.rope_params.radius = 0.005 * 1.2
         self.rope_params.angStiffness = .1
         self.rope_params.angDamping = 1
         self.rope_params.linDamping = .75
@@ -86,7 +88,7 @@ class Simulation(object):
 
     def create(self, rope_pts):
         self.bt_env = bulletsimpy.BulletEnvironment(self.env, [])
-        self.bt_env.SetGravity([0, 0, -9.8])
+        self.bt_env.SetGravity([0, 0, -9.8 * 2])
         self.bt_robot = self.bt_env.GetObjectByName(self.robot.GetName())
         self.rope = bulletsimpy.CapsuleRope(self.bt_env, 'rope', rope_pts, self.rope_params)
 
@@ -127,7 +129,10 @@ class Simulation(object):
         lengths = np.r_[0, self.rope.GetHalfHeights() * 2]
         summed_lengths = np.cumsum(lengths)
         assert len(lengths) == len(pts)
-        return math_utils.interp2d(np.linspace(0, summed_lengths[-1], upsample), summed_lengths, pts)
+        upsampled_pts = math_utils.interp2d(np.linspace(0, summed_lengths[-1], upsample*len(lengths)), summed_lengths, pts)
+
+        
+        return upsampled_pts
 
     def grab_rope(self, lr):
         nodes, ctl_pts = self.rope.GetNodes(), self.rope.GetControlPoints()
