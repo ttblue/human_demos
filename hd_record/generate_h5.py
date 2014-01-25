@@ -29,10 +29,12 @@ parser.add_argument("--no_clouds", action="store_true")
 parser.add_argument("--clouds_only", action="store_true")
 parser.add_argument("--verify", action="store_true")
 parser.add_argument("--visualize", action="store_true")
+parser.add_argument("--has_hitch", action="store_true")
 args = parser.parse_args()
 
 cloud_proc_mod = importlib.import_module(args.cloud_proc_mod)
 cloud_proc_func = getattr(cloud_proc_mod, args.cloud_proc_func)
+hitch_proc_func = getattr(cloud_proc_mod, "extract_hitch")
 
 
 # add rgbd for one demonstration
@@ -175,8 +177,19 @@ for (demo_name, demo_info) in hdf.items():
         print "gen point clouds: %s %s"%(demo_name, seg_name)
         
         cloud = cloud_proc_func(np.asarray(seg_info["rgb"]), np.asarray(seg_info["depth"]), np.eye(4))
-        seg_info["full_cloud_xyz"] = cloud
-        seg_info["cloud_xyz"] = clouds.downsample(cloud, .01)
+
+        if args.has_hitch:
+            hitch, hitch_pos = hitch_proc_func(np.asarray(seg_info["rgb"]), np.asarray(seg_info["depth"]), np.eye(4))
+            seg_info["full_hitch"] = hitch
+            seg_info["full_object"] = cloud
+            seg_info["hitch"] = clouds.downsample(hitch, .01)
+            seg_info["object"] = clouds.downsample(cloud, .01)
+            seg_info["hitch_pos"] = hitch_pos
+            seg_info["cloud_xyz"] = np.r_[seg_info["hitch"], seg_info["object"]]
+        else:
+            seg_info["full_cloud_xyz"] = cloud
+            seg_info["cloud_xyz"] = clouds.downsample(cloud, .01)
+            
         
         seg_info["cloud_proc_func"] = args.cloud_proc_func
         seg_info["cloud_proc_mod"] = args.cloud_proc_mod

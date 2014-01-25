@@ -90,6 +90,17 @@ def extract_yellow(rgb, depth, T_w_k):
     return extract_color(rgb, depth, yellow_mask, T_w_k, xyz_mask)
 
 
+def generate_hitch_points(pos, radius=0.016, length=0.215):
+    ang = np.linspace(0, 2*np.pi, 30)
+    circ_pts = radius*np.c_[np.cos(ang), np.sin(ang)] + pos[None,:2]
+    circ_zs  = np.linspace(pos[2], length+pos[2], 30)
+
+    rod_pts  = np.empty((0,3))
+    for z in circ_zs:
+        rod_pts = np.r_[rod_pts, np.c_[circ_pts, z*np.ones((len(circ_pts),1))] ]
+        
+    return rod_pts
+
 def extract_hitch(rgb, depth, T_w_k, radius=0.016, length =0.215, height_range=[0.70,0.80]):
     """
     template match to find the hitch in the picture, 
@@ -128,7 +139,7 @@ def extract_hitch(rgb, depth, T_w_k, radius=0.016, length =0.215, height_range=[
     for z in circ_zs:
         rod_pts = np.r_[rod_pts, np.c_[circ_pts, z*np.ones((len(circ_pts),1))] ]
     
-    return np.r_[hitch_pts, rod_pts]    
+    return np.r_[hitch_pts, rod_pts], center_xyz    
     
     
 
