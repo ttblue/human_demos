@@ -47,6 +47,7 @@ def find_best(demos, sm):
 		best_demos.append(best_n_in_cluster(cluster, sm, n=1))
 	return best_demos
 
+
 def main(demo_type, n_base, n_perts, load_sm = False):
 	demofile = h5py.File(osp.join(demo_files_dir, demo_type, demo_type+'.h5'), 'r')
 	if load_sm:

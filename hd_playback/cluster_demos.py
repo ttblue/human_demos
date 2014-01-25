@@ -16,6 +16,8 @@ np.set_printoptions(precision=6, suppress=True)
 """
 Clusters based on costs in file.
 """
+
+# Weights for different costs
 weights = {}
 weights['tps'] = 0.5
 weights['traj'] = 1.2
@@ -23,18 +25,26 @@ weights['traj_f'] = 1.2
 
 
 def get_costs (cfile):
+    """
+    Loads file with costs.
+    """
     with open(cfile) as fh: return pickle.load(fh)
 
 
 def get_name(demo_seg):
+    """
+    Gets shortened name for demo.
+    """
     demo,seg = demo_seg
     try:
         return 'd%i'%int(demo[4:])+'s%i'%int(seg[3:])
     except:
         return demo+'-'+seg
 
-def calc_sim(cost, weights):
-    
+def calc_sim(cost):
+    """
+    Calculates the cost of demo pair.
+    """
     val = 0
     for c in cost:
         if c in weights: 
@@ -45,8 +55,9 @@ def calc_sim(cost, weights):
 
     return val
 
-def generate_sim_matrix (data, weights, keys):
+def generate_sim_matrix (data, keys):
     """
+    Generates the similarity matrix based on costs and weights.
     Costs and weights must have same dict keys.
     """
     cost_mat = np.zeros((len(keys), len(keys)))
@@ -62,12 +73,90 @@ def generate_sim_matrix (data, weights, keys):
 
     return np.exp(-cost_mat)
 
-
-def cluster_demos(sm, keys, n_clusters, eigen_solver='arpack', assign_labels='discretize'):
-    labels = spectral_clustering(sm, n_clusters = n_clusters, eigen_solver=eigen_solver,assign_labels=assign_labels)
-    clusters = {i:{} for i in labels}
+def best_n_in_cluster(cluster, sm, n=None):
+    """
+    Returns the best n in cluster (closest to others).
+    """
+#     costs = np.zeros((len(cluster), len(cluster)))
+#     for i in xrange(len(cluster)):
+#         for j in xrange(len(cluster)):
+#             costs[i][j] = sm[cluster[i]][cluster[j]]
+    cluster_sm = sm[np.ix_([cluster, cluster])]
+    sum_sm = np.sum(cluster_sm, axis=1)
+    ranking = np.argsort(-sum_sm)
     
+    if n is None: n = len(ranking)
+    else: n = min(n, len(ranking))
+    return [cluster[ranking[i]] for i in range(n)]
 
+
+def rank_demos_in_cluster(clusters, sm):
+    """
+    Ranks all the demos in the clusters.
+    """
+    demo_cluster_rankings = {}
+    idx = 0
+    for i in clusters:
+        cluster = clusters[i]
+        if len(cluster) == 0: continue
+        rankings = best_n_in_cluster(cluster, sm)
+        demo_cluster_rankings[idx] = rankings
+        idx += 1
+    return demo_cluster_rankings
+
+def cluster_and_rank_demos(sm, n_clusters, eigen_solver='arpack', assign_labels='discretize'):
+    """
+    Clusters demos based on similarity matrix.
+    """
+    labels = spectral_clustering(sm, n_clusters = n_clusters, eigen_solver=eigen_solver,assign_labels=assign_labels)
+    clusters = {i:[] for i in xrange(n_clusters)}
+    for i,l in enumerate(labels):
+        clusters[l].append(i)
+
+    # Maybe re-cluster large demos
+    return rank_demos_in_cluster(clusters, sm)
+
+def gen_h5_clusters (demo_type, cluster_data, keys):
+    """
+    Save .h5 file.
+    """
+    cluster_path = osp.join(demo_files_dir, demo_type, demo_type+'_clusters.h5')
+    hdf = h5py.File(cluster_path)
+    
+    cgroup = hdf.create_group('clusters')
+    for cluster in cluster_data:
+        cgroup[cluster] = cluster_data[cluster]
+    
+    kgroup = hdf.create_group('keys')
+    for key in keys:
+        kgroup[key] = keys[key]    
+    
+    pass
+
+def cluster_demos (demo_type, n_clusters, save_to_file=False):
+    """
+    Clusters and ranks demos.
+    """
+    demofile = h5py.File(osp.join(demo_files_dir, demo_type, demo_type+'.h5'), 'r')
+    cost_file = osp.join(similarity_costs_dir, demo_type)+'.costs'    
+    costs = get_costs(cost_file)
+ 
+    seg_num = 0
+    keys = {}
+    for demo_name in demofile:
+        if demo_name != "ar_demo":
+            for seg_name in demofile[demo_name]:
+                if seg_name != 'done':
+                    keys[seg_num] = (demo_name, seg_name)
+                    seg_num += 1
+    
+    sm = generate_sim_matrix(costs, keys)
+    
+    if save_to_file:
+        gen_h5_clusters(demo_type, cluster_and_rank_demos(sm, n_clusters), keys)
+    else:
+        return cluster_and_rank_demos(sm, n_clusters)
+    
 def main(demo_type, n_clusters, num_seg=None):
     demofile = h5py.File(osp.join(demo_files_dir, demo_type, demo_type+'.h5'), 'r')
     
