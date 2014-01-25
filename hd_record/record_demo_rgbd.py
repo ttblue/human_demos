@@ -397,7 +397,9 @@ def record_pipeline ( calib_file, num_cameras, num_demos, use_voice, use_init=Tr
         else:
             status = raw_input("Hit enter when ready to record demo (or q/Q to quit). ")
 
-        save_image_services[cam](cam_stop_request)
+        for cam in camera_types:
+            if camera_types[cam] == 'rgbd':
+                save_image_services[cam](cam_publish_request)
         display_init_config(points=None, old=False, clear=True)
 
         if status in ["done session", "q","Q"]:
