@@ -9,6 +9,7 @@ from hd_utils.defaults import asus_xtion_pro_f, hd_data_dir
 from hd_utils.pr2_utils import get_kinect_transform
 from hd_rapprentice.rope_initialization import points_to_graph
 import networkx as nx
+from openravepy import matrixFromAxisAngle
 
 def remove_outlier_connected_component(xyz, max_dist = .03):
     G = points_to_graph(xyz, max_dist)
@@ -100,8 +101,9 @@ def generate_hitch_points(pos, radius=0.016, length=0.215):
         rod_pts = np.r_[rod_pts, np.c_[circ_pts, z*np.ones((len(circ_pts),1))] ]
         
     return rod_pts
+    
 
-def extract_hitch(rgb, depth, T_w_k, radius=0.016, length =0.215, height_range=[0.70,0.80]):
+def extract_hitch(rgb, depth, T_w_k, dir=None, radius=0.016, length =0.215, height_range=[0.70,0.80]):
     """
     template match to find the hitch in the picture, 
     get the xyz at those points using the depth image,
@@ -139,7 +141,18 @@ def extract_hitch(rgb, depth, T_w_k, radius=0.016, length =0.215, height_range=[
     for z in circ_zs:
         rod_pts = np.r_[rod_pts, np.c_[circ_pts, z*np.ones((len(circ_pts),1))] ]
     
-    return np.r_[hitch_pts, rod_pts], center_xyz    
+    all_pts = np.r_[hitch_pts, rod_pts]
+    if dir is None:
+        return all_pts, center_xyz
+    else:
+        axis = np.cross([0,0,1], dir)
+        angle = np.arccos(np.dot([0,0,1], dir))
+        tfm = matrixFromAxisAngle(axis, angle)
+        tfm[:3,3] = - tfm[:3,:3].dot(center_xyz) + center_xyz
+        return np.asarray([tfm[:3,:3].dot(point) + tfm[:3,3] for point in all_pts]), center_xyz
+        
+        
+            
     
     
 

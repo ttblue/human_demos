@@ -179,7 +179,9 @@ for (demo_name, demo_info) in hdf.items():
         cloud = cloud_proc_func(np.asarray(seg_info["rgb"]), np.asarray(seg_info["depth"]), np.eye(4))
 
         if args.has_hitch:
-            hitch, hitch_pos = hitch_proc_func(np.asarray(seg_info["rgb"]), np.asarray(seg_info["depth"]), np.eye(4))
+            hitch_normal = clouds.clouds_plane(cloud)
+            
+            hitch, hitch_pos = hitch_proc_func(np.asarray(seg_info["rgb"]), np.asarray(seg_info["depth"]), np.eye(4), hitch_normal)
             seg_info["full_hitch"] = hitch
             seg_info["full_object"] = cloud
             seg_info["hitch"] = clouds.downsample(hitch, .01)
@@ -194,7 +196,8 @@ for (demo_name, demo_info) in hdf.items():
         seg_info["cloud_proc_func"] = args.cloud_proc_func
         seg_info["cloud_proc_mod"] = args.cloud_proc_mod
         seg_info["cloud_proc_code"] = inspect.getsource(cloud_proc_func)
-            
+        
+hdf.close()      
             
 if args.verify:
     
@@ -249,3 +252,4 @@ if args.verify:
 
                 
                 cp.dump(traj, traj_fd)
+    hdf.close()

@@ -72,3 +72,12 @@ def cluster_filter(xyz, tol=0.03, minsize=500):
             minsize = int(0.5 * minsize)
 
     return cloud
+
+def clouds_plane(xyz):
+    A = np.cov(xyz.T)
+    U, _, _ = np.linalg.svd(A)
+    
+    if U[2, -1] < 0:
+        return -U[:, -1]
+    else:
+        return U[:, -1]
