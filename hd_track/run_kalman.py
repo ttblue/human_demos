@@ -1,6 +1,6 @@
 from __future__ import division
 
-import numpy as np
+import numpy as np, numpy.linalg as nlg
 import os, os.path as osp
 import cPickle as cp
 import scipy.linalg as scl
@@ -55,12 +55,12 @@ def initialize_covariances(freq, demo_dir):
     cam_tfms = get_cam_tfms(demo_dir)
     
     
-    rgbd_cam_xyz_std    = [0.01, 0.01, 0.01] # 1cm
-    rgb_cam_xyz_std     = [0.05, 0.05, 0.05] # 1cm
-    hydra_xyz_std       = [0.08, 0.08, 0.08] # 3cm <-- use small std after tps-correction.
+    rgbd_cam_xyz_std    = [0.005, 0.005, 0.005] # 1cm
+    rgb_cam_xyz_std     = [0.2, 0.2, 0.4] # 1cm
+    hydra_xyz_std       = [0.03, 0.03, 0.03] # 3cm <-- use small std after tps-correction.
 
-    rgbd_cam_rpy_std    = np.deg2rad(15)
-    rgb_cam_rpy_std     = np.deg2rad(15)
+    rgbd_cam_rpy_std    = np.deg2rad(30)
+    rgb_cam_rpy_std     = np.deg2rad(90)
     hydra_rpy_std       = np.deg2rad(5)
 
 
@@ -84,7 +84,12 @@ def initialize_covariances(freq, demo_dir):
             for i in xrange(len(cam_tfms)):
                 tfm_info = cam_tfms[i]
                 if tfm_info['parent'] == 'camera1_link' and tfm_info['child'] == '%s_link'%(cam):
-                    R = scl.block_diag(tfm_info['tfm'][:3,:3], I3)
+                    # tfm_info is from camera link to camera link
+                    
+                    tfm_rof1_rof2 = nlg.inv(tfm_link_rof).dot(tfm_info['tfm']).dot(tfm_link_rof)
+                    R = scl.block_diag(tfm_rof1_rof2[:3,:3], I3)
+                    #R = scl.block_diag(I3, I3)
+                    
                     if cam_types[cam] == 'rgb':
                         cam_covars[cam] = R.dot(rgb_covar).dot(R.transpose())
                     else:
@@ -111,7 +116,6 @@ def get_first_state(tf_streams, freq, start_time):
         for ti, t in enumerate(ts):
             if t <= dt + start_time:
                 tfs0.append(tfs[ti])
-                
                 
     I3 = np.eye(3)
     S0 = scl.block_diag(1e-3*I3, 1e-2*I3, 1e-3*I3, 1e-3*I3)
@@ -388,7 +392,6 @@ def initialize_KFs(kf_data, freq):
             cam_strms= []
             for cinfo in cam_dat.values():
                 cam_strms.append(cinfo['stream'])
-                
 
 
             x0, S0 = get_first_state(cam_strms + [hydra_strm], freq=1./hydra_strm.dt, start_time=kf_data[lr][i]['shifted_seg_start_times'])
@@ -527,7 +530,6 @@ def filter_traj(demo_dir, tps_model_fname, save_tps, do_smooth, plot, block):
                                                     plot=plot,
                                                     block=block)
 
-    print time_shifts
 
     _, cam_covars, hydra_covar =  initialize_covariances(freq, demo_dir)
 

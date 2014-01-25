@@ -48,6 +48,7 @@ parser.add_argument("--ar_demo_file",type=str, default="")
 parser.add_argument("--ar_run_file",type=str, default="")
 parser.add_argument("--use_base", action="store_true", default=False)
 parser.add_argument("--early_stop_portion", help="stop early in the final segment to avoid bullet simulation problem", type=float, default=0.5)
+parser.add_argument("--no_traj_resample", action="store_true", default=False)
 
 parser.add_argument("--interactive",action="store_true")
 
@@ -660,7 +661,7 @@ def main():
 
             if args.simulation and curr_step > 1:
                 # for following steps in rope simulation, using simulation result
-                new_xyz = Globals.sim.observe_cloud()
+                new_xyz = Globals.sim.observe_cloud(3)
             else:          
                 fake_seg = demofile[args.fake_data_demo][args.fake_data_segment]
                 new_xyz = np.squeeze(fake_seg["cloud_xyz"])
@@ -676,7 +677,7 @@ def main():
                 if args.simulation: # curr_step == 1
                     rope_nodes = rope_initialization.find_path_through_point_cloud(new_xyz)
                     Globals.sim.create(rope_nodes)
-                    new_xyz = Globals.sim.observe_cloud()
+                    new_xyz = Globals.sim.observe_cloud(3)
 
         else:
             Globals.pr2.head.set_pan_tilt(0,1.2)
@@ -738,13 +739,14 @@ def main():
             # Transform the old clouds approximately into PR2's frame
             old_xyz = old_xyz.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
             
-        DS_LEAF_SIZE = 0.04
-        new_xyz = clouds.downsample(new_xyz, DS_LEAF_SIZE)
-        old_xyz = clouds.downsample(old_xyz, DS_LEAF_SIZE)
+        #DS_LEAF_SIZE = 0.04
+        #new_xyz = clouds.downsample(new_xyz, DS_LEAF_SIZE)
+        #old_xyz = clouds.downsample(old_xyz, DS_LEAF_SIZE)
     
     
         color_old = [(1,0,0,1) for _ in range(len(old_xyz))]
         color_new = [(0,0,1,1) for _ in range(len(new_xyz))]
+        color_old_transformed = [(0,1,0,1) for _ in range(len(old_xyz))]
         handles.append(Globals.env.plot3(old_xyz,5,np.array(color_old)))
         handles.append(Globals.env.plot3(new_xyz,5,np.array(color_new)))
 
@@ -757,6 +759,9 @@ def main():
         t2 = time.time()
         
         handles.extend(plotting_openrave.draw_grid(Globals.env, f.transform_points, old_xyz.min(axis=0)-np.r_[0,0,.1], old_xyz.max(axis=0)+np.r_[0,0,.1], xres = .1, yres = .1, zres = .04))
+        
+        handles.append(Globals.env.plot3(f.transform_points(old_xyz),5,np.array(color_old_transformed)))
+        
         
         print 'time: %f'%(t2-t1)
         #raw_input()
@@ -784,7 +789,6 @@ def main():
             handles.append(Globals.env.drawlinestrip(old_ee_traj[:,:3,3], 2, (1,0,0,1)))
             handles.append(Globals.env.drawlinestrip(new_ee_traj[:,:3,3], 2, (0,1,0,1)))
             
-    
         '''
         Generating mini-trajectory
         '''
@@ -817,7 +821,10 @@ def main():
                         end_trans_trajs[i-i_start, 3:] = eetraj[ee_link_name][i][:3,3]
                         
             
-            adaptive_times, end_trans_trajs = resampling.adaptive_resample2(end_trans_trajs, 0.001)
+            if not args.no_traj_resample:
+                adaptive_times, end_trans_trajs = resampling.adaptive_resample2(end_trans_trajs, 0.001)
+            else:
+                adaptive_times = range(len(end_trans_trajs))
             
             ee_hmats = {}
             for lr in 'lr':

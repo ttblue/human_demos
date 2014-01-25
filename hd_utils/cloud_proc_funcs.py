@@ -8,7 +8,7 @@ from hd_utils import clouds
 from hd_utils.defaults import asus_xtion_pro_f, hd_data_dir
 from hd_utils.pr2_utils import get_kinect_transform
 
-def extract_color(rgb, depth, mask, T_w_k, use_outlier_removal=True, outlier_thresh=2, outlier_k=20):
+def extract_color(rgb, depth, mask, T_w_k, xyz_mask=None, use_outlier_removal=True, outlier_thresh=2, outlier_k=20):
     """
     extract red points and downsample
     """
@@ -31,8 +31,10 @@ def extract_color(rgb, depth, mask, T_w_k, use_outlier_removal=True, outlier_thr
     z = xyz_w[:,:,2]   
     z0 = xyz_k[:,:,2]
 
-    height_mask = (xyz_w[:,:,2] > .8) & (xyz_w[:,:,2] < 1.3)
-
+    # 'height' or distance from the camera
+    height_mask = (xyz_w[:,:,2] > 0.6) & (xyz_w[:,:,2] < 1.1)
+    if xyz_mask: height_mask = height_mask & xyz_mask(xyz_w)
+        
     good_mask = color_mask & height_mask & valid_mask
     #good_mask = skim.remove_small_objects(good_mask,min_size=64)
 
@@ -58,12 +60,18 @@ def extract_color(rgb, depth, mask, T_w_k, use_outlier_removal=True, outlier_thr
 
 def extract_red(rgb, depth, T_w_k):
     red_mask = [lambda(x): (x<15)|(x>145), lambda(x): x>30, lambda(x): x>100]
-    return extract_color(rgb, depth, red_mask, T_w_k)
+    xyz_mask = (lambda(xyz): xyz[:, :, 2] > 0.9)
+    return extract_color(rgb, depth, red_mask, T_w_k, xyz_mask)
 
 def extract_white(rgb, depth, T_w_k):
     white_mask = [lambda(x): (x>0), lambda(x): x<30, lambda(x): (x>100)]
     return extract_color(rgb, depth, white_mask, T_w_k)
 
+def extract_yellow(rgb, depth, T_w_k):
+    yellow_mask = [lambda(x): (x>23)&(x<40), lambda(x): (x>200), lambda(x): x<100]
+    #xyz_mask = (lambda(xyz): xyz[:, :, 2] < 0.9)
+    xyz_mask = None
+    return extract_color(rgb, depth, yellow_mask, T_w_k, xyz_mask)
 
 
 def extract_hitch(rgb, depth, T_w_k, radius=0.016, length =0.215, height_range=[0.70,0.80]):
@@ -93,7 +101,7 @@ def extract_hitch(rgb, depth, T_w_k, radius=0.016, length =0.215, height_range=[
     hitch_pts = xyz_w[top_left[1]:bottom_right[1], top_left[0]:bottom_right[0],:]
     height_mask = (hitch_pts[:,:,2] > height_range[0]) & (hitch_pts[:,:,2] < height_range[1])
     hitch_pts = hitch_pts[height_mask]
-    
+
     ## add pts along the rod:
     center_xyz = np.median(hitch_pts, axis=0)
     ang = np.linspace(0, 2*np.pi, 30)
