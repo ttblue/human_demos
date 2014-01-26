@@ -1,11 +1,9 @@
 import os, os.path as osp
-import importlib
 import numpy as np
 import argparse
-from defaults import demo_files_dir, demo_names, master_name
-from extraction_utils import get_videos
+from defaults import demo_files_dir
 from mpl_toolkits.mplot3d import axes3d
-import pylab, yaml, h5py
+import pylab, h5py
 from hd_utils.clouds_utils import sample_random_rope
 from hd_utils.yes_or_no import yes_or_no
 import clouds 
@@ -31,14 +29,13 @@ perturb_h5file = osp.join(demotype_dir, args.perturb_fname+".h5")
 if args.overwrite:
     if osp.exists(perturb_h5file):
         os.unlink(perturb_h5file)
-    perturb_demofile = h5py.File(perturb_h5file)
+    perturb_demofile = h5py.File(perturb_h5file, "w")
 else:
     if osp.exists(perturb_h5file):
         perturb_demofile = h5py.File(perturb_h5file, "r+")
     else:
-        perturb_demofile = h5py.File(perturb_h5file)
+        perturb_demofile = h5py.File(perturb_h5file, "w")
     
-num_h5_perturbs = len(perturb_demofile.keys())
     
 
 demofile = h5py.File(h5file, 'r')
@@ -46,13 +43,10 @@ demofile = h5py.File(h5file, 'r')
 fig = pylab.figure()
 
 demo_type_dir = osp.join(demo_files_dir, args.demo_type)
-demo_master_file = osp.join(demo_type_dir, master_name)
 
-with open(demo_master_file, 'r') as fh:
-    demos_info = yaml.load(fh)
 
-for demo in demos_info["demos"]:
-    demo_name = demo["demo_name"]
+for demo in sorted(demofile.keys()):
+    demo_name = demo
     
     if demo_name in perturb_demofile.keys():
         demo_group = perturb_demofile[demo_name]
@@ -67,6 +61,7 @@ for demo in demos_info["demos"]:
         has_hitch = False
     
     xyz = demofile[demo_name]['seg00']["cloud_xyz"]
+    xyz = np.squeeze(xyz)
     
     ax = fig.gca(projection='3d')
     ax.set_autoscale_on(False)
@@ -76,6 +71,7 @@ for demo in demos_info["demos"]:
     if yes_or_no("Do you want to add this original demo?"):
         perturb_name = str(n_perturb_existed)
         perturb_group = demo_group.create_group(perturb_name)
+        
         perturb_group['cloud_xyz'] = xyz
         
         if has_hitch:
