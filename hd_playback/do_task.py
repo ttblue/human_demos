@@ -57,8 +57,8 @@ parser.add_argument("--remove_table", action="store_true")
 parser.add_argument("--friction", help="friction value in bullet", type=float, default=1.0)
 
 parser.add_argument("--max_steps_before_failure", type=int, default=-1)
-parser.add_argument("--tps_bend_cost_init", type=float, default=10)
-parser.add_argument("--tps_bend_cost_final", type=float, default=.1)
+parser.add_argument("--tps_bend_cost_init", type=float, default=1)
+parser.add_argument("--tps_bend_cost_final", type=float, default=.00001)
 parser.add_argument("--tps_n_iter", type=int, default=50)
 
 parser.add_argument("--closest_rope_hack", action="store_true", default=False)
@@ -441,7 +441,7 @@ def find_closest_clusters(demofile, clusterfile, new_xyz, init_tfm=None, check_n
     if args.parallel:
         from joblib import Parallel, delayed
     
-    DS_LEAF_SIZE = 0.01
+    DS_LEAF_SIZE = 0.015
     new_xyz = clouds.downsample(new_xyz,DS_LEAF_SIZE)
         
     # Store all the best cluster clouds

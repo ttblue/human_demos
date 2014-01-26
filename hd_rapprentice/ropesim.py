@@ -9,7 +9,7 @@ def transform(hmat, p):
     return hmat[:3,:3].dot(p) + hmat[:3,3]
 
 def in_grasp_region(robot, lr, pt):
-    tol = .005
+    tol = .00
 
     manip_name = {"l": "leftarm", "r": "rightarm"}[lr]
     manip = robot.GetManipulator(manip_name)
@@ -42,6 +42,8 @@ def in_grasp_region(robot, lr, pt):
 
     return True
 
+
+
 def retime_traj(robot, inds, traj, base_hmats, max_cart_vel=.02, upsample_time=.1):
     """retime a trajectory so that it executes slowly enough for the simulation"""
     cart_traj = np.empty((len(traj), 6))
@@ -62,7 +64,6 @@ def retime_traj(robot, inds, traj, base_hmats, max_cart_vel=.02, upsample_time=.
         base_hmats_up = [base_pose_to_mat(base_pose) for base_pose in base_traj_up]
     else:
         base_hmats_up = None
-    
     
     return traj_up, base_hmats_up
 
