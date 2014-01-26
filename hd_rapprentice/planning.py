@@ -382,9 +382,6 @@ def plan_follow_traj(robot, manip_name, ee_link, new_hmats, old_traj, rope_cloud
       }]
     
     
-    
-
-    
     #impose that the robot goes to final ee tfm at last ts
     #the constraint works only when the arm is the 'grasp' arm; otherwise only cost is added
     if end_pose_constraint:# or not is_fake_motion(new_hmats, 0.1):
@@ -410,7 +407,6 @@ def plan_follow_traj(robot, manip_name, ee_link, new_hmats, old_traj, rope_cloud
                 "pos_coeffs":[10,10,10],
                 "rot_coeffs":[10,10,10]}}]
 
-        
         
     poses = [openravepy.poseFromMatrix(hmat) for hmat in new_hmats]
         

@@ -18,6 +18,10 @@ Actually run on the robot without pausing or animating
 parser = argparse.ArgumentParser(usage=usage)
 
 
+parser.add_argument("--init_state_h5", type=str)
+parser.add_argument("--demo_name", type=str)
+parser.add_argument("--perturb_name", type=str)
+
 parser.add_argument("--demo_type", type=str)
 parser.add_argument("--cloud_proc_func", default="extract_red")
 parser.add_argument("--cloud_proc_mod", default="hd_utils.cloud_proc_funcs")
@@ -34,8 +38,8 @@ parser.add_argument("--show_neighbors", action="store_true")
 parser.add_argument("--select", default="manual")
 parser.add_argument("--log", action="store_true")
 
-parser.add_argument("--fake_data_demo", type=str)
-parser.add_argument("--fake_data_segment",type=str)
+#parser.add_argument("--fake_data_demo", type=str)
+#parser.add_argument("--fake_data_segment",type=str)
 parser.add_argument("--fake_data_transform", type=float, nargs=6, metavar=("tx","ty","tz","rx","ry","rz"),
     default=[0,0,0,0,0,0], help="translation=(tx,ty,tz), axis-angle rotation=(rx,ry,rz)")
 
@@ -622,7 +626,8 @@ def has_hitch(h5data, demo_name=None, seg_name=None):
 
 
 def main():
-
+    init_state_h5file = h5py.File(args.init_state_h5+".h5")
+    init_state = init_state_h5file[args.demo_name][args.perturb_name]
     
     demotype_dir = osp.join(demo_files_dir, args.demo_type)
     h5file = osp.join(demotype_dir, args.demo_type+".h5")
@@ -674,7 +679,7 @@ def main():
 
 
     # get rgbd from pr2?
-    if not args.fake_data_segment or not args.fake_data_demo:
+    if args.execution:
         grabber = cloudprocpy.CloudGrabber()
         grabber.startRGBD()
 
@@ -695,7 +700,7 @@ def main():
         
         # Get ar marker for PR2:
         ar_run_tfm = None
-        if not args.fake_data_segment or not args.fake_data_demo:
+        if args.execution:
             try:
                 rgb, depth = grabber.getRGBD()
                 xyz = clouds.depth_to_xyz(depth, asus_xtion_pro_f)
@@ -731,18 +736,18 @@ def main():
         # transform to move the demo points approximately into PR2's frame
         # Basically a rough transform from head kinect to demo_camera, given the tables are the same.
         init_tfm = ar_run_tfm.dot(np.linalg.inv(ar_demo_tfm))
-        if args.fake_data_segment and args.fake_data_demo:
+        if args.simulation:
             init_tfm = tfm_bf_head.dot(tfm_head_dof).dot(init_tfm)
         else:
             #T_w_k here should be different from rapprentice
             T_w_k = get_kinect_transform(Globals.robot)
             init_tfm = T_w_k.dot(init_tfm)
 
-    if args.fake_data_demo and args.fake_data_segment:
+    if args.simulation:
 
-        if has_hitch(demofile, args.fake_data_demo, args.fake_data_segment):
+        if has_hitch(init_state_h5file, args.demo_name, args.perturb_name):
             Globals.env.Load(osp.join(cad_files_dir, 'hitch.xml'))
-            hitch_pos = demofile[args.fake_data_demo][args.fake_data_segment]['hitch_pos']
+            hitch_pos = init_state_h5file[args.demo_name][args.perturb_name]['hitch_pos']
             hitch_body = Globals.env.GetKinBody('hitch')
             table_body = Globals.env.GetKinBody('table')
             if init_tfm != None:
@@ -775,7 +780,7 @@ def main():
         
         rope_cloud = None     
                    
-        if args.fake_data_segment and args.fake_data_demo:
+        if args.simulation:
             
             #Set home position in sim
             l_vals = PR2.Arm.L_POSTURES['side']
@@ -798,8 +803,8 @@ def main():
                     new_xyz = np.r_[new_xyz, hitch_cloud]
                 
             else:          
-                fake_seg = demofile[args.fake_data_demo][args.fake_data_segment]
-                new_xyz = np.squeeze(fake_seg["cloud_xyz"])
+                init_seg = init_state_h5file[args.demo_name][args.perturb_name]
+                new_xyz = np.squeeze(init_seg["cloud_xyz"])
         
                 hmat = openravepy.matrixFromAxisAngle(args.fake_data_transform[3:6])
                 hmat[:3,3] = args.fake_data_transform[0:3]
@@ -829,10 +834,10 @@ def main():
                     rope_cloud = Globals.sim.observe_cloud(3)
                     rope_cloud = clouds.downsample(rope_cloud, args.cloud_downsample)
                 else:
-                    if has_hitch(demofile, args.fake_data_demo, args.fake_data_segment):
-                        rope_cloud = demofile[args.fake_data_demo][args.fake_data_segment]['object']
+                    if has_hitch(init_state_h5file, args.demo_name, args.perturb_name):
+                        rope_cloud = demofile[args.demo_name][args.perturb_name]['object']
                     else:
-                        rope_cloud = demofile[args.fake_data_demo][args.fake_data_segment]['cloud_xyz']
+                        rope_cloud = demofile[args.demo_name][args.perturb_name]['cloud_xyz']
 
 
         else:
@@ -1267,8 +1272,6 @@ def main():
             
         redprint("Demo %s Segment %s result: %s"%(demo_name, seg_name, success))
         
-        if args.fake_data_demo and args.fake_data_segment and not args.simulation: break
-
 
 if __name__ == "__main__":
     main()
