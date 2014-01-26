@@ -113,11 +113,7 @@ def adaptive_resample2(x, tol, max_change=-1, min_steps=3):
         else:
             l1 = np.union1d(l1, (l1[bi] + l1[bi+1]) / 2 )
 
-
     raise Exception("couldn't subdivide enough. something funny is going on. check your input data")
-
-
-
 
 
 def get_velocities(positions, times, tol):
