@@ -722,11 +722,7 @@ def main():
             table_height = table_body.GetLinks()[0].GetGeometries()[0].GetTransform()[2, 3]
             hitch_tfm[2, 3] = table_height + table_z_extent + hitch_height/2.0
             hitch_body.SetTransform(hitch_tfm)
-<<<<<<< HEAD
-         
-=======
 
->>>>>>> cee4f79b770b6a51ddf111758af62c26fb80e27a
     curr_step = 0
 
     while True:
@@ -831,9 +827,9 @@ def main():
         if args.log:
             with open(osp.join(LOG_DIR,"neighbor%i.txt"%LOG_COUNT),"w") as fh: fh.write(seg_name)
 
-# import matplotlib.pylab as plt
-# plt.plot(np.np.asarray(demofile[demo_name][seg_name]['r']['pot_angles'])[:,0])
-# plt.show()
+        # import matplotlib.pylab as plt
+        # plt.plot(np.np.asarray(demofile[demo_name][seg_name]['r']['pot_angles'])[:,0])
+        # plt.show()
 
         '''
         Generating end-effector trajectory
@@ -1121,12 +1117,8 @@ def main():
                     
                     new_ee_traj = downsample_objects(new_ee_traj, args.downsample)
                     init_joints = downsample_objects(init_joint_trajs[lr], args.downsample)
-<<<<<<< HEAD
-                    
-=======
-        
+
                     t1 = time.time()
->>>>>>> cee4f79b770b6a51ddf111758af62c26fb80e27a
                     new_joint_traj = planning.plan_follow_traj(Globals.robot, manip_name,
                                                                Globals.robot.GetLink(ee_link_name),
                                                                new_ee_traj, init_joints,
@@ -1164,7 +1156,7 @@ def main():
             if args.simulation:
                 Globals.sim.rope.GetNodes()
             
-           # if not success: break
+            # if not success: break
             
             if len(bodypart2traj['larm']) > 0:
                 if is_final_seg and miniseg_ends[i_miniseg] < portion * segment_len:
