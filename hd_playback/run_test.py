@@ -18,6 +18,10 @@ Actually run on the robot without pausing or animating
 parser = argparse.ArgumentParser(usage=usage)
 
 
+parser.add_argument("--init_state_h5", type=str)
+parser.add_argument("--demo_name", type=str)
+parser.add_argument("--perturb_name", type=str)
+
 parser.add_argument("--demo_type", type=str)
 parser.add_argument("--cloud_proc_func", default="extract_red")
 parser.add_argument("--cloud_proc_mod", default="hd_utils.cloud_proc_funcs")
@@ -34,8 +38,8 @@ parser.add_argument("--show_neighbors", action="store_true")
 parser.add_argument("--select", default="manual")
 parser.add_argument("--log", action="store_true")
 
-parser.add_argument("--fake_data_demo", type=str)
-parser.add_argument("--fake_data_segment",type=str)
+#parser.add_argument("--fake_data_demo", type=str)
+#parser.add_argument("--fake_data_segment",type=str)
 parser.add_argument("--fake_data_transform", type=float, nargs=6, metavar=("tx","ty","tz","rx","ry","rz"),
     default=[0,0,0,0,0,0], help="translation=(tx,ty,tz), axis-angle rotation=(rx,ry,rz)")
 
@@ -51,7 +55,7 @@ parser.add_argument("--not_allow_base", help="dont allow base movement when use_
 parser.add_argument("--early_stop_portion", help="stop early in the final segment to avoid bullet simulation problem", type=float, default=0.5)
 parser.add_argument("--no_traj_resample", action="store_true", default=False)
 
-parser.add_argument("--interactive",action="store_true", default=False)
+parser.add_argument("--interactive",action="store_true")
 parser.add_argument("--remove_table", action="store_true")
 
 parser.add_argument("--friction", help="friction value in bullet", type=float, default=1.0)
@@ -437,19 +441,17 @@ def find_closest_auto(demofile, new_xyz, init_tfm=None, n_jobs=3):
     return keys[ibest], is_finalsegs[ibest]
 
 
-def find_closest_clusters(demofile, clusterfile, new_xyz, init_tfm=None, check_n=3, n_jobs=3):
+def find_closest_clusters(demofile, clusterfile, new_xyz, init_tfm=None, check_n=2, n_jobs=3):
     if args.parallel:
         from joblib import Parallel, delayed
     
-    DS_LEAF_SIZE = 0.01
+    DS_LEAF_SIZE = 0.045
     new_xyz = clouds.downsample(new_xyz,DS_LEAF_SIZE)
         
     # Store all the best cluster clouds
-    cluster_clouds = []
+    cluster_clouds = {}
     keys = clusterfile['keys']
-    keys = {int(key):keys[key] for key in keys}
     clusters = clusterfile['clusters']
-    clusters = {int(c):clusters[c] for c in clusters}
     for cluster in clusters:
         best_seg = clusters[cluster][0]
         dname, sname = keys[best_seg]
@@ -457,11 +459,11 @@ def find_closest_clusters(demofile, clusterfile, new_xyz, init_tfm=None, check_n
         if init_tfm is not None:
             cloud = cloud.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
 
-        cluster_clouds.append(cloud)
+        cluster_clouds[cluster] = cloud
 
     # Check the clusters with min costs
     if args.parallel:
-        ccosts = Parallel(n_jobs=n_jobs,verbose=51)(delayed(registration_cost)(cloud, new_xyz) for cloud in cluster_clouds)
+        ccosts = Parallel(n_jobs=n_jobs,verbose=51)(delayed(registration_cost)(cluster_clouds[i], new_xyz) for i in cluster_clouds)
     else:
         ccosts = []
         for (i,ds_cloud) in cluster_clouds.items():
@@ -473,38 +475,16 @@ def find_closest_clusters(demofile, clusterfile, new_xyz, init_tfm=None, check_n
     
     best_clusters = np.argsort(ccosts)
     check_n = min(check_n, len(best_clusters))
-    
-    if args.show_neighbors:
-        nshow = min(check_n*3, len(clusters))
-        import cv2, hd_rapprentice.cv_plot_utils as cpu, math
-        closeinds = best_clusters[:nshow]
-        
-        near_rgbs = []
-        for i in closeinds:
-            (demo_name, seg_name) = keys[clusters[i][0]]
-            near_rgbs.append(np.asarray(demofile[demo_name][seg_name]["rgb"]))
-        
-        rows = 6
-        cols = int(math.ceil(nshow*1.0/rows))
-        bigimg = cpu.tile_images(near_rgbs, rows, cols, max_width=300)
-        cv2.imshow("neighbors", bigimg)
-        print "press any key to continue"
-        cv2.waitKey()
 
     is_finalsegs = {}    
-    check_clouds = []
+    check_clouds = {}
     best_segs = []
     for c in best_clusters[:check_n]:
         cluster_segs = clusters[c]
+        best_segs.extend(cluster_segs)
         for seg in cluster_segs:
             dname,sname = keys[seg]
-            best_segs.append(int(seg))
-            cloud = clouds.downsample(np.asarray(demofile[dname][sname]["cloud_xyz"]),DS_LEAF_SIZE)
-            if init_tfm is not None:
-                cloud = cloud.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
-                
-            check_clouds.append(cloud)
-
+            check_clouds[seg] = clouds.downsample(np.asarray(demofile[dname][sname]["cloud_xyz"]),DS_LEAF_SIZE)
             if 'done' in demofile[dname].keys():
                 final_seg_id = len(demofile[dname].keys()) - 2
             else:
@@ -517,27 +497,26 @@ def find_closest_clusters(demofile, clusterfile, new_xyz, init_tfm=None, check_n
 
     # Check the clusters with min costs
     if args.parallel:
-        costs = Parallel(n_jobs=n_jobs,verbose=51)(delayed(registration_cost)(cloud, new_xyz) for cloud in check_clouds)
+        costs = Parallel(n_jobs=n_jobs,verbose=51)(delayed(registration_cost)(check_clouds[i], new_xyz) for i in check_clouds)
     else:
         costs = []
-        for (i,ds_cloud) in enumerate(check_clouds):
+        for (i,ds_cloud) in check_clouds.items():
             costs.append(registration_cost(ds_cloud, new_xyz))
             print "completed %i/%i"%(i+1, len(check_clouds))
     
     print "Costs: \n", costs
     
     if args.show_neighbors:
-        nshow = min(30, len(check_clouds))
+        nshow = min(5, len(check_clouds))
+        import cv2, hd_rapprentice.cv_plot_utils as cpu
         sortinds = np.argsort(costs)[:nshow]
         
         near_rgbs = []
         for i in sortinds:
-            (demo_name, seg_name) = keys[best_segs[i]]
+            (demo_name, seg_name) = keys[i]
             near_rgbs.append(np.asarray(demofile[demo_name][seg_name]["rgb"]))
         
-        rows = 6
-        cols = int(math.ceil(nshow*1.0/rows))
-        bigimg = cpu.tile_images(near_rgbs, rows, cols, max_width=1000)
+        bigimg = cpu.tile_images(near_rgbs, 1, nshow)
         cv2.imshow("neighbors", bigimg)
         print "press any key to continue"
         cv2.waitKey()
@@ -647,7 +626,8 @@ def has_hitch(h5data, demo_name=None, seg_name=None):
 
 
 def main():
-
+    init_state_h5file = h5py.File(args.init_state_h5+".h5")
+    init_state = init_state_h5file[args.demo_name][args.perturb_name]
     
     demotype_dir = osp.join(demo_files_dir, args.demo_type)
     h5file = osp.join(demotype_dir, args.demo_type+".h5")
@@ -699,7 +679,7 @@ def main():
 
 
     # get rgbd from pr2?
-    if not args.fake_data_segment or not args.fake_data_demo:
+    if args.execution:
         grabber = cloudprocpy.CloudGrabber()
         grabber.startRGBD()
 
@@ -720,7 +700,7 @@ def main():
         
         # Get ar marker for PR2:
         ar_run_tfm = None
-        if not args.fake_data_segment or not args.fake_data_demo:
+        if args.execution:
             try:
                 rgb, depth = grabber.getRGBD()
                 xyz = clouds.depth_to_xyz(depth, asus_xtion_pro_f)
@@ -756,18 +736,18 @@ def main():
         # transform to move the demo points approximately into PR2's frame
         # Basically a rough transform from head kinect to demo_camera, given the tables are the same.
         init_tfm = ar_run_tfm.dot(np.linalg.inv(ar_demo_tfm))
-        if args.fake_data_segment and args.fake_data_demo:
+        if args.simulation:
             init_tfm = tfm_bf_head.dot(tfm_head_dof).dot(init_tfm)
         else:
             #T_w_k here should be different from rapprentice
             T_w_k = get_kinect_transform(Globals.robot)
             init_tfm = T_w_k.dot(init_tfm)
 
-    if args.fake_data_demo and args.fake_data_segment:
+    if args.simulation:
 
-        if has_hitch(demofile, args.fake_data_demo, args.fake_data_segment):
+        if has_hitch(init_state_h5file, args.demo_name, args.perturb_name):
             Globals.env.Load(osp.join(cad_files_dir, 'hitch.xml'))
-            hitch_pos = demofile[args.fake_data_demo][args.fake_data_segment]['hitch_pos']
+            hitch_pos = init_state_h5file[args.demo_name][args.perturb_name]['hitch_pos']
             hitch_body = Globals.env.GetKinBody('hitch')
             table_body = Globals.env.GetKinBody('table')
             if init_tfm != None:
@@ -800,7 +780,7 @@ def main():
         
         rope_cloud = None     
                    
-        if args.fake_data_segment and args.fake_data_demo:
+        if args.simulation:
             
             #Set home position in sim
             l_vals = PR2.Arm.L_POSTURES['side']
@@ -823,8 +803,8 @@ def main():
                     new_xyz = np.r_[new_xyz, hitch_cloud]
                 
             else:          
-                fake_seg = demofile[args.fake_data_demo][args.fake_data_segment]
-                new_xyz = np.squeeze(fake_seg["cloud_xyz"])
+                init_seg = init_state_h5file[args.demo_name][args.perturb_name]
+                new_xyz = np.squeeze(init_seg["cloud_xyz"])
         
                 hmat = openravepy.matrixFromAxisAngle(args.fake_data_transform[3:6])
                 hmat[:3,3] = args.fake_data_transform[0:3]
@@ -854,10 +834,10 @@ def main():
                     rope_cloud = Globals.sim.observe_cloud(3)
                     rope_cloud = clouds.downsample(rope_cloud, args.cloud_downsample)
                 else:
-                    if has_hitch(demofile, args.fake_data_demo, args.fake_data_segment):
-                        rope_cloud = demofile[args.fake_data_demo][args.fake_data_segment]['object']
+                    if has_hitch(init_state_h5file, args.demo_name, args.perturb_name):
+                        rope_cloud = demofile[args.demo_name][args.perturb_name]['object']
                     else:
-                        rope_cloud = demofile[args.fake_data_demo][args.fake_data_segment]['cloud_xyz']
+                        rope_cloud = demofile[args.demo_name][args.perturb_name]['cloud_xyz']
 
 
         else:
@@ -865,7 +845,7 @@ def main():
             Globals.pr2.rarm.goto_posture('side')
             Globals.pr2.larm.goto_posture('side')
             Globals.pr2.join_all()
-            if args.execution: time.sleep(3.5)
+            time.sleep(3.5)
         
             Globals.pr2.update_rave()
             
@@ -1276,25 +1256,23 @@ def main():
                 '''
                 Maybe for robot execution
                 '''
-                if args.execution: time.sleep(5)
-                
                 if args.execution:
                     time.sleep(5)
             
             seg_env_state.append(seg_state) 
 
             #if not success: break
-           
+            
+            
         if args.simulation:
             Globals.sim.settle(animate=args.animation)
-        
-        if Globals.viewer and args.interactive:
+
+        if Globals.viewer:    
             Globals.viewer.Idle()
             
         redprint("Demo %s Segment %s result: %s"%(demo_name, seg_name, success))
         
-        if args.fake_data_demo and args.fake_data_segment and not args.simulation: break
-
 
 if __name__ == "__main__":
     main()
+

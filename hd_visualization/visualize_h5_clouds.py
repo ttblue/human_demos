@@ -62,9 +62,9 @@ else:
         if seg_name == "done": continue
         print seg_name
         if args.no_downsampled:
-            xyz = demofile[demo_name][seg_name]["full_cloud_xyz"]
+            xyz = demofile[args.demo_name][seg_name]["full_cloud_xyz"]
         else:
-            xyz = demofile[demo_name][seg_name]["cloud_xyz"]
+            xyz = demofile[args.demo_name][seg_name]["cloud_xyz"]
 
         xyz = np.squeeze(xyz)
         

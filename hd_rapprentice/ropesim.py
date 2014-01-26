@@ -9,7 +9,7 @@ def transform(hmat, p):
     return hmat[:3,:3].dot(p) + hmat[:3,3]
 
 def in_grasp_region(robot, lr, pt):
-    tol = .00
+    tol = .005
 
     manip_name = {"l": "leftarm", "r": "rightarm"}[lr]
     manip = robot.GetManipulator(manip_name)

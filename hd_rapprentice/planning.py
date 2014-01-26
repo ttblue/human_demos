@@ -1,5 +1,6 @@
 import openravepy, trajoptpy, numpy as np, json
 import hd_utils.math_utils as mu
+from hd_utils.colorize import redprint, blueprint
 
 
 def mat_to_base_pose(mat):
@@ -15,6 +16,15 @@ def base_pose_to_mat(pose):
     pos = [x, y, 0]
     matrix = openravepy.matrixFromPose(q + pos)
     return matrix
+
+
+def find_closest_point(points, query):
+    dists = [np.linalg.norm(points[i, :] - query) for i in range(points.shape[0])]
+    
+    idx = np.argmin(dists)
+    
+    return points[idx, :]
+    
 
   
 def get_environment_limits(env, robot=None):
@@ -139,6 +149,9 @@ def is_fake_motion(hmats, thresh):
     return np.linalg.norm(xyz_min - xyz_max) < thresh
 
 def plan_fullbody(robot, env, new_hmats_by_bodypart, old_traj_by_bodypart,
+                    end_pose_constraints,
+                    rope_cloud=None,
+                    rope_constraint_thresh=.01,
                     allow_base=True,
                     init_data=None):
     
@@ -223,26 +236,31 @@ def plan_fullbody(robot, env, new_hmats_by_bodypart, old_traj_by_bodypart,
             link = 'base_footprint'    
         
         if manip in ['rightarm', 'leftarm']: 
-            if is_fake_motion(poses, 0.1):
+            if not end_pose_constraints[manip] and is_fake_motion(poses, 0.1):
                 continue
             
             
         if manip in ['rightarm', 'leftarm']:
-            end_pose = openravepy.poseFromMatrix(poses[-1])
-            
-            constraints.append({"type":"pose",
-                                "params":{
-                                          "xyz":end_pose[4:7].tolist(),
-                                          "wxyz":end_pose[0:4].tolist(),
-                                          "link":link,
-                                          "pos_coeffs":[10,10,10],
-                                          "rot_coeffs":[10,10,10]}})
-            
+            if end_pose_constraints[manip] or not is_fake_motion(poses, 0.1):
+                end_pose = openravepy.poseFromMatrix(poses[-1])
+                
+                if rope_cloud != None:
+                    closest_point = find_closest_point(rope_cloud, end_pose[4:7])
+                    dist = np.linalg.norm(end_pose[4:7] - closest_point)
+                    if dist > rope_constraint_thresh and dist < 0.2:
+                        end_pose[4:7] = closest_point
+                        redprint("grasp hack is active, dist = %f"% dist)
+                
+                constraints.append({"type":"pose",
+                                    "params":{
+                                              "xyz":end_pose[4:7].tolist(),
+                                              "wxyz":end_pose[0:4].tolist(),
+                                              "link":link,
+                                              "pos_coeffs":[10,10,10],
+                                              "rot_coeffs":[10,10,10]}})
+                
         
         poses = [openravepy.poseFromMatrix(hmat) for hmat in poses]
-        
-        
-        
     
         for t, pose in enumerate(poses):
             costs.append({
@@ -308,7 +326,7 @@ def plan_fullbody(robot, env, new_hmats_by_bodypart, old_traj_by_bodypart,
         
             
 
-def plan_follow_traj(robot, manip_name, ee_link, new_hmats, old_traj, end_pose_constraint=False):
+def plan_follow_traj(robot, manip_name, ee_link, new_hmats, old_traj, rope_cloud=None, rope_constraint_thresh=.01, end_pose_constraint=False):
         
     n_steps = len(new_hmats)
     assert old_traj.shape[0] == n_steps
@@ -320,7 +338,7 @@ def plan_follow_traj(robot, manip_name, ee_link, new_hmats, old_traj, end_pose_c
     
     init_traj = old_traj.copy()
     #init_traj[0] = robot.GetDOFValues(arm_inds)
-    pose = openravepy.poseFromMatrix(new_hmats[-1])
+    end_pose = openravepy.poseFromMatrix(new_hmats[-1])
 
     request = {
         "basic_info" : {
@@ -363,18 +381,36 @@ def plan_follow_traj(robot, manip_name, ee_link, new_hmats, old_traj, end_pose_c
         }
       }]
     
+    
     #impose that the robot goes to final ee tfm at last ts
-    if end_pose_constraint:
-        request['constraints'] += [
-             {"type":"pose",
-                "params":{
-                "xyz":pose[4:7].tolist(),
-                "wxyz":pose[0:4].tolist(),
-                "link":ee_linkname,
-                "pos_coeffs":[10,10,10],
-                "rot_coeffs":[10,10,10]}}]
+    #the constraint works only when the arm is the 'grasp' arm; otherwise only cost is added
+    
+    
+    #if end_pose_constraint or not is_fake_motion(new_hmats, 0.1):  
+    # hack to avoid missing grasp
+    if rope_cloud != None:
+        closest_point = find_closest_point(rope_cloud, end_pose[4:7])
+        dist = np.linalg.norm(end_pose[4:7] - closest_point)
+        if dist > rope_constraint_thresh and dist < 0.05:
+            end_pose[4:7] = closest_point
+            redprint("grasp hack is active, dist = %f"% dist)
+        else:
+            blueprint("grasp hack is inactive, dist = %f"% dist)
+        #raw_input()
+
+    
+    request['constraints'] += [
+         {"type":"pose",
+            "params":{
+            "xyz":end_pose[4:7].tolist(),
+            "wxyz":end_pose[0:4].tolist(),
+            "link":ee_linkname,
+            "pos_coeffs":[100,100,100],
+            "rot_coeffs":[10,10,10]}}]
+
         
     poses = [openravepy.poseFromMatrix(hmat) for hmat in new_hmats]
+        
     for (i_step,pose) in enumerate(poses):
         request["costs"].append(
             {"type":"pose",
@@ -383,7 +419,7 @@ def plan_follow_traj(robot, manip_name, ee_link, new_hmats, old_traj, end_pose_c
                 "wxyz":pose[0:4].tolist(),
                 "link":ee_linkname,
                 "timestep":i_step,
-                "pos_coeffs":[10,10,10],
+                "pos_coeffs":[100,100,100],
                 "rot_coeffs":[10,10,10]
              }
             })
