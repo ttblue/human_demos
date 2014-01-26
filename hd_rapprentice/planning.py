@@ -405,7 +405,6 @@ def plan_follow_traj(robot, manip_name, ee_link, new_hmats, old_traj, end_pose_c
             pos_err = np.linalg.norm(poses[i_step][4:7] - pos)
             pos_errs.append(pos_err)
     pos_errs = np.array(pos_errs)
-    
     print "planned trajectory for %s. max position error: %.3f. all position errors: %s"%(manip_name, pos_errs.max(), pos_errs)
             
     return traj         
