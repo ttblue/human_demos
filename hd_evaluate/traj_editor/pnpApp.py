@@ -7,11 +7,8 @@ import pnp_ui
 import numpy as np
 from RopePR2Viz        import RopePR2Viz
 from ProcessStarter import *
-from joints_utils import *
 import copy
 from hd_utils.colorize import colorize
-
-from sceneparser import *
 import cPickle    
 
 class pnpApp(QtGui.QMainWindow, pnp_ui.Ui_MainWindow):
