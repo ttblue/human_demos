@@ -395,16 +395,16 @@ def plan_follow_traj(robot, manip_name, ee_link, new_hmats, old_traj, end_pose_c
     traj = result.GetTraj()    
         
     saver = openravepy.RobotStateSaver(robot)
-    pos_errs = []
-    for i_step in xrange(1,n_steps):
-        row = traj[i_step]
-        robot.SetDOFValues(row, arm_inds)
-        tf = ee_link.GetTransform()
-        pos = tf[:3,3]
-        pos_err = np.linalg.norm(poses[i_step][4:7] - pos)
-        pos_errs.append(pos_err)
+    pos_errs = []    
+    with saver:
+        for i_step in xrange(1,n_steps):
+            row = traj[i_step]
+            robot.SetDOFValues(row, arm_inds)
+            tf = ee_link.GetTransform()
+            pos = tf[:3,3]
+            pos_err = np.linalg.norm(poses[i_step][4:7] - pos)
+            pos_errs.append(pos_err)
     pos_errs = np.array(pos_errs)
-        
     print "planned trajectory for %s. max position error: %.3f. all position errors: %s"%(manip_name, pos_errs.max(), pos_errs)
             
     return traj         

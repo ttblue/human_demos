@@ -68,7 +68,7 @@ def retime_traj(robot, inds, traj, base_hmats, max_cart_vel=.02, upsample_time=.
 
 
 class Simulation(object):
-    def __init__(self, env, robot):
+    def __init__(self, env, robot, friction):
         self.env = env
         self.robot = robot
         self.bt_env = None
@@ -76,8 +76,8 @@ class Simulation(object):
         self.rope = None
         self.constraints = {"l": [], "r": []}
         
-        bulletsimpy.friction = 1
-
+        bulletsimpy.sim_params.friction = friction
+        
         self.rope_params = bulletsimpy.CapsuleRopeParams()
         self.rope_params.radius = 0.005 * 1.2
         self.rope_params.angStiffness = .1
@@ -88,7 +88,7 @@ class Simulation(object):
 
     def create(self, rope_pts):
         self.bt_env = bulletsimpy.BulletEnvironment(self.env, [])
-        self.bt_env.SetGravity([0, 0, -9.8 * 2])
+        self.bt_env.SetGravity([0, 0, -9.8])
         self.bt_robot = self.bt_env.GetObjectByName(self.robot.GetName())
         self.rope = bulletsimpy.CapsuleRope(self.bt_env, 'rope', rope_pts, self.rope_params)
 
@@ -97,6 +97,11 @@ class Simulation(object):
         # trajoptpy.GetViewer(self.env).Idle()
 
         self.settle()
+
+    def create_new_rope(self, rope_pts):
+        self.rope = bulletsimpy.CapsuleRope(self.bt_env, 'rope', rope_pts, self.rope_params)
+        self.rope.UpdateRave()
+        self.env.UpdatePublishedBodies()
 
     def step(self):
         self.bt_robot.UpdateBullet()
@@ -130,7 +135,6 @@ class Simulation(object):
         summed_lengths = np.cumsum(lengths)
         assert len(lengths) == len(pts)
         upsampled_pts = math_utils.interp2d(np.linspace(0, summed_lengths[-1], upsample*len(lengths)), summed_lengths, pts)
-
         
         return upsampled_pts
 

@@ -45,11 +45,14 @@ parser.add_argument("--use_ar_init", action="store_true", default=False)
 parser.add_argument("--ar_demo_file",type=str, default="")
 parser.add_argument("--ar_run_file",type=str, default="")
 parser.add_argument("--use_base", action="store_true", default=False)
+parser.add_argument("--not_allow_base", help="dont allow base movement when use_base", action="store_true", default=False)
 parser.add_argument("--early_stop_portion", help="stop early in the final segment to avoid bullet simulation problem", type=float, default=0.5)
 parser.add_argument("--no_traj_resample", action="store_true", default=False)
 
 parser.add_argument("--interactive",action="store_true")
 parser.add_argument("--remove_table", action="store_true")
+
+parser.add_argument("--friction", type=float, default=1.0)
 
 
 args = parser.parse_args()
@@ -264,14 +267,13 @@ def exec_traj_maybesim(bodypart2traj):
         Globals.robot.SetActiveDOFs(dof_inds)
         
         if args.simulation:
-
             # make the trajectory slow enough for the simulation
             full_traj, base_hmats = ropesim.retime_traj(Globals.robot, dof_inds, full_traj, base_hmats)
             
             # in simulation mode, we must make sure to gradually move to the new starting position
-            curr_vals = Globals.robot.GetActiveDOFValues()
+            curr_vals       = Globals.robot.GetActiveDOFValues()
             transition_traj = np.r_[[curr_vals], [full_traj[0]]]
-            
+
             if base_hmats != None:
                 transition_base_hmats = [Globals.robot.GetTransform()] + [base_hmats[0]]
             else:
@@ -279,16 +281,12 @@ def exec_traj_maybesim(bodypart2traj):
             
             unwrap_in_place(transition_traj)
             
-
-            
             transition_traj, transition_base_hmats = ropesim.retime_traj(Globals.robot, dof_inds, transition_traj, transition_base_hmats, max_cart_vel=.01)
             animate_traj.animate_traj(transition_traj, transition_base_hmats, Globals.robot, restore=False, pause=args.interactive,
                 callback=sim_callback if args.simulation else None, step_viewer=args.animation)
-
-
             
             full_traj[0] = transition_traj[-1]
-            
+          
             
             if base_hmats != None:
                 base_hmats[0] = transition_base_hmats[-1]
@@ -624,7 +622,7 @@ def main():
         Globals.robot = Globals.env.GetRobots()[0]
         
         if args.simulation:
-            Globals.sim = ropesim.Simulation(Globals.env, Globals.robot)
+            Globals.sim = ropesim.Simulation(Globals.env, Globals.robot, args.friction)
         
 
     Globals.viewer = trajoptpy.GetViewer(Globals.env)
@@ -697,7 +695,7 @@ def main():
             
             # use camera 1 as default
             ar_run_tfm = ar_run_tfms['tfm']
-        
+
         # transform to move the demo points approximately into PR2's frame
         # Basically a rough transform from head kinect to demo_camera, given the tables are the same.
         init_tfm = ar_run_tfm.dot(np.linalg.inv(ar_demo_tfm))
@@ -707,7 +705,6 @@ def main():
             #T_w_k here should be different from rapprentice
             T_w_k = get_kinect_transform(Globals.robot)
             init_tfm = T_w_k.dot(init_tfm)
-            
 
     if args.fake_data_demo and args.fake_data_segment:
 
@@ -725,11 +722,11 @@ def main():
             table_height = table_body.GetLinks()[0].GetGeometries()[0].GetTransform()[2, 3]
             hitch_tfm[2, 3] = table_height + table_z_extent + hitch_height/2.0
             hitch_body.SetTransform(hitch_tfm)
+<<<<<<< HEAD
+         
+=======
 
-
-
-            
-
+>>>>>>> cee4f79b770b6a51ddf111758af62c26fb80e27a
     curr_step = 0
 
     while True:
@@ -837,9 +834,7 @@ def main():
 # import matplotlib.pylab as plt
 # plt.plot(np.np.asarray(demofile[demo_name][seg_name]['r']['pot_angles'])[:,0])
 # plt.show()
-        
-            
- 
+
         '''
         Generating end-effector trajectory
         '''
@@ -945,8 +940,6 @@ def main():
                 
             len_miniseg = len(adaptive_times)
             
-            
-            
             ### trajopt init traj
             init_joint_trajs = {}
             for lr in 'lr':
@@ -976,7 +969,7 @@ def main():
                         
                         if sols != []:
                             x.append(i)
-                            
+
                             reference_sol = None
                             for sol in reversed(init_joint_traj):
                                 if sol != None:
@@ -1065,6 +1058,9 @@ def main():
          
          
                 init_joint_trajs[lr] = unwrap_arm_traj_in_place(init_joint_trajs[lr])
+                
+            redprint("start generating full body trajectory")
+
                             
             ### Generate full-body trajectory
             bodypart2traj = {}
@@ -1085,7 +1081,7 @@ def main():
                 
                 active_dofs = np.r_[Globals.robot.GetManipulator("rightarm").GetArmIndices(), Globals.robot.GetManipulator("leftarm").GetArmIndices()]
                 
-                allow_base = True
+                allow_base = not args.not_allow_base
                 if allow_base:
                     Globals.robot.SetActiveDOFs(active_dofs, 
                                                 openravepy.DOFAffine.X + openravepy.DOFAffine.Y + openravepy.DOFAffine.RotationAxis,
@@ -1125,19 +1121,32 @@ def main():
                     
                     new_ee_traj = downsample_objects(new_ee_traj, args.downsample)
                     init_joints = downsample_objects(init_joint_trajs[lr], args.downsample)
-        
+<<<<<<< HEAD
                     
+=======
+        
+                    t1 = time.time()
+>>>>>>> cee4f79b770b6a51ddf111758af62c26fb80e27a
                     new_joint_traj = planning.plan_follow_traj(Globals.robot, manip_name,
                                                                Globals.robot.GetLink(ee_link_name),
                                                                new_ee_traj, init_joints,
                                                                end_pose_constraint=end_pose_constraint)
+                    t2 = time.time()
+                    print 'time: %f'%(t2-t1)
                     
+
+
                     prev_vals[lr] = new_joint_traj[-1]
                     #handles.append(Globals.env.drawlinestrip(new_ee_traj[:,:3,3], 2, (0,1,0,1))
                     
                     
                     part_name = {"l":"larm", "r":"rarm"}[lr]
                     bodypart2traj[part_name] = new_joint_traj
+                
+                    
+ 
+            
+            
                 
                        
             if args.execution: Globals.pr2.update_rave()
@@ -1170,7 +1179,12 @@ def main():
                         success &= exec_traj_maybesim(sub_bodypart2traj)
                 else:
                     success &= exec_traj_maybesim(bodypart2traj)
-                time.sleep(5)
+                    
+                '''
+                Maybe for robot execution
+                '''
+                if args.execution:
+                    time.sleep(5)
                 
             if args.simulation:
                 Globals.sim.rope.GetNodes()
