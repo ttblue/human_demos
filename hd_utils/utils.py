@@ -1,6 +1,6 @@
 import subprocess, os, signal
 
-import numpy as np
+import numpy as np, numpy.linalg as nla
 import conversions
 from colorize import redprint
 import transformations as tfms
@@ -70,6 +70,17 @@ def rotation_matrix(axis,theta):
     return np.array([[a*a+b*b-c*c-d*d, 2*(b*c-a*d), 2*(b*d+a*c)],
                      [2*(b*c+a*d), a*a+c*c-b*b-d*d, 2*(c*d-a*b)],
                      [2*(b*d-a*c), 2*(c*d+a*b), a*a+d*d-b*b-c*c]])
+
+def make_perp_basis(a0):
+  a = a0/nla.norm(a0)
+  if a[0] == 0 and a[1] == 0:
+      return np.eye(3)
+  else :
+    b = np.array([a0[1], -a0[0], 0])
+    b/= nla.norm(b)
+    c = np.cross(a,b)
+    return np.c_[a,b,c]
+
 
 def state_to_hmat(Xs):
     """

@@ -278,14 +278,13 @@ def exec_traj_maybesim(bodypart2traj):
         Globals.robot.SetActiveDOFs(dof_inds)
         
         if args.simulation:
-
             # make the trajectory slow enough for the simulation
             full_traj, base_hmats = ropesim.retime_traj(Globals.robot, dof_inds, full_traj, base_hmats)
             
             # in simulation mode, we must make sure to gradually move to the new starting position
-            curr_vals = Globals.robot.GetActiveDOFValues()
+            curr_vals       = Globals.robot.GetActiveDOFValues()
             transition_traj = np.r_[[curr_vals], [full_traj[0]]]
-            
+
             if base_hmats != None:
                 transition_base_hmats = [Globals.robot.GetTransform()] + [base_hmats[0]]
             else:
@@ -293,16 +292,12 @@ def exec_traj_maybesim(bodypart2traj):
             
             unwrap_in_place(transition_traj)
             
-
-            
             transition_traj, transition_base_hmats = ropesim.retime_traj(Globals.robot, dof_inds, transition_traj, transition_base_hmats, max_cart_vel=.01)
             animate_traj.animate_traj(transition_traj, transition_base_hmats, Globals.robot, restore=False, pause=args.interactive,
                 callback=sim_callback if args.simulation else None, step_viewer=args.animation)
-
-
             
             full_traj[0] = transition_traj[-1]
-            
+          
             
             if base_hmats != None:
                 base_hmats[0] = transition_base_hmats[-1]
@@ -722,7 +717,7 @@ def main():
             
             # use camera 1 as default
             ar_run_tfm = ar_run_tfms['tfm']
-        
+
         # transform to move the demo points approximately into PR2's frame
         # Basically a rough transform from head kinect to demo_camera, given the tables are the same.
         init_tfm = ar_run_tfm.dot(np.linalg.inv(ar_demo_tfm))
@@ -732,7 +727,6 @@ def main():
             #T_w_k here should be different from rapprentice
             T_w_k = get_kinect_transform(Globals.robot)
             init_tfm = T_w_k.dot(init_tfm)
-            
 
     if args.fake_data_demo and args.fake_data_segment:
 
@@ -886,12 +880,10 @@ def main():
         if args.log:
             with open(osp.join(LOG_DIR,"neighbor%i.txt"%LOG_COUNT),"w") as fh: fh.write(seg_name)
 
-# import matplotlib.pylab as plt
-# plt.plot(np.np.asarray(demofile[demo_name][seg_name]['r']['pot_angles'])[:,0])
-# plt.show()
-        
-            
- 
+        # import matplotlib.pylab as plt
+        # plt.plot(np.np.asarray(demofile[demo_name][seg_name]['r']['pot_angles'])[:,0])
+        # plt.show()
+
         '''
         Generating end-effector trajectory
         '''
@@ -988,8 +980,6 @@ def main():
                 
             len_miniseg = len(adaptive_times)
             
-            
-            
             ### trajopt init traj
             init_joint_trajs = {}
             for lr in 'lr':
@@ -1019,7 +1009,7 @@ def main():
                         
                         if sols != []:
                             x.append(i)
-                            
+
                             reference_sol = None
                             for sol in reversed(init_joint_traj):
                                 if sol != None:
@@ -1191,7 +1181,7 @@ def main():
                     
                     new_ee_traj = downsample_objects(new_ee_traj, args.downsample)
                     init_joints = downsample_objects(init_joint_trajs[lr], args.downsample)
-        
+
                     t1 = time.time()
                     new_joint_traj = planning.plan_follow_traj(Globals.robot, manip_name,
                                                                Globals.robot.GetLink(ee_link_name),
@@ -1202,6 +1192,8 @@ def main():
                     t2 = time.time()
                     print 'time: %f'%(t2-t1)
                     
+
+
                     prev_vals[lr] = new_joint_traj[-1]
                     #handles.append(Globals.env.drawlinestrip(new_ee_traj[:,:3,3], 2, (0,1,0,1))
                     
@@ -1230,7 +1222,7 @@ def main():
             if args.simulation:
                 Globals.sim.rope.GetNodes()
             
-           # if not success: break
+            # if not success: break
             
             if len(bodypart2traj['larm']) > 0:
                 if is_final_seg and miniseg_ends[i_miniseg] < portion * segment_len:

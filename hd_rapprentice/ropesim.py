@@ -98,6 +98,11 @@ class Simulation(object):
 
         self.settle()
 
+    def create_new_rope(self, rope_pts):
+        self.rope = bulletsimpy.CapsuleRope(self.bt_env, 'rope', rope_pts, self.rope_params)
+        self.rope.UpdateRave()
+        self.env.UpdatePublishedBodies()
+
     def step(self):
         self.bt_robot.UpdateBullet()
         self.bt_env.Step(.01, 200, .005)
@@ -130,7 +135,6 @@ class Simulation(object):
         summed_lengths = np.cumsum(lengths)
         assert len(lengths) == len(pts)
         upsampled_pts = math_utils.interp2d(np.linspace(0, summed_lengths[-1], upsample*len(lengths)), summed_lengths, pts)
-
         
         return upsampled_pts
 
