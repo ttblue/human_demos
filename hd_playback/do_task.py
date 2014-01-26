@@ -45,11 +45,14 @@ parser.add_argument("--use_ar_init", action="store_true", default=False)
 parser.add_argument("--ar_demo_file",type=str, default="")
 parser.add_argument("--ar_run_file",type=str, default="")
 parser.add_argument("--use_base", action="store_true", default=False)
+parser.add_argument("--not_allow_base", help="dont allow base movement when use_base", action="store_true", default=False)
 parser.add_argument("--early_stop_portion", help="stop early in the final segment to avoid bullet simulation problem", type=float, default=0.5)
 parser.add_argument("--no_traj_resample", action="store_true", default=False)
 
 parser.add_argument("--interactive",action="store_true")
 parser.add_argument("--remove_table", action="store_true")
+
+parser.add_argument("--friction", type=float, default=1.0)
 
 
 args = parser.parse_args()
@@ -624,7 +627,7 @@ def main():
         Globals.robot = Globals.env.GetRobots()[0]
         
         if args.simulation:
-            Globals.sim = ropesim.Simulation(Globals.env, Globals.robot)
+            Globals.sim = ropesim.Simulation(Globals.env, Globals.robot, args.friction)
         
 
     Globals.viewer = trajoptpy.GetViewer(Globals.env)
@@ -725,10 +728,6 @@ def main():
             table_height = table_body.GetLinks()[0].GetGeometries()[0].GetTransform()[2, 3]
             hitch_tfm[2, 3] = table_height + table_z_extent + hitch_height/2.0
             hitch_body.SetTransform(hitch_tfm)
-
-
-
-            
 
     curr_step = 0
 
@@ -1065,6 +1064,9 @@ def main():
          
          
                 init_joint_trajs[lr] = unwrap_arm_traj_in_place(init_joint_trajs[lr])
+                
+            redprint("start generating full body trajectory")
+
                             
             ### Generate full-body trajectory
             bodypart2traj = {}
@@ -1085,7 +1087,7 @@ def main():
                 
                 active_dofs = np.r_[Globals.robot.GetManipulator("rightarm").GetArmIndices(), Globals.robot.GetManipulator("leftarm").GetArmIndices()]
                 
-                allow_base = True
+                allow_base = not args.not_allow_base
                 if allow_base:
                     Globals.robot.SetActiveDOFs(active_dofs, 
                                                 openravepy.DOFAffine.X + openravepy.DOFAffine.Y + openravepy.DOFAffine.RotationAxis,
@@ -1126,11 +1128,13 @@ def main():
                     new_ee_traj = downsample_objects(new_ee_traj, args.downsample)
                     init_joints = downsample_objects(init_joint_trajs[lr], args.downsample)
         
-                    
+                    t1 = time.time()
                     new_joint_traj = planning.plan_follow_traj(Globals.robot, manip_name,
                                                                Globals.robot.GetLink(ee_link_name),
                                                                new_ee_traj, init_joints,
                                                                end_pose_constraint=end_pose_constraint)
+                    t2 = time.time()
+                    print 'time: %f'%(t2-t1)
                     
                     prev_vals[lr] = new_joint_traj[-1]
                     #handles.append(Globals.env.drawlinestrip(new_ee_traj[:,:3,3], 2, (0,1,0,1))
@@ -1138,6 +1142,11 @@ def main():
                     
                     part_name = {"l":"larm", "r":"rarm"}[lr]
                     bodypart2traj[part_name] = new_joint_traj
+                
+                    
+ 
+            
+            
                 
                        
             if args.execution: Globals.pr2.update_rave()
@@ -1170,7 +1179,12 @@ def main():
                         success &= exec_traj_maybesim(sub_bodypart2traj)
                 else:
                     success &= exec_traj_maybesim(bodypart2traj)
-                time.sleep(5)
+                    
+                '''
+                Maybe for robot execution
+                '''
+                if args.execution:
+                    time.sleep(5)
                 
             if args.simulation:
                 Globals.sim.rope.GetNodes()
