@@ -67,15 +67,9 @@ for demo_info in demos_info:
         demo_group = perturb_demofile[demo_name]
     else:
         demo_group = perturb_demofile.create_group(demo_name)
-        demo_group['rgb'] = rgb_imgs[0]
-        demo_group['depth'] = depth_imgs[0]
         
-    if 'perturbs' in demo_group.keys():
-        perturb_group = demo_group['perturbs']
-    else:
-        perturb_group = demo_group.create_group('perturbs')
     
-    n_perturb_existed = len(perturb_group.keys())
+    n_perturb_existed = len(demo_group.keys()) # number of perturbations
     
     xyz = cloud_proc_func(rgb_imgs[0], depth_imgs[0], np.eye(4)) 
     
@@ -85,7 +79,9 @@ for demo_info in demos_info:
     fig.show()
     
     if yes_or_no("Do you want to add this original demo?"):
-        perturb_group[str(n_perturb_existed)] = xyz
+        perturb_name = str(n_perturb_existed)
+        perturb_group = demo_group.create_group(perturb_name)
+        perturb_group['cloud_xyz'] = xyz
         print "add perturb demo %d"%(n_perturb_existed)
         n_perturb_existed += 1
     else:
@@ -107,9 +103,10 @@ for demo_info in demos_info:
     while n_perturbed <= args.perturb_num and n_perturbed_attempt < args.max_perturb_attempt:    
         new_xyz = sample_random_rope(xyz, True)
 
-
         if yes_or_no("Are you happy with this perturbation?"):
-            perturb_group[str(n_perturb_existed)] = new_xyz
+            perturb_name = str(n_perturb_existed)
+            perturb_group = demo_group.create_group(perturb_name)
+            perturb_group['cloud_xyz'] = new_xyz
             print "add perturb demo %d"%(n_perturb_existed)
             n_perturbed += 1
             n_perturb_existed += 1
