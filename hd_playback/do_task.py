@@ -52,7 +52,17 @@ parser.add_argument("--no_traj_resample", action="store_true", default=False)
 parser.add_argument("--interactive",action="store_true")
 parser.add_argument("--remove_table", action="store_true")
 
-parser.add_argument("--friction", type=float, default=1.0)
+parser.add_argument("--friction", help="friction value in bullet", type=float, default=1.0)
+
+parser.add_argument("--max_steps_before_failure", type=int, default=-1)
+parser.add_argument("--tps_bend_cost_init", type=float, default=10)
+parser.add_argument("--tps_bend_cost_final", type=float, default=.1)
+parser.add_argument("--tps_n_iter", type=int, default=50)
+
+parser.add_argument("--closest_rope_hack", action="store_true", default=False)
+parser.add_argument("--closest_rope_hack_thresh", type=float, default=0.01)
+parser.add_argument("--cloud_downsample", type=float, default=.01)
+
 
 
 args = parser.parse_args()
@@ -113,6 +123,7 @@ from hd_extract.extract_data import get_ar_marker_poses
 
 cloud_proc_mod = importlib.import_module(args.cloud_proc_mod)
 cloud_proc_func = getattr(cloud_proc_mod, args.cloud_proc_func)
+hitch_proc_func = getattr(cloud_proc_mod, "extract_hitch")
 
 
 class Globals:
@@ -512,7 +523,8 @@ def tpsrpm_plot_cb(x_nd, y_md, targ_Nd, corr_nm, wt_n, f):
     handles = []
     handles.append(Globals.env.plot3(ypred_nd, 3, (0,1,0)))
     #handles.extend(plotting_openrave.draw_grid(Globals.env, f.transform_points, x_nd.min(axis=0), x_nd.max(axis=0), xres = .1, yres = .1, zres = .04))
-    Globals.viewer.Step()
+    if Globals.viewer:
+        Globals.viewer.Step()
     
 def arm_moved(joint_traj):
     if len(joint_traj) < 2: return False
@@ -595,6 +607,14 @@ def downsample_objects(objs, factor):
     l = len(objs)
     return objs[0:l:factor]
 
+def has_hitch(h5data, demo_name=None, seg_name=None):
+    if demo_name != None and seg_name != None:
+        return "hitch_pos" in h5data[demo_name][seg_name].keys()
+    else:
+        first_demo = h5data[h5data.keys()[0]]
+        first_seg = first_demo[first_demo.keys()[0]]
+        return "hitch_pos" in first_seg
+
 
 def main():
 
@@ -629,8 +649,8 @@ def main():
         if args.simulation:
             Globals.sim = ropesim.Simulation(Globals.env, Globals.robot, args.friction)
         
-
-    Globals.viewer = trajoptpy.GetViewer(Globals.env)
+    if args.animation:
+        Globals.viewer = trajoptpy.GetViewer(Globals.env)
     '''
     Add table
     '''
@@ -643,7 +663,9 @@ def main():
         else:
             Globals.env.Load(osp.join(cad_files_dir, 'table_sim.xml'))
         body = Globals.env.GetKinBody('table')
-        Globals.viewer.SetTransparency(body,0.4)
+        
+        if Globals.viewer:
+            Globals.viewer.SetTransparency(body,0.4)
 
 
     # get rgbd from pr2?
@@ -714,7 +736,7 @@ def main():
 
     if args.fake_data_demo and args.fake_data_segment:
 
-        if "hitch_pos" in demofile[args.fake_data_demo][args.fake_data_segment].keys():
+        if has_hitch(demofile, args.fake_data_demo, args.fake_data_segment):
             Globals.env.Load(osp.join(cad_files_dir, 'hitch.xml'))
             hitch_pos = demofile[args.fake_data_demo][args.fake_data_segment]['hitch_pos']
             hitch_body = Globals.env.GetKinBody('hitch')
@@ -733,11 +755,20 @@ def main():
 
     while True:
         
+        if args.max_steps_before_failure != -1 and curr_step > args.max_steps_before_failure:
+            redprint("Number of steps %d exceeded maximum %d" % (curr_step, args.max_steps_before_failure))
+            break
+
+        
         curr_step += 1
         '''
         Acquire point cloud
         '''
         redprint("Acquire point cloud")
+        
+        
+        rope_cloud = None     
+                   
         if args.fake_data_segment and args.fake_data_demo:
             
             #Set home position in sim
@@ -748,16 +779,16 @@ def main():
             if args.simulation and curr_step > 1:
                 # for following steps in rope simulation, using simulation result
                 new_xyz = Globals.sim.observe_cloud(3)
-                new_xyz = clouds.downsample(new_xyz, .01)
-
+                new_xyz = clouds.downsample(new_xyz, args.cloud_downsample)
                 
                 hitch = Globals.env.GetKinBody('hitch')
+                                
                 if hitch != None:
                     pos = hitch.GetTransform()[:3,3]
                     hitch_height = hitch_body.GetLinks()[0].GetGeometries()[0].GetCylinderHeight()
                     pos[2] = pos[2] - hitch_height/2
                     hitch_cloud = cloud_proc_funcs.generate_hitch_points(pos)
-                    hitch_cloud = clouds.downsample(hitch_cloud, .01)
+                    hitch_cloud = clouds.downsample(hitch_cloud, args.cloud_downsample)
                     new_xyz = np.r_[new_xyz, hitch_cloud]
                 
             else:          
@@ -776,7 +807,7 @@ def main():
                     rope_nodes = rope_initialization.find_path_through_point_cloud(new_xyz)
                     Globals.sim.create(rope_nodes)
                     new_xyz = Globals.sim.observe_cloud(3)
-                    new_xyz = clouds.downsample(new_xyz, .01)
+                    new_xyz = clouds.downsample(new_xyz, args.cloud_downsample)
                     
                     hitch = Globals.env.GetKinBody('hitch')
                     if hitch != None:
@@ -784,8 +815,18 @@ def main():
                         hitch_height = hitch_body.GetLinks()[0].GetGeometries()[0].GetCylinderHeight()
                         pos[2] = pos[2] - hitch_height/2
                         hitch_cloud = cloud_proc_funcs.generate_hitch_points(pos)
-                        hitch_cloud = clouds.downsample(hitch_cloud, .01)
+                        hitch_cloud = clouds.downsample(hitch_cloud, args.cloud_downsample)
                         new_xyz = np.r_[new_xyz, hitch_cloud]
+            
+            if args.closest_rope_hack:
+                if args.simulation:
+                    rope_cloud = Globals.sim.observe_cloud(3)
+                    rope_cloud = clouds.downsample(rope_cloud, args.cloud_downsample)
+                else:
+                    if has_hitch(demofile, args.fake_data_demo, args.fake_data_segment):
+                        rope_cloud = demofile[args.fake_data_demo][args.fake_data_segment]['object']
+                    else:
+                        rope_cloud = demofile[args.fake_data_demo][args.fake_data_segment]['cloud_xyz']
 
 
         else:
@@ -795,12 +836,24 @@ def main():
             Globals.pr2.join_all()
             time.sleep(3.5)
         
-            
             Globals.pr2.update_rave()
             
             rgb, depth = grabber.getRGBD()
             
             new_xyz = cloud_proc_func(rgb, depth, T_w_k)
+            new_xyz = clouds.downsample(new_xyz, args.cloud_downsample)
+            
+            if args.closest_rope_hack:
+                rope_cloud = np.array(new_xyz)
+            
+            if has_hitch(demofile):
+                hitch_normal = clouds.clouds_plane(new_xyz)
+                
+                hitch_cloud, hitch_pos = hitch_proc_func(rgb, depth, T_w_k, hitch_normal)
+                hitch_cloud = clouds.downsample(hitch_cloud, args.cloud_downsample)
+                new_xyz = np.r_[new_xyz, hitch_cloud]
+                
+            
         
         if args.log:
             LOG_COUNT += 1
@@ -848,12 +901,7 @@ def main():
         old_xyz = np.squeeze(seg_info["cloud_xyz"])
         if args.use_ar_init:
             # Transform the old clouds approximately into PR2's frame
-            old_xyz = old_xyz.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
-            
-        #DS_LEAF_SIZE = 0.04
-        #new_xyz = clouds.downsample(new_xyz, DS_LEAF_SIZE)
-        #old_xyz = clouds.downsample(old_xyz, DS_LEAF_SIZE)
-    
+            old_xyz = old_xyz.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]    
     
         color_old = [(1,0,0,1) for _ in range(len(old_xyz))]
         color_new = [(0,0,1,1) for _ in range(len(new_xyz))]
@@ -865,7 +913,7 @@ def main():
         scaled_old_xyz, src_params = registration.unit_boxify(old_xyz)
         scaled_new_xyz, targ_params = registration.unit_boxify(new_xyz)
         f,_ = registration.tps_rpm_bij(scaled_old_xyz, scaled_new_xyz, plot_cb = tpsrpm_plot_cb,
-                                       plotting=5 if args.animation else 0,rot_reg=np.r_[1e-4,1e-4,1e-1], n_iter=50, reg_init=10, reg_final=.1)
+                                       plotting=5 if args.animation else 0,rot_reg=np.r_[1e-4,1e-4,1e-1], n_iter=args.tps_n_iter, reg_init=args.tps_bend_cost_init, reg_final=args.tps_bend_cost_final)
         f = registration.unscale_tps(f, src_params, targ_params)
         t2 = time.time()
         
@@ -875,11 +923,7 @@ def main():
         
         
         print 'time: %f'%(t2-t1)
-        #raw_input()
-        #Globals.viewer.Idle()
 
-#         import IPython
-#         .embed()
 
         eetraj = {}
         for lr in 'lr':
@@ -1076,6 +1120,8 @@ def main():
                 new_hmats = {}
                 init_traj = {}
                 
+                end_pose_constraints = {}
+                
                 for lr in 'lr':
                     ee_link_name = "%s_gripper_tool_frame"%lr
                     new_ee_traj = downsample_objects(ee_hmats[ee_link_name], args.downsample)
@@ -1083,6 +1129,24 @@ def main():
                     manip_name = {"l":"leftarm", "r":"rightarm"}[lr]
                     new_hmats[manip_name] = new_ee_traj
                     init_traj[manip_name] = downsample_objects(init_joint_trajs[lr], args.downsample)
+ 
+                    """
+                    Dirty hack.
+                    """
+                    now_val = binarize_gripper(seg_info[lr]["pot_angles"][i_end], args.pot_threshold)
+                    next_val = binarize_gripper(seg_info[lr]["pot_angles"][i_end+1], args.pot_threshold)
+                    
+                    if next_val < now_val:
+                        end_pose_constraint = True
+                    else:
+                        end_pose_constraint = False
+                    """
+                    End dirty hack.
+                    """            
+                    
+                    end_pose_constraints[manip_name[lr]] = end_pose_constraints
+                    
+                    
                 
                 
                 active_dofs = np.r_[Globals.robot.GetManipulator("rightarm").GetArmIndices(), Globals.robot.GetManipulator("leftarm").GetArmIndices()]
@@ -1132,6 +1196,8 @@ def main():
                     new_joint_traj = planning.plan_follow_traj(Globals.robot, manip_name,
                                                                Globals.robot.GetLink(ee_link_name),
                                                                new_ee_traj, init_joints,
+                                                               rope_cloud=rope_cloud,
+                                                               rope_constraint_thresh=args.closest_rope_hack_thresh,
                                                                end_pose_constraint=end_pose_constraint)
                     t2 = time.time()
                     print 'time: %f'%(t2-t1)
@@ -1194,8 +1260,9 @@ def main():
         if args.simulation:
             Globals.sim.settle(animate=args.animation)
             Globals.sim.rope.GetNodes()
-            
-        Globals.viewer.Idle()
+        
+        if Globals.viewer:    
+            Globals.viewer.Idle()
                     
             
         redprint("Demo %s Segment %s result: %s"%(demo_name, seg_name, success))
