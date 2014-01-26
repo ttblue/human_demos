@@ -67,6 +67,7 @@ def generate_sim_matrix (data, keys):
     name_keys = {i:get_name(keys[i]) for i in keys}
     
     for i in xrange(len(keys)):
+        print i
         for j in xrange(i+1,len(keys)):
             cost_mat[i,j] = calc_sim(costs[name_keys[i]][name_keys[j]])
     cost_mat = cost_mat + cost_mat.T # diagonal entries are 0. 
@@ -129,7 +130,7 @@ def gen_h5_clusters (demo_type, cluster_data, keys):
     
     kgroup = hdf.create_group('keys')
     for key in keys:
-        kgroup[str(key)] = keys[key]
+        kgroup[str(key)] = keys[key] 
 
 def cluster_demos (demo_type, n_clusters, save_to_file=False, visualize=False):
     """
@@ -147,7 +148,7 @@ def cluster_demos (demo_type, n_clusters, save_to_file=False, visualize=False):
         if demo_name != "ar_demo":
             for seg_name in demofile[demo_name]:
                 if seg_name != 'done':
-                    keys[seg_num] = (demo_name, seg_name)
+                    keys[seg_num] = (str(demo_name), str(seg_name))
                     seg_num += 1
     
     print "Generating sim matrix."
