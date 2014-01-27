@@ -33,7 +33,7 @@ def in_grasp_region(robot, lr, pt):
         return False
 
     # check that pt is within the finger width
-    if abs(pt_local[0]) > .01 + tol:
+    if abs(pt_local[0]) > .015 + tol:
         return False
 
     # check that pt is between the fingers
@@ -46,12 +46,23 @@ def viz_grasp_region():
     import openravepy as rave
     env = rave.Environment()
     env.Load('robots/pr2-beta-static.zae')
+    env.SetViewer('qtcoin')
     pr2  = env.GetRobots()[0]
-    
+
+    handles = []
     for lr in "lr":
         manip = pr2.GetManipulator({"l":"leftarm", "r":"rightarm"}[lr])
-        import IPython
-        IPython.embed()
+        pr2.SetDOFValues([1], manip.GetGripperIndices())
+        tf    = manip.GetEndEffectorTransform()
+        xx    = np.linspace(-0.1, 0.1, 50)
+        x,y,z = np.meshgrid(xx,xx,xx)
+        check_pts = np.c_[x.flatten(), y.flatten(), z.flatten()] + tf[:3,3][None,:]
+        in_grasp = []
+        for i in xrange(len(check_pts)):
+            if in_grasp_region(pr2, lr, check_pts[i]):
+                in_grasp.append(i)
+        handles.append(env.plot3(points=check_pts[in_grasp], pointsize=0.01))
+    return handles
 
 
 def retime_traj(robot, inds, traj, base_hmats, max_cart_vel=.02, upsample_time=.1):
@@ -149,12 +160,14 @@ class Simulation(object):
         
         return upsampled_pts
 
-    def grab_rope(self, lr):
+    def grab_rope(self, lr, seg_samples=5):
         nodes, ctl_pts = self.rope.GetNodes(), self.rope.GetControlPoints()
 
-        graspable_nodes = np.array([in_grasp_region(self.robot, lr, n) for n in nodes])
+        graspable_nodes   = np.array([in_grasp_region(self.robot, lr, n) for n in nodes])
         graspable_ctl_pts = np.array([in_grasp_region(self.robot, lr, n) for n in ctl_pts])
+        
         graspable_inds = np.flatnonzero(np.logical_or(graspable_nodes, np.logical_or(graspable_ctl_pts[:-1], graspable_ctl_pts[1:])))
+
         print 'graspable inds for %s: %s' % (lr, str(graspable_inds))
         if len(graspable_inds) == 0:
             return False
