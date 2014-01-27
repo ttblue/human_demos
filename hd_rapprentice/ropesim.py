@@ -3,6 +3,7 @@ import numpy as np
 from hd_rapprentice import retiming
 from hd_rapprentice.planning import mat_to_base_pose, base_pose_to_mat
 from hd_utils import math_utils
+from hd_utils.colorize import colorize 
 import trajoptpy
 
 
@@ -193,15 +194,17 @@ class Simulation(object):
         return True
 
     def grab_rope(self, lr, seg_samples=5):
+        print colorize("TESTING FOR GRAB...", "magenta", True)
         nodes, ctl_pts = self.rope.GetNodes(), self.rope.GetControlPoints()
         graspable_inds = []
         for i in xrange(len(ctl_pts)-1):
             pts = math_utils.interp2d(np.linspace(0,1,seg_samples), [0,1], np.r_[np.reshape(ctl_pts[i], (1,3)), np.reshape(ctl_pts[i+1], (1,3))])
             if np.any([in_grasp_region(self.robot, lr, pt) for pt in pts]):
                 graspable_inds.append(i)
-        print 'graspable inds for %s: %s' % (lr, str(graspable_inds))
+        print colorize('graspable inds for %s: %s' % (lr, str(graspable_inds)), "magenta", True)
         if len(graspable_inds) == 0:
             return False
+
 
         robot_link = self.robot.GetLink("%s_gripper_l_finger_tip_link"%lr)
         rope_links = self.rope.GetKinBody().GetLinks()

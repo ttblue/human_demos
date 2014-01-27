@@ -206,7 +206,7 @@ def split_trajectory_by_gripper(seg_info, pot_angle_threshold, thresh=5):
 def binarize_gripper(angle, pot_angle_threshold):
     open_angle = .08
     closed_angle = 0
-    if angle > pot_angle_threshold: return open_angle
+    if angle >= pot_angle_threshold: return open_angle
     else: return closed_angle
     
     
@@ -650,8 +650,8 @@ def main():
 
     
     demotype_dir = osp.join(demo_files_dir, args.demo_type)
-    h5file = osp.join(demotype_dir, args.demo_type+".h5", 'r')
-
+    h5file = osp.join(demotype_dir, args.demo_type+".h5")
+    print h5file
     demofile = h5py.File(h5file, 'r')
     
     if args.select == "clusters":

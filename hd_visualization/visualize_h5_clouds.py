@@ -56,7 +56,7 @@ if args.demo_name == '':
             
             raw_input()
             fig.clf()
-        
+
 else:
     for seg_name in demofile[args.demo_name]:
         if seg_name == "done": continue

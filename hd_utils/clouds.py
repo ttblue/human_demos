@@ -55,7 +55,7 @@ def remove_outliers(xyz, thresh=2.0, k=15):
     cloud = cloudprocpy.removeOutliers(cloud, thresh, k)
     return cloud.to2dArray()[:,:3]
 
-def cluster_filter(xyz, tol=0.03, minsize=500):
+def cluster_filter(xyz, tol=0.08, minsize=200):
     import cloudprocpy
     cloud = cloudprocpy.CloudXYZ()
     xyz1 = np.ones((len(xyz),4),'float')

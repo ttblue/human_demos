@@ -52,7 +52,7 @@ def extract_color(rgb, depth, mask, T_w_k, xyz_mask=None, use_outlier_removal=Fa
     height_mask = (xyz_w[:,:,2] > 0.6) & (xyz_w[:,:,2] < 1.1)
     if xyz_mask: height_mask = height_mask & xyz_mask(xyz_w)
         
-    good_mask = color_mask & height_mask & valid_mask
+    good_mask = color_mask & valid_mask & height_mask
     #good_mask = skim.remove_small_objects(good_mask,min_size=64)
 
     if DEBUG_PLOTS:
@@ -76,7 +76,7 @@ def extract_color(rgb, depth, mask, T_w_k, xyz_mask=None, use_outlier_removal=Fa
 
 
 def extract_red(rgb, depth, T_w_k):
-    red_mask = [lambda(x): (x<15)|(x>145), lambda(x): x>30, lambda(x): x>100]
+    red_mask = [lambda(x): (x<20)|(x>135), lambda(x): x>30, lambda(x): x>100]
     xyz_mask = (lambda(xyz): xyz[:, :, 2] > 0.95)
     return extract_color(rgb, depth, red_mask, T_w_k, xyz_mask, True)
 

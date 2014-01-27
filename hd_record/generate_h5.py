@@ -28,8 +28,10 @@ parser.add_argument("--cloud_proc_mod", default="hd_utils.cloud_proc_funcs")
 parser.add_argument("--no_clouds", action="store_true")
 parser.add_argument("--clouds_only", action="store_true")
 parser.add_argument("--verify", action="store_true")
-parser.add_argument("--visualize", action="store_true")
+parser.add_argument("--visualize", action="store_true", default=False)
+parser.add_argument("--prompt", action="store_true", default=False)
 parser.add_argument("--has_hitch", action="store_true")
+parser.add_argument("--start_at", default="demo00001", type=str)
 args = parser.parse_args()
 
 if not args.no_clouds:
@@ -166,18 +168,80 @@ else:
     hdf = h5py.File(h5path, "r+")
 
 # now should extract point cloud
+from mpl_toolkits.mplot3d import axes3d
+import pylab
+fig = pylab.figure()
+from mayavi import mlab
+
+started = False
 if not args.no_clouds:
+    
+    del_fields = ["cloud_xyz", "cloud_proc_func", "cloud_proc_mod", "cloud_proc_code",\
+                  "full_cloud_xyz","full_hitch","full_object","hitch","object","hitch_pos","cloud_xyz"]
+    
     for (demo_name, demo_info) in hdf.items():
+        if args.start_at and demo_name == args.start_at:
+            started = True
+
+        if not started: continue
         
         for (seg_name, seg_info) in demo_info.items():
-        
-            for field in ["cloud_xyz", "cloud_proc_func", "cloud_proc_mod", "cloud_proc_code"]:
-                if field in seg_info: del seg_info[field]
-                
-            print "gen point clouds: %s %s"%(demo_name, seg_name)
             
+            if args.prompt and args.visualize:
+                if "full_cloud_xyz" in seg_info:
+                    xyz = seg_info["full_cloud_xyz"]
+                elif "full_hitch" in seg_info and "full_object" in seg_info:
+                    xyz = np.r_[seg_info["full_hitch"], seg_info["full_object"]]
+#                     mlab.figure(0)
+#                     mlab.clf()
+#                     mlab.points3d(xyz[:,0], xyz[:,1], xyz[:,2], color=(0,0,1), scale_factor=.005)
+                fig.clf()
+                ax = fig.gca(projection='3d')
+                ax.set_autoscale_on(False)
+                ax.plot(xyz[:,0], xyz[:,1], xyz[:,2], 'o')
+                fig.show()
+                print demo_name, seg_name
+                q = raw_input("Hit c to change the pc. q to exit")
+                if q == 'q':
+                    hdf.close()
+                    exit()
+                elif q != 'c':
+                    continue
+                    
+            print "gen point clouds: %s %s"%(demo_name, seg_name)
             cloud = cloud_proc_func(np.asarray(seg_info["rgb"]), np.asarray(seg_info["depth"]), np.eye(4))
-    
+            if args.prompt and args.visualize:
+#                 mlab.figure(0)
+#                 mlab.clf()
+#                 mlab.points3d(xyz[:,0], xyz[:,1], xyz[:,2], color=(0,0,1), scale_factor=.005)
+                xyz2 = cloud
+                if args.has_hitch:
+                    hitch_normal = clouds.clouds_plane(cloud)
+                    hitch, hitch_pos = hitch_proc_func(np.asarray(seg_info["rgb"]), np.asarray(seg_info["depth"]), np.eye(4), hitch_normal)
+                    xyz2 = np.r_[xyz2, hitch]
+                fig.clf()
+                ax = fig.gca(projection='3d')
+                ax.set_autoscale_on(False)
+                ax.plot(xyz2[:,0], xyz2[:,1], xyz2[:,2], 'o')
+                fig.show()
+                print demo_name, seg_name
+                print "Before", xyz.shape
+                print "After", xyz2.shape
+                q = raw_input("Again: Hit c to change the pc. q to quit")
+                if q == 'q':
+                    hdf.close()
+                    exit()
+                elif q != 'c':
+                    continue
+            
+            print "Changing."
+            for field in del_fields:
+                try:
+                    if field in seg_info: del seg_info[field]
+                except Exception as e:
+                    import IPython
+                    IPython.embed()
+
             if args.has_hitch:
                 hitch_normal = clouds.clouds_plane(cloud)
                 
