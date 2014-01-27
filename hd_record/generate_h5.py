@@ -32,10 +32,10 @@ parser.add_argument("--visualize", action="store_true")
 parser.add_argument("--has_hitch", action="store_true")
 args = parser.parse_args()
 
-cloud_proc_mod = importlib.import_module(args.cloud_proc_mod)
-cloud_proc_func = getattr(cloud_proc_mod, args.cloud_proc_func)
-hitch_proc_func = getattr(cloud_proc_mod, "extract_hitch")
-
+if not args.no_clouds:
+    cloud_proc_mod = importlib.import_module(args.cloud_proc_mod)
+    cloud_proc_func = getattr(cloud_proc_mod, args.cloud_proc_func)
+    hitch_proc_func = getattr(cloud_proc_mod, "extract_hitch")
 
 # add rgbd for one demonstration
 def add_rgbd_to_hdf(video_dir, annotation, hdfroot, demo_name):
@@ -136,66 +136,65 @@ h5path = osp.join(task_dir, task_info["h5path"].strip())
 demo_type = args.demo_type # should be same as task_info['name']
 
 
-
-if args.clouds_only:
-    hdf = h5py.File(h5path, "r+")
-else:
+if not args.clouds_only:
     if osp.exists(h5path):
         os.unlink(h5path)
     hdf = h5py.File(h5path)
     
     
-demos_info = task_info['demos']
-
-
-for demo_info in demos_info:
-    demo_name = demo_info['demo_name']
-    print demo_name
-    demo_dir = osp.join(task_dir, demo_name)
+    demos_info = task_info['demos']
     
-    rgbd_dir = osp.join(demo_dir, demo_names.video_dir%(1))
+    
+    for demo_info in demos_info:
+        demo_name = demo_info['demo_name']
+        print demo_name
+        demo_dir = osp.join(task_dir, demo_name)
+        
+        rgbd_dir = osp.join(demo_dir, demo_names.video_dir%(1))
+    
+        annotation_file = osp.join(demo_dir,"ann.yaml")
+        traj_file = osp.join(demo_dir, "demo.traj")
+        
+        with open(annotation_file, "r") as fh: annotations = yaml.load(fh)
+        with open(traj_file, "r") as fh: traj = cp.load(fh)
+        
+        add_traj_to_hdf(traj, annotations, hdf, demo_name)    
+    
+        # assumes the first camera contains the rgbd info        
+        add_rgbd_to_hdf(rgbd_dir, annotations, hdf, demo_name)
+else:
+    hdf = h5py.File(h5path, "r+")
 
-    annotation_file = osp.join(demo_dir,"ann.yaml")
-    traj_file = osp.join(demo_dir, "demo.traj")
-    
-    with open(annotation_file, "r") as fh: annotations = yaml.load(fh)
-    with open(traj_file, "r") as fh: traj = cp.load(fh)
-    
-    add_traj_to_hdf(traj, annotations, hdf, demo_name)    
-
-    # assumes the first camera contains the rgbd info        
-    add_rgbd_to_hdf(rgbd_dir, annotations, hdf, demo_name)
-    
 # now should extract point cloud
-for (demo_name, demo_info) in hdf.items():
-    
-    for (seg_name, seg_info) in demo_info.items():
-    
-        for field in ["cloud_xyz", "cloud_proc_func", "cloud_proc_mod", "cloud_proc_code"]:
-            if field in seg_info: del seg_info[field]
-            
-        print "gen point clouds: %s %s"%(demo_name, seg_name)
+if not args.no_clouds:
+    for (demo_name, demo_info) in hdf.items():
         
-        cloud = cloud_proc_func(np.asarray(seg_info["rgb"]), np.asarray(seg_info["depth"]), np.eye(4))
+        for (seg_name, seg_info) in demo_info.items():
+        
+            for field in ["cloud_xyz", "cloud_proc_func", "cloud_proc_mod", "cloud_proc_code"]:
+                if field in seg_info: del seg_info[field]
+                
+            print "gen point clouds: %s %s"%(demo_name, seg_name)
+            
+            cloud = cloud_proc_func(np.asarray(seg_info["rgb"]), np.asarray(seg_info["depth"]), np.eye(4))
+    
+            if args.has_hitch:
+                hitch_normal = clouds.clouds_plane(cloud)
+                
+                hitch, hitch_pos = hitch_proc_func(np.asarray(seg_info["rgb"]), np.asarray(seg_info["depth"]), np.eye(4), hitch_normal)
+                seg_info["full_hitch"] = hitch
+                seg_info["full_object"] = cloud
+                seg_info["hitch"] = clouds.downsample(hitch, .01)
+                seg_info["object"] = clouds.downsample(cloud, .01)
+                seg_info["hitch_pos"] = hitch_pos
+                seg_info["cloud_xyz"] = np.r_[seg_info["hitch"], seg_info["object"]]
+            else:
+                seg_info["full_cloud_xyz"] = cloud
+                seg_info["cloud_xyz"] = clouds.downsample(cloud, .01)
 
-        if args.has_hitch:
-            hitch_normal = clouds.clouds_plane(cloud)
-            
-            hitch, hitch_pos = hitch_proc_func(np.asarray(seg_info["rgb"]), np.asarray(seg_info["depth"]), np.eye(4), hitch_normal)
-            seg_info["full_hitch"] = hitch
-            seg_info["full_object"] = cloud
-            seg_info["hitch"] = clouds.downsample(hitch, .01)
-            seg_info["object"] = clouds.downsample(cloud, .01)
-            seg_info["hitch_pos"] = hitch_pos
-            seg_info["cloud_xyz"] = np.r_[seg_info["hitch"], seg_info["object"]]
-        else:
-            seg_info["full_cloud_xyz"] = cloud
-            seg_info["cloud_xyz"] = clouds.downsample(cloud, .01)
-            
-        
-        seg_info["cloud_proc_func"] = args.cloud_proc_func
-        seg_info["cloud_proc_mod"] = args.cloud_proc_mod
-        seg_info["cloud_proc_code"] = inspect.getsource(cloud_proc_func)
+            seg_info["cloud_proc_func"] = args.cloud_proc_func
+            seg_info["cloud_proc_mod"] = args.cloud_proc_mod
+            seg_info["cloud_proc_code"] = inspect.getsource(cloud_proc_func)
         
 hdf.close()      
             

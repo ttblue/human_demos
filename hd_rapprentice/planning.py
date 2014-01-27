@@ -384,28 +384,29 @@ def plan_follow_traj(robot, manip_name, ee_link, new_hmats, old_traj, rope_cloud
     
     #impose that the robot goes to final ee tfm at last ts
     #the constraint works only when the arm is the 'grasp' arm; otherwise only cost is added
-    if end_pose_constraint:# or not is_fake_motion(new_hmats, 0.1):
-        
-        # hack to avoid missing grasp
-        if rope_cloud != None:
-            closest_point = find_closest_point(rope_cloud, end_pose[4:7])
-            dist = np.linalg.norm(end_pose[4:7] - closest_point)
-            if dist > rope_constraint_thresh and dist < 0.05:
-                end_pose[4:7] = closest_point
-                redprint("grasp hack is active, dist = %f"% dist)
-            else:
-                blueprint("grasp hack is inactive, dist = %f"% dist)
-            #raw_input()
+    
+    
+    #if end_pose_constraint or not is_fake_motion(new_hmats, 0.1):  
+    # hack to avoid missing grasp
+    if rope_cloud != None:
+        closest_point = find_closest_point(rope_cloud, end_pose[4:7])
+        dist = np.linalg.norm(end_pose[4:7] - closest_point)
+        if dist > rope_constraint_thresh and dist < 0.05:
+            end_pose[4:7] = closest_point
+            redprint("grasp hack is active, dist = %f"% dist)
+        else:
+            blueprint("grasp hack is inactive, dist = %f"% dist)
+        #raw_input()
 
-        
-        request['constraints'] += [
-             {"type":"pose",
-                "params":{
-                "xyz":end_pose[4:7].tolist(),
-                "wxyz":end_pose[0:4].tolist(),
-                "link":ee_linkname,
-                "pos_coeffs":[10,10,10],
-                "rot_coeffs":[10,10,10]}}]
+    
+    request['constraints'] += [
+         {"type":"pose",
+            "params":{
+            "xyz":end_pose[4:7].tolist(),
+            "wxyz":end_pose[0:4].tolist(),
+            "link":ee_linkname,
+            "pos_coeffs":[100,100,100],
+            "rot_coeffs":[10,10,10]}}]
 
         
     poses = [openravepy.poseFromMatrix(hmat) for hmat in new_hmats]
@@ -418,7 +419,7 @@ def plan_follow_traj(robot, manip_name, ee_link, new_hmats, old_traj, rope_cloud
                 "wxyz":pose[0:4].tolist(),
                 "link":ee_linkname,
                 "timestep":i_step,
-                "pos_coeffs":[10,10,10],
+                "pos_coeffs":[100,100,100],
                 "rot_coeffs":[10,10,10]
              }
             })

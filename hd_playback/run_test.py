@@ -38,8 +38,7 @@ parser.add_argument("--show_neighbors", action="store_true")
 parser.add_argument("--select", default="manual")
 parser.add_argument("--log", action="store_true")
 
-#parser.add_argument("--fake_data_demo", type=str)
-#parser.add_argument("--fake_data_segment",type=str)
+
 parser.add_argument("--fake_data_transform", type=float, nargs=6, metavar=("tx","ty","tz","rx","ry","rz"),
     default=[0,0,0,0,0,0], help="translation=(tx,ty,tz), axis-angle rotation=(rx,ry,rz)")
 
@@ -72,8 +71,6 @@ parser.add_argument("--cloud_downsample", type=float, default=.01)
 
 
 args = parser.parse_args()
-
-if args.fake_data_segment is None: assert args.execution==1
 
 
 """
@@ -626,13 +623,13 @@ def has_hitch(h5data, demo_name=None, seg_name=None):
 
 
 def main():
-    init_state_h5file = h5py.File(args.init_state_h5+".h5")
-    init_state = init_state_h5file[args.demo_name][args.perturb_name]
+    init_state_h5file = h5py.File(args.init_state_h5+".h5", "r")
+    print args.init_state_h5+".h5"
     
     demotype_dir = osp.join(demo_files_dir, args.demo_type)
-    h5file = osp.join(demotype_dir, args.demo_type+".h5")
-
-    demofile = h5py.File(h5file, 'r')
+    demo_h5file = osp.join(demotype_dir, args.demo_type+".h5")
+    print demo_h5file
+    demofile = h5py.File(demo_h5file, 'r')
     
     if args.select == "clusters":
         c_h5file = osp.join(demotype_dir, args.demo_type+"_clusters.h5")
@@ -1267,10 +1264,13 @@ def main():
         if args.simulation:
             Globals.sim.settle(animate=args.animation)
 
-        if Globals.viewer:    
+        if Globals.viewer and args.interactive:
             Globals.viewer.Idle()
             
         redprint("Demo %s Segment %s result: %s"%(demo_name, seg_name, success))
+
+    init_state_h5file.close()
+    demofile.close()
         
 
 if __name__ == "__main__":

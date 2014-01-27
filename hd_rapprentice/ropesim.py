@@ -75,7 +75,6 @@ def retime_traj(robot, inds, traj, base_hmats, max_cart_vel=.02, upsample_time=.
     else:
         base_hmats_up = None
     
-    
     return traj_up, base_hmats_up
 
 
