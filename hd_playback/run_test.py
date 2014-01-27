@@ -623,11 +623,12 @@ def has_hitch(h5data, demo_name=None, seg_name=None):
 
 
 def main():
-    init_state_h5file = h5py.File(args.init_state_h5+".h5")
+    init_state_h5file = h5py.File(args.init_state_h5+".h5", "r")
+    print args.init_state_h5+".h5"
     
     demotype_dir = osp.join(demo_files_dir, args.demo_type)
     demo_h5file = osp.join(demotype_dir, args.demo_type+".h5")
-
+    print demo_h5file
     demofile = h5py.File(demo_h5file, 'r')
     
     if args.select == "clusters":
@@ -1267,6 +1268,9 @@ def main():
             Globals.viewer.Idle()
             
         redprint("Demo %s Segment %s result: %s"%(demo_name, seg_name, success))
+
+    init_state_h5file.close()
+    demofile.close()
         
 
 if __name__ == "__main__":
