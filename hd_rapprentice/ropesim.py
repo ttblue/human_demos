@@ -5,6 +5,7 @@ from hd_rapprentice.planning import mat_to_base_pose, base_pose_to_mat
 from hd_utils import math_utils
 import trajoptpy
 
+
 def transform(hmat, p):
     return hmat[:3,:3].dot(p) + hmat[:3,3]
 
@@ -160,14 +161,12 @@ class Simulation(object):
         
         return upsampled_pts
 
-    def grab_rope(self, lr, seg_samples=5):
+    def grab_rope_old(self, lr):
         nodes, ctl_pts = self.rope.GetNodes(), self.rope.GetControlPoints()
 
         graspable_nodes   = np.array([in_grasp_region(self.robot, lr, n) for n in nodes])
         graspable_ctl_pts = np.array([in_grasp_region(self.robot, lr, n) for n in ctl_pts])
-        
         graspable_inds = np.flatnonzero(np.logical_or(graspable_nodes, np.logical_or(graspable_ctl_pts[:-1], graspable_ctl_pts[1:])))
-
         print 'graspable inds for %s: %s' % (lr, str(graspable_inds))
         if len(graspable_inds) == 0:
             return False
@@ -192,6 +191,40 @@ class Simulation(object):
                 self.constraints[lr].append(cnt)
 
         return True
+
+    def grab_rope(self, lr, seg_samples=5):
+        nodes, ctl_pts = self.rope.GetNodes(), self.rope.GetControlPoints()
+        graspable_inds = []
+        for i in xrange(len(ctl_pts)-1):
+            pts = math_utils.interp2d(np.linspace(0,1,seg_samples), [0,1], np.r_[np.reshape(ctl_pts[i], (1,3)), np.reshape(ctl_pts[i+1], (1,3))])
+            if np.any([in_grasp_region(self.robot, lr, pt) for pt in pts]):
+                graspable_inds.append(i)
+        print 'graspable inds for %s: %s' % (lr, str(graspable_inds))
+        if len(graspable_inds) == 0:
+            return False
+
+        robot_link = self.robot.GetLink("%s_gripper_l_finger_tip_link"%lr)
+        rope_links = self.rope.GetKinBody().GetLinks()
+        for i_node in graspable_inds:
+            for i_cnt in range(max(0, i_node-1), min(len(nodes), i_node+2)):
+                cnt = self.bt_env.AddConstraint({
+                    "type": "generic6dof",
+                    "params": {
+                        "link_a": robot_link,
+                        "link_b": rope_links[i_cnt],
+                        "frame_in_a": np.linalg.inv(robot_link.GetTransform()).dot(rope_links[i_cnt].GetTransform()),
+                        "frame_in_b": np.eye(4),
+                        "use_linear_reference_frame_a": False,
+                        "stop_erp": .8,
+                        "stop_cfm": .1,
+                        "disable_collision_between_linked_bodies": True,
+                    }
+                })
+                self.constraints[lr].append(cnt)
+
+        return True
+
+
 
     def release_rope(self, lr):
         print 'RELEASE: %s (%d constraints)' % (lr, len(self.constraints[lr]))
