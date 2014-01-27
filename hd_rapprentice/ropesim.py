@@ -42,6 +42,18 @@ def in_grasp_region(robot, lr, pt):
 
     return True
 
+def viz_grasp_region():
+    import openravepy as rave
+    env = rave.Environment()
+    env.Load('robots/pr2-beta-static.zae')
+    pr2  = env.GetRobots()[0]
+    
+    for lr in "lr":
+        manip = pr2.GetManipulator({"l":"leftarm", "r":"rightarm"}[lr])
+        import IPython
+        IPython.embed()
+
+
 def retime_traj(robot, inds, traj, base_hmats, max_cart_vel=.02, upsample_time=.1):
     """retime a trajectory so that it executes slowly enough for the simulation"""
     cart_traj = np.empty((len(traj), 6))
