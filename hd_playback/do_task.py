@@ -450,6 +450,7 @@ def find_closest_clusters(demofile, clusterfile, new_xyz, init_tfm=None, check_n
     keys = {int(key):keys[key] for key in keys}
     clusters = clusterfile['clusters']
     clusters = {int(c):clusters[c] for c in clusters}
+    
     for cluster in clusters:
         best_seg = clusters[cluster][0]
         dname, sname = keys[best_seg]
@@ -464,7 +465,7 @@ def find_closest_clusters(demofile, clusterfile, new_xyz, init_tfm=None, check_n
         ccosts = Parallel(n_jobs=n_jobs,verbose=51)(delayed(registration_cost)(cloud, new_xyz) for cloud in cluster_clouds)
     else:
         ccosts = []
-        for (i,ds_cloud) in cluster_clouds.items():
+        for (i,ds_cloud) in enumerate(cluster_clouds):
             ccosts.append(registration_cost(ds_cloud, new_xyz))
             print "completed %i/%i"%(i+1, len(cluster_clouds))
     
@@ -491,6 +492,7 @@ def find_closest_clusters(demofile, clusterfile, new_xyz, init_tfm=None, check_n
         print "press any key to continue"
         cv2.waitKey()
 
+    #############################################################################
     is_finalsegs = {}    
     check_clouds = []
     best_segs = []
@@ -1295,6 +1297,9 @@ def main():
         
         if args.fake_data_demo and args.fake_data_segment and not args.simulation: break
 
+    demofile.close()
+    if args.select == "clusters":
+        clusterfile.close()
 
 if __name__ == "__main__":
     main()

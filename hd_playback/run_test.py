@@ -23,6 +23,7 @@ parser.add_argument("--demo_name", type=str)
 parser.add_argument("--perturb_name", type=str)
 
 parser.add_argument("--demo_type", type=str)
+parser.add_argument("--use_diff_length", action="store_true", default=False)
 parser.add_argument("--cloud_proc_func", default="extract_red")
 parser.add_argument("--cloud_proc_mod", default="hd_utils.cloud_proc_funcs")
     
@@ -329,36 +330,44 @@ def exec_traj_maybesim(bodypart2traj):
 
     return True
 
-def find_closest_manual(demofile, _new_xyz):
+def find_closest_manual(demofiles, _new_xyz):
     """for now, just prompt the user"""
     
+    if not isinstance(demofiles, list):
+        demofiles = [demofiles]
 
     print "choose from the following options (type an integer)"
     seg_num = 0
+    demotype_num = 0
     keys = {}
     is_finalsegs = {}
-    for demo_name in demofile:
-        if demo_name != "ar_demo":
-            if 'done' in demofile[demo_name].keys():
-                final_seg_id = len(demofile[demo_name].keys()) - 2
-            else:
-                final_seg_id = len(demofile[demo_name].keys()) - 1
-                
-            
-            for seg_name in demofile[demo_name]:
-                if seg_name != 'done':
-                    keys[seg_num] = (demo_name, seg_name)
-                    print "%i: %s, %s"%(seg_num, demo_name, seg_name)
+    for demofile in demofiles:
+        print "Type %i: "%(demotype_num + 1)
+        for demo_name in demofile:
+            if demo_name != "ar_demo":
+                if 'done' in demofile[demo_name].keys():
+                    final_seg_id = len(demofile[demo_name].keys()) - 2
+                else:
+                    final_seg_id = len(demofile[demo_name].keys()) - 1
                     
-                    if seg_name == "seg%02d"%(final_seg_id):
-                        is_finalsegs[seg_num] = True
-                    else:
-                        is_finalsegs[seg_num] = False
-
-                    seg_num += 1
-
+                
+                for seg_name in demofile[demo_name]:
+                    if seg_name != 'done':
+                        keys[seg_num] = (demotype_num, demo_name, seg_name)
+                        print "%i: %i, %s, %s"%(seg_num, demotype_num+1, demo_name, seg_name)
+                        
+                        if seg_name == "seg%02d"%(final_seg_id):
+                            is_finalsegs[seg_num] = True
+                        else:
+                            is_finalsegs[seg_num] = False
+    
+                        seg_num += 1
+        demotype_num +=1
     choice_ind = task_execution.request_int_in_range(seg_num)
-    return keys[choice_ind], is_finalsegs[choice_ind]
+    if demotype_num == 1:
+        return (keys[choice_ind][1],keys[choice_ind][2]) , is_finalsegs[choice_ind]
+    else:
+        return keys[choice_ind], is_finalsegs[choice_ind]
 
 
 def registration_cost(xyz0, xyz1):
@@ -369,9 +378,12 @@ def registration_cost(xyz0, xyz1):
     return cost
 
 
-def find_closest_auto(demofile, new_xyz, init_tfm=None, n_jobs=3):
+def find_closest_auto(demofiles, new_xyz, init_tfm=None, n_jobs=3):
     if args.parallel:
         from joblib import Parallel, delayed
+
+    if not isinstance(demofiles, list):
+        demofiles = [demofiles]
         
     demo_clouds = []
     
@@ -382,31 +394,33 @@ def find_closest_auto(demofile, new_xyz, init_tfm=None, n_jobs=3):
     
     keys = {}
     is_finalsegs = {}
-
+    demotype_num = 0
     seg_num = 0
-    for demo_name in demofile:
-        if demo_name != "ar_demo":
-            if 'done' in demofile[demo_name].keys():
-                final_seg_id = len(demofile[demo_name].keys()) - 2
-            else:
-                final_seg_id = len(demofile[demo_name].keys()) - 1
-
-            for seg_name in demofile[demo_name]:
-                keys[seg_num] = (demo_name, seg_name)
-                
-                if seg_name == "seg%02d"%(final_seg_id):
-                    is_finalsegs[seg_num] = True
+    for demofile in demofiles:
+        for demo_name in demofile:
+            if demo_name != "ar_demo":
+                if 'done' in demofile[demo_name].keys():
+                    final_seg_id = len(demofile[demo_name].keys()) - 2
                 else:
-                    is_finalsegs[seg_num] = False
-
-                
-                seg_num += 1
-                demo_xyz = clouds.downsample(np.asarray(demofile[demo_name][seg_name]["cloud_xyz"]),DS_LEAF_SIZE)
-                if init_tfm is not None:
-                    demo_xyz = demo_xyz.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
-                print demo_xyz.shape
-                avg += demo_xyz.shape[0]
-                demo_clouds.append(demo_xyz)
+                    final_seg_id = len(demofile[demo_name].keys()) - 1
+    
+                for seg_name in demofile[demo_name]:
+                    keys[seg_num] = (demotype_num, demo_name, seg_name)
+                    
+                    if seg_name == "seg%02d"%(final_seg_id):
+                        is_finalsegs[seg_num] = True
+                    else:
+                        is_finalsegs[seg_num] = False
+    
+                    
+                    seg_num += 1
+                    demo_xyz = clouds.downsample(np.asarray(demofile[demo_name][seg_name]["cloud_xyz"]),DS_LEAF_SIZE)
+                    if init_tfm is not None:
+                        demo_xyz = demo_xyz.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
+                    print demo_xyz.shape
+                    avg += demo_xyz.shape[0]
+                    demo_clouds.append(demo_xyz)
+        demotype_num +=1
     
     # raw_input(avg/len(demo_clouds))
     if args.parallel:
@@ -435,36 +449,58 @@ def find_closest_auto(demofile, new_xyz, init_tfm=None, n_jobs=3):
         print "press any key to continue"
         cv2.waitKey()
     
-    ibest = np.argmin(costs)
-    return keys[ibest], is_finalsegs[ibest]
+    choice_ind = np.argmin(costs)
+    
+    if demotype_num == 1:
+        return (keys[choice_ind][1],keys[choice_ind][2]) , is_finalsegs[choice_ind]
+    else:
+        return keys[choice_ind], is_finalsegs[choice_ind]
 
 
-def find_closest_clusters(demofile, clusterfile, new_xyz, init_tfm=None, check_n=2, n_jobs=3):
+"""
+Might need to debug this.
+"""
+def find_closest_clusters(demofiles, clusterfiles, new_xyz, init_tfm=None, check_n=3, n_jobs=3):
     if args.parallel:
         from joblib import Parallel, delayed
+    
+    if not isinstance(demofiles, list): demofiles = [demofiles]
+    if not isinstance(clusterfiles, list): clusterfiles = [clusterfiles]
     
     DS_LEAF_SIZE = 0.045
     new_xyz = clouds.downsample(new_xyz,DS_LEAF_SIZE)
         
     # Store all the best cluster clouds
-    cluster_clouds = {}
-    keys = clusterfile['keys']
-    clusters = clusterfile['clusters']
-    for cluster in clusters:
-        best_seg = clusters[cluster][0]
-        dname, sname = keys[best_seg]
-        cloud = clouds.downsample(np.asarray(demofile[dname][sname]["cloud_xyz"]),DS_LEAF_SIZE)
-        if init_tfm is not None:
-            cloud = cloud.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
+    clusters = {}
+    keys = {}
+    cluster_clouds = []
+    all_keys = {}
+    idx = 0
+    dnum = 0
+    for demofile,clusterfile in zip(demofiles, clusterfiles):        
+        keys[dnum] = clusterfile['keys']
+        keys[dnum] = {int(key):keys[dnum][key] for key in keys[dnum]}
+        clusters[dnum] = clusterfile['clusters']
+        clusters[dnum] = {int(c):clusters[dnum][c] for c in clusters[dnum]}
 
-        cluster_clouds[cluster] = cloud
+        for cluster in clusters[dnum]:
+            best_seg = clusters[dnum][cluster][0]
+            dname, sname = keys[dnum][best_seg]
+            cloud = clouds.downsample(np.asarray(demofile[dname][sname]["cloud_xyz"]),DS_LEAF_SIZE)
+            if init_tfm is not None:
+                cloud = cloud.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
+    
+            all_keys[idx] = (dnum, cluster)
+            cluster_clouds.append(cloud)
+            idx += 1
+        dnum += 1
 
     # Check the clusters with min costs
     if args.parallel:
-        ccosts = Parallel(n_jobs=n_jobs,verbose=51)(delayed(registration_cost)(cluster_clouds[i], new_xyz) for i in cluster_clouds)
+        ccosts = Parallel(n_jobs=n_jobs,verbose=51)(delayed(registration_cost)(cloud, new_xyz) for cloud in cluster_clouds)
     else:
         ccosts = []
-        for (i,ds_cloud) in cluster_clouds.items():
+        for (i,ds_cloud) in enumerate(cluster_clouds):
             ccosts.append(registration_cost(ds_cloud, new_xyz))
             print "completed %i/%i"%(i+1, len(cluster_clouds))
     
@@ -473,20 +509,47 @@ def find_closest_clusters(demofile, clusterfile, new_xyz, init_tfm=None, check_n
     
     best_clusters = np.argsort(ccosts)
     check_n = min(check_n, len(best_clusters))
+    
+    if args.show_neighbors:
+        nshow = min(check_n*3, len(cluster_clouds))
+        import cv2, hd_rapprentice.cv_plot_utils as cpu, math
+        closeinds = best_clusters[:nshow]
+        
+        near_rgbs = []
+        for i in closeinds:
+            dn, cluster = all_keys[c]
+            (demo_name, seg_name) = keys[dn][clusters[dn][cluster][0]]
+            near_rgbs.append(np.asarray(demofiles[dn][demo_name][seg_name]["rgb"]))
+        
+        rows = 6
+        cols = int(math.ceil(nshow*1.0/rows))
+        bigimg = cpu.tile_images(near_rgbs, rows, cols, max_width=300)
+        cv2.imshow("neighbors", bigimg)
+        print "press any key to continue"
+        cv2.waitKey()
 
+    #############################################################################
     is_finalsegs = {}    
-    check_clouds = {}
-    best_segs = []
+    check_clouds = []
+    cluster_keys = {}
+    idx = 0
     for c in best_clusters[:check_n]:
-        cluster_segs = clusters[c]
-        best_segs.extend(cluster_segs)
+        dn, cluster = all_keys[c]
+        cluster_segs = clusters[dn][cluster]
+
         for seg in cluster_segs:
-            dname,sname = keys[seg]
-            check_clouds[seg] = clouds.downsample(np.asarray(demofile[dname][sname]["cloud_xyz"]),DS_LEAF_SIZE)
-            if 'done' in demofile[dname].keys():
-                final_seg_id = len(demofile[dname].keys()) - 2
+            dname,sname = keys[dn][seg]
+            
+            cloud = clouds.downsample(np.asarray(demofiles[dn][dname][sname]["cloud_xyz"]),DS_LEAF_SIZE)
+            if init_tfm is not None:
+                cloud = cloud.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
+            
+            check_clouds.append(cloud)
+            cluster_keys[idx] = (dn, dname, sname)
+            if 'done' in demofiles[dn][dname].keys():
+                final_seg_id = len(demofiles[dn][dname].keys()) - 2
             else:
-                final_seg_id = len(demofile[dname].keys()) - 1
+                final_seg_id = len(demofiles[dn][dname].keys()) - 1
 
             if sname == "seg%02d"%(final_seg_id):
                 is_finalsegs[seg] = True
@@ -495,33 +558,34 @@ def find_closest_clusters(demofile, clusterfile, new_xyz, init_tfm=None, check_n
 
     # Check the clusters with min costs
     if args.parallel:
-        costs = Parallel(n_jobs=n_jobs,verbose=51)(delayed(registration_cost)(check_clouds[i], new_xyz) for i in check_clouds)
+        costs = Parallel(n_jobs=n_jobs,verbose=51)(delayed(registration_cost)(cloud, new_xyz) for cloud in check_clouds)
     else:
         costs = []
-        for (i,ds_cloud) in check_clouds.items():
+        for (i,ds_cloud) in enumerate(check_clouds):
             costs.append(registration_cost(ds_cloud, new_xyz))
             print "completed %i/%i"%(i+1, len(check_clouds))
     
     print "Costs: \n", costs
     
     if args.show_neighbors:
-        nshow = min(5, len(check_clouds))
-        import cv2, hd_rapprentice.cv_plot_utils as cpu
+        nshow = min(30, len(check_clouds))
         sortinds = np.argsort(costs)[:nshow]
         
         near_rgbs = []
         for i in sortinds:
-            (demo_name, seg_name) = keys[i]
-            near_rgbs.append(np.asarray(demofile[demo_name][seg_name]["rgb"]))
+            (dn, demo_name, seg_name) = cluster_keys[i]
+            near_rgbs.append(np.asarray(demofiles[dn][demo_name][seg_name]["rgb"]))
         
         bigimg = cpu.tile_images(near_rgbs, 1, nshow)
         cv2.imshow("neighbors", bigimg)
         print "press any key to continue"
         cv2.waitKey()
     
-    ibest = best_segs[np.argmin(costs)]
-    
-    return keys[ibest], is_finalsegs[ibest]
+    choice_ind = np.argmin(costs)
+    if dnum == 1:
+        return (cluster_keys[choice_ind][1],cluster_keys[choice_ind][2]) , is_finalsegs[choice_ind]
+    else:
+        return cluster_keys[choice_ind], is_finalsegs[choice_ind]
 
 
 
@@ -622,19 +686,35 @@ def has_hitch(h5data, demo_name=None, seg_name=None):
         first_seg = first_demo[first_demo.keys()[0]]
         return "hitch_pos" in first_seg
 
+use_diff_length = args.use_diff_length
 
 def main():
     init_state_h5file = h5py.File(args.init_state_h5+".h5", "r")
     print args.init_state_h5+".h5"
     
-    demotype_dir = osp.join(demo_files_dir, args.demo_type)
-    demo_h5file = osp.join(demotype_dir, args.demo_type+".h5")
-    print demo_h5file
-    demofile = h5py.File(demo_h5file, 'r')
+    if use_diff_length:
+        from glob import glob
+        demotype_dirs = glob(osp.join(demo_files_dir, args.demo_type+'[0-9]*'))
+        demo_types = [osp.basename(demotype_dir) for demotype_dir in demotype_dirs]
+        demo_h5files = [osp.join(demotype_dir, demo_type+".h5") for demo_type in demo_types]
+        print demo_h5files
+        demofiles = [h5py.File(demofile, 'r') for demofile in demo_h5files]
+        if len(demofiles) == 1: 
+            demofile = demofiles
+            use_diff_length = False
+    else:
+        demotype_dir = osp.join(demo_files_dir, args.demo_type)
+        demo_h5file = osp.join(demotype_dir, args.demo_type+".h5")
+        print demo_h5file
+        demofile = h5py.File(demo_h5file, 'r')
     
     if args.select == "clusters":
-        c_h5file = osp.join(demotype_dir, args.demo_type+"_clusters.h5")
-        clusterfile = h5py.File(c_h5file, 'r') 
+        if use_diff_length:
+            c_h5files = [osp.join(demotype_dir, demo_type+"_clusters.h5") for demo_type in demo_types]
+            clusterfiles = [h5py.File(c_h5file, 'r') for c_h5file in c_h5files]
+        else:
+            c_h5file = osp.join(demotype_dir, args.demo_type+"_clusters.h5")
+            clusterfile = h5py.File(c_h5file, 'r') 
     
     trajoptpy.SetInteractive(args.interactive)
     
@@ -785,7 +865,7 @@ def main():
             Globals.robot.SetDOFValues(l_vals, Globals.robot.GetManipulator('leftarm').GetArmIndices())
             Globals.robot.SetDOFValues(PR2.mirror_arm_joints(l_vals), Globals.robot.GetManipulator('rightarm').GetArmIndices())
 
-            if args.simulation and curr_step > 1:
+            if curr_step > 1:
                 # for following steps in rope simulation, using simulation result
                 new_xyz = Globals.sim.observe_cloud(3)
                 new_xyz = clouds.downsample(new_xyz, args.cloud_downsample)
@@ -833,9 +913,9 @@ def main():
                     rope_cloud = clouds.downsample(rope_cloud, args.cloud_downsample)
                 else:
                     if has_hitch(init_state_h5file, args.demo_name, args.perturb_name):
-                        rope_cloud = demofile[args.demo_name][args.perturb_name]['object']
+                        rope_cloud = init_state_h5file[args.demo_name][args.perturb_name]['object']
                     else:
-                        rope_cloud = demofile[args.demo_name][args.perturb_name]['cloud_xyz']
+                        rope_cloud = init_state_h5file[args.demo_name][args.perturb_name]['cloud_xyz']
 
 
         else:
@@ -855,6 +935,7 @@ def main():
             if args.closest_rope_hack:
                 rope_cloud = np.array(new_xyz)
             
+            if use_diff_length: demofile = demofiles[0]
             if has_hitch(demofile):
                 hitch_normal = clouds.clouds_plane(new_xyz)
                 
@@ -877,16 +958,25 @@ def main():
         Finding closest demonstration
         '''
         redprint("Finding closest demonstration")
-        if args.select=="manual":
-            (demo_name, seg_name), is_final_seg = find_closest_manual(demofile, new_xyz)
-        elif args.select=="auto":
-            (demo_name, seg_name), is_final_seg = find_closest_auto(demofile, new_xyz, init_tfm)
+        if use_diff_length:
+            if args.select=="manual":
+                dnum, (demo_name, seg_name), is_final_seg = find_closest_manual(demofiles, new_xyz)
+            elif args.select=="auto":
+                dnum, (demo_name, seg_name), is_final_seg = find_closest_auto(demofiles, new_xyz, init_tfm)
+            else:
+                dnum, (demo_name, seg_name), is_final_seg = find_closest_clusters(demofiles, clusterfiles, new_xyz, init_tfm)
+            seg_info = demofiles[dnum][demo_name][seg_name]
+            redprint("closest demo: %i, %s, %s"%(dnum, demo_name, seg_name))
         else:
-            (demo_name, seg_name), is_final_seg = find_closest_clusters(demofile, clusterfile, new_xyz, init_tfm)
-
+            if args.select=="manual":
+                (demo_name, seg_name), is_final_seg = find_closest_manual(demofile, new_xyz)
+            elif args.select=="auto":
+                (demo_name, seg_name), is_final_seg = find_closest_auto(demofile, new_xyz, init_tfm)
+            else:
+                (demo_name, seg_name), is_final_seg = find_closest_clusters(demofile, clusterfile, new_xyz, init_tfm)
+            seg_info = demofile[demo_name][seg_name]
+            redprint("closest demo: %s, %s"%(demo_name, seg_name))
         
-        seg_info = demofile[demo_name][seg_name]
-        redprint("closest demo: %s, %s"%(demo_name, seg_name))
         if "done" == seg_name:
             redprint("DONE!")
             break
@@ -1271,7 +1361,14 @@ def main():
         redprint("Demo %s Segment %s result: %s"%(demo_name, seg_name, success))
 
     init_state_h5file.close()
-    demofile.close()
+    if use_diff_length:
+        for demofile in demofiles: demofile.close()
+        if args.select == "clusters":
+            for clusterfile in clusterfiles: clusterfile.close()
+    else:
+        demofile.close()
+        if args.select == "clusters":
+            clusterfile.close()
     
     import cPickle as cp
     state_file_name = osp.join(demo_files_dir, args.demo_type, osp.splitext(osp.basename(args.init_state_h5))[0], args.demo_name+"_"+args.perturb_name+".cp")
