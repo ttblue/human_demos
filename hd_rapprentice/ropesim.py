@@ -5,6 +5,7 @@ from hd_rapprentice.planning import mat_to_base_pose, base_pose_to_mat
 from hd_utils import math_utils
 import trajoptpy
 
+
 def transform(hmat, p):
     return hmat[:3,:3].dot(p) + hmat[:3,3]
 
@@ -33,7 +34,7 @@ def in_grasp_region(robot, lr, pt):
         return False
 
     # check that pt is within the finger width
-    if abs(pt_local[0]) > .01 + tol:
+    if abs(pt_local[0]) > .015 + tol:
         return False
 
     # check that pt is between the fingers
@@ -42,6 +43,27 @@ def in_grasp_region(robot, lr, pt):
 
     return True
 
+def viz_grasp_region():
+    import openravepy as rave
+    env = rave.Environment()
+    env.Load('robots/pr2-beta-static.zae')
+    env.SetViewer('qtcoin')
+    pr2  = env.GetRobots()[0]
+
+    handles = []
+    for lr in "lr":
+        manip = pr2.GetManipulator({"l":"leftarm", "r":"rightarm"}[lr])
+        pr2.SetDOFValues([1], manip.GetGripperIndices())
+        tf    = manip.GetEndEffectorTransform()
+        xx    = np.linspace(-0.1, 0.1, 50)
+        x,y,z = np.meshgrid(xx,xx,xx)
+        check_pts = np.c_[x.flatten(), y.flatten(), z.flatten()] + tf[:3,3][None,:]
+        in_grasp = []
+        for i in xrange(len(check_pts)):
+            if in_grasp_region(pr2, lr, check_pts[i]):
+                in_grasp.append(i)
+        handles.append(env.plot3(points=check_pts[in_grasp], pointsize=0.01))
+    return handles
 
 
 def retime_traj(robot, inds, traj, base_hmats, max_cart_vel=.02, upsample_time=.1):
@@ -139,10 +161,10 @@ class Simulation(object):
         
         return upsampled_pts
 
-    def grab_rope(self, lr):
+    def grab_rope_old(self, lr):
         nodes, ctl_pts = self.rope.GetNodes(), self.rope.GetControlPoints()
 
-        graspable_nodes = np.array([in_grasp_region(self.robot, lr, n) for n in nodes])
+        graspable_nodes   = np.array([in_grasp_region(self.robot, lr, n) for n in nodes])
         graspable_ctl_pts = np.array([in_grasp_region(self.robot, lr, n) for n in ctl_pts])
         graspable_inds = np.flatnonzero(np.logical_or(graspable_nodes, np.logical_or(graspable_ctl_pts[:-1], graspable_ctl_pts[1:])))
         print 'graspable inds for %s: %s' % (lr, str(graspable_inds))
@@ -169,6 +191,40 @@ class Simulation(object):
                 self.constraints[lr].append(cnt)
 
         return True
+
+    def grab_rope(self, lr, seg_samples=5):
+        nodes, ctl_pts = self.rope.GetNodes(), self.rope.GetControlPoints()
+        graspable_inds = []
+        for i in xrange(len(ctl_pts)-1):
+            pts = math_utils.interp2d(np.linspace(0,1,seg_samples), [0,1], np.r_[np.reshape(ctl_pts[i], (1,3)), np.reshape(ctl_pts[i+1], (1,3))])
+            if np.any([in_grasp_region(self.robot, lr, pt) for pt in pts]):
+                graspable_inds.append(i)
+        print 'graspable inds for %s: %s' % (lr, str(graspable_inds))
+        if len(graspable_inds) == 0:
+            return False
+
+        robot_link = self.robot.GetLink("%s_gripper_l_finger_tip_link"%lr)
+        rope_links = self.rope.GetKinBody().GetLinks()
+        for i_node in graspable_inds:
+            for i_cnt in range(max(0, i_node-1), min(len(nodes), i_node+2)):
+                cnt = self.bt_env.AddConstraint({
+                    "type": "generic6dof",
+                    "params": {
+                        "link_a": robot_link,
+                        "link_b": rope_links[i_cnt],
+                        "frame_in_a": np.linalg.inv(robot_link.GetTransform()).dot(rope_links[i_cnt].GetTransform()),
+                        "frame_in_b": np.eye(4),
+                        "use_linear_reference_frame_a": False,
+                        "stop_erp": .8,
+                        "stop_cfm": .1,
+                        "disable_collision_between_linked_bodies": True,
+                    }
+                })
+                self.constraints[lr].append(cnt)
+
+        return True
+
+
 
     def release_rope(self, lr):
         print 'RELEASE: %s (%d constraints)' % (lr, len(self.constraints[lr]))

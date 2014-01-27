@@ -650,7 +650,7 @@ def main():
 
     
     demotype_dir = osp.join(demo_files_dir, args.demo_type)
-    h5file = osp.join(demotype_dir, args.demo_type+".h5")
+    h5file = osp.join(demotype_dir, args.demo_type+".h5", 'r')
 
     demofile = h5py.File(h5file, 'r')
     
