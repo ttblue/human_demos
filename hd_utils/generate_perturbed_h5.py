@@ -2,11 +2,12 @@ import os, os.path as osp
 import numpy as np
 import argparse
 from defaults import demo_files_dir
-from mpl_toolkits.mplot3d import axes3d
 import pylab, h5py
 from hd_utils.clouds_utils import sample_random_rope
 from hd_utils.yes_or_no import yes_or_no
 import clouds 
+from mayavi import mlab
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--demo_type", help="Type of demonstration", type=str)
@@ -40,8 +41,6 @@ else:
 
 demofile = h5py.File(h5file, 'r')
 
-fig = pylab.figure()
-
 demo_type_dir = osp.join(demo_files_dir, args.demo_type)
 
 
@@ -63,10 +62,9 @@ for demo in sorted(demofile.keys()):
     xyz = demofile[demo_name]['seg00']["cloud_xyz"]
     xyz = np.squeeze(xyz)
     
-    ax = fig.gca(projection='3d')
-    ax.set_autoscale_on(False)
-    ax.plot(xyz[:,0], xyz[:,1], xyz[:,2], 'o')   
-    fig.show()
+    mlab.figure(0)
+    mlab.clf()
+    mlab.points3d(xyz[:,0], xyz[:,1], xyz[:,2], color=(1,0,0), scale_factor=.005)
 
     if yes_or_no("Do you want to add this original demo?"):
         perturb_name = str(n_perturb_existed)
@@ -75,7 +73,8 @@ for demo in sorted(demofile.keys()):
         perturb_group['cloud_xyz'] = xyz
         
         if has_hitch:
-            perturb_group['hitch_pos'] = demofile[demo_name]['seg00']['hitch_pos']
+            hitch_pos = demofile[demo_name]['seg00']['hitch_pos']
+            perturb_group['hitch_pos'] = np.squeeze(hitch_pos) 
         
         print "add perturb demo %d"%(n_perturb_existed)
         n_perturb_existed += 1
@@ -84,7 +83,6 @@ for demo in sorted(demofile.keys()):
     
     if yes_or_no("Do you want to skip perturbing this demo?"):
         print "skip perturbing demo"
-        fig.clf()
         continue             
         
     # start actual perturbation    
@@ -95,12 +93,17 @@ for demo in sorted(demofile.keys()):
     while n_perturbed <= args.perturb_num and n_perturbed_attempt < args.max_perturb_attempt:
         
         if has_hitch:
-            new_rope_xyz = sample_random_rope(demofile[demo_name]['seg00']['object'])
-            new_rope_xyz = clouds.downsample(new_rope_xyz, .01)
-            new_xyz = np.r_[new_rope_xyz, demofile[demo_name]['seg00']['hitch']]
+            new_object_xyz = sample_random_rope(demofile[demo_name]['seg00']['object'], True)
+            new_object_xyz = clouds.downsample(new_object_xyz, .01)
+            new_xyz = np.r_[new_object_xyz, demofile[demo_name]['seg00']['hitch']]
         else:
             new_xyz = sample_random_rope(xyz, True)
             new_xyz = clouds.downsample(new_xyz, .01)
+
+        mlab.figure(0)
+        mlab.clf()
+        mlab.points3d(new_xyz[:,0], new_xyz[:,1], new_xyz[:,2], color=(1,0,0), scale_factor=.005)
+
 
         if yes_or_no("Are you happy with this perturbation?"):
             perturb_name = str(n_perturb_existed)
@@ -112,7 +115,6 @@ for demo in sorted(demofile.keys()):
       
         n_perturbed_attempt += 1      
 
-    fig.clf()
     
     if yes_or_no("Stop perturbation?"):
         break        
