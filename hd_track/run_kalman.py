@@ -117,6 +117,14 @@ def get_first_state(tf_streams, freq, start_time):
             if t <= dt + start_time:
                 tfs0.append(tfs[ti])
                 
+    if len(tfs0)==0:
+        for i in xrange(n_streams):
+            tfs, ts = tf_streams[i].get_data()
+            for ti, t in enumerate(ts):
+                if t <= 3*dt + start_time:
+                    tfs0.append(tfs[ti])
+
+                
     I3 = np.eye(3)
     S0 = scl.block_diag(1e-3*I3, 1e-2*I3, 1e-3*I3, 1e-3*I3)
                 
