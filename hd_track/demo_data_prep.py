@@ -310,7 +310,7 @@ def align_tf_streams(hydra_strm, cam_strm, wsize=0):
     Xs_cam   = np.array(Xs_cam[start_idx:end_idx+1])
     Xs_hy    = np.array(Xs_hy)
     for shift in xrange(-wsize, wsize+1):
-        dists.append(np.linalg.norm(Xs_hy[shift + cam_inds,:] - Xs_cam))
+        dists.append(np.linalg.norm(Xs_hy[shift + cam_inds] - Xs_cam))
 
     shift = xrange(-wsize, wsize+1)[np.argmin(dists)]
     redprint("\t stream time-alignment shift is : %d (= %0.3f seconds)"%(shift,hydra_strm.dt*shift))
