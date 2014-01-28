@@ -102,18 +102,21 @@ from numpy.linalg import norm
 
 import cloudprocpy, trajoptpy, openravepy
 
-try:
-    from hd_rapprentice import pr2_trajectories, PR2
-    import rospy
-except ImportError:
-    print "Couldn't import ros stuff"
+if args.execution:
+    try:
+        from hd_rapprentice import pr2_trajectories, PR2
+        import rospy
+        from hd_utils import ros_utils as ru
+        from hd_extract.extract_data import get_ar_marker_poses
+    except ImportError:
+        print "Couldn't import ros stuff"
 
 
 from hd_rapprentice import registration, animate_traj, ros2rave, \
      plotting_openrave, task_execution, \
      planning, tps, resampling, \
      ropesim, rope_initialization
-from hd_utils import yes_or_no, ros_utils as ru, func_utils, clouds, math_utils as mu, cloud_proc_funcs
+from hd_utils import yes_or_no, func_utils, clouds, math_utils as mu, cloud_proc_funcs
 from hd_utils.pr2_utils import get_kinect_transform
 from hd_utils.colorize import *
 from hd_utils.utils import avg_transform
@@ -121,7 +124,6 @@ from hd_utils.defaults import demo_files_dir, hd_data_dir, asus_xtion_pro_f, \
         ar_init_dir, ar_init_demo_name, ar_init_playback_name, \
         tfm_head_dof, tfm_bf_head, tfm_gtf_ee, cad_files_dir
 
-from hd_extract.extract_data import get_ar_marker_poses
 
 
 
@@ -171,7 +173,7 @@ def closer_angs(x_array,a_array,dr=0):
     return [closer_ang(x, a, dr) for (x, a) in zip(x_array, a_array)]
 
 
-def split_trajectory_by_gripper(seg_info, pot_angle_threshold, thresh=5):
+def split_trajectory_by_gripper(seg_info, pot_angle_threshold, ms_thresh=2):
     lgrip = np.asarray(seg_info["l"]["pot_angles"])
     rgrip = np.asarray(seg_info["r"]["pot_angles"])
     
@@ -194,22 +196,29 @@ def split_trajectory_by_gripper(seg_info, pot_angle_threshold, thresh=5):
     seg_starts = np.unique(np.r_[0, after_transitions])
     seg_ends = np.unique(np.r_[before_transitions, n_steps-1])
     
+    lr_open = {lr:[] for lr in 'lr'}
+    #return seg_starts, seg_ends
     new_seg_starts = []
     new_seg_ends = []
     for i in range(len(seg_starts)):
-        if seg_ends[i]- seg_starts[i] >= thresh:
+        if seg_ends[i]- seg_starts[i] >= ms_thresh:
             new_seg_starts.append(seg_starts[i])
             new_seg_ends.append(seg_ends[i])
-    
+            lval = True if lgrip[seg_starts[i]] >= thresh else False
+            lr_open['l'].append(lval)
+            rval = True if rgrip[seg_starts[i]] >= thresh else False
+            lr_open['r'].append(rval)
+            
+     
 #     import IPython
 #     IPython.embed()
-
-    return new_seg_starts, new_seg_ends
+ 
+    return new_seg_starts, new_seg_ends, lr_open
 
 def binarize_gripper(angle, pot_angle_threshold):
     open_angle = .08
     closed_angle = 0
-    if angle > pot_angle_threshold: return open_angle
+    if angle >= pot_angle_threshold: return open_angle
     else: return closed_angle
     
     
@@ -245,7 +254,6 @@ def set_gripper_maybesim(lr, is_open, prev_is_open):
                 if args.interactive: Globals.viewer.Idle()
         # add constraints if necessary
         if not is_open and prev_is_open:
-            
             if not Globals.sim.grab_rope(lr):
                 redprint("Grab failed")
                 return False
@@ -378,6 +386,8 @@ def registration_cost(xyz0, xyz1):
     return cost
 
 
+DS_LEAF_SIZE = args.cloud_downsample
+
 def find_closest_auto(demofiles, new_xyz, init_tfm=None, n_jobs=3):
     if args.parallel:
         from joblib import Parallel, delayed
@@ -387,7 +397,7 @@ def find_closest_auto(demofiles, new_xyz, init_tfm=None, n_jobs=3):
         
     demo_clouds = []
     
-    DS_LEAF_SIZE = 0.045
+    
     new_xyz = clouds.downsample(new_xyz,DS_LEAF_SIZE)
     
     avg = 0.0
@@ -466,8 +476,7 @@ def find_closest_clusters(demofiles, clusterfiles, new_xyz, init_tfm=None, check
     
     if not isinstance(demofiles, list): demofiles = [demofiles]
     if not isinstance(clusterfiles, list): clusterfiles = [clusterfiles]
-    
-    DS_LEAF_SIZE = 0.045
+
     new_xyz = clouds.downsample(new_xyz,DS_LEAF_SIZE)
         
     # Store all the best cluster clouds
@@ -517,7 +526,7 @@ def find_closest_clusters(demofiles, clusterfiles, new_xyz, init_tfm=None, check
         
         near_rgbs = []
         for i in closeinds:
-            dn, cluster = all_keys[c]
+            dn, cluster = all_keys[i]
             (demo_name, seg_name) = keys[dn][clusters[dn][cluster][0]]
             near_rgbs.append(np.asarray(demofiles[dn][demo_name][seg_name]["rgb"]))
         
@@ -552,9 +561,11 @@ def find_closest_clusters(demofiles, clusterfiles, new_xyz, init_tfm=None, check
                 final_seg_id = len(demofiles[dn][dname].keys()) - 1
 
             if sname == "seg%02d"%(final_seg_id):
-                is_finalsegs[seg] = True
+                is_finalsegs[idx] = True
             else:
-                is_finalsegs[seg] = False
+                is_finalsegs[idx] = False
+                
+            idx += 1
 
     # Check the clusters with min costs
     if args.parallel:
@@ -576,7 +587,9 @@ def find_closest_clusters(demofiles, clusterfiles, new_xyz, init_tfm=None, check
             (dn, demo_name, seg_name) = cluster_keys[i]
             near_rgbs.append(np.asarray(demofiles[dn][demo_name][seg_name]["rgb"]))
         
-        bigimg = cpu.tile_images(near_rgbs, 1, nshow)
+        rows = 6
+        cols = int(math.ceil(nshow*1.0/rows))
+        bigimg = cpu.tile_images(near_rgbs, rows, cols, max_width=1000)
         cv2.imshow("neighbors", bigimg)
         print "press any key to continue"
         cv2.waitKey()
@@ -685,10 +698,26 @@ def has_hitch(h5data, demo_name=None, seg_name=None):
         first_demo = h5data[h5data.keys()[0]]
         first_seg = first_demo[first_demo.keys()[0]]
         return "hitch_pos" in first_seg
+    
+    
+#ros stuffs
+def mirror_arm_joints(x):
+    "mirror image of joints (r->l or l->r)"
+    return np.r_[-x[0],x[1],-x[2],x[3],-x[4],x[5],-x[6]]
+
+
+L_POSTURES = dict(        
+    untucked = [0.4,  1.0,   0.0,  -2.05,  0.0,  -0.1,  0.0],
+    tucked = [0.06, 1.25, 1.79, -1.68, -1.73, -0.10, -0.09],
+    up = [ 0.33, -0.35,  2.59, -0.15,  0.59, -1.41, -0.27],
+    side = [  1.832,  -0.332,   1.011,  -1.437,   1.1  ,  -2.106,  3.074]
+)   
 
 use_diff_length = args.use_diff_length
 
 def main():
+    global use_diff_length
+    
     init_state_h5file = h5py.File(args.init_state_h5+".h5", "r")
     print args.init_state_h5+".h5"
     
@@ -782,7 +811,6 @@ def main():
             try:
                 rgb, depth = grabber.getRGBD()
                 xyz = clouds.depth_to_xyz(depth, asus_xtion_pro_f)
-                
                 pc = ru.xyzrgb2pc(xyz, rgb)
                 
                 ar_tfms = get_ar_marker_poses(pc, ar_markers=[ar_marker])
@@ -861,9 +889,9 @@ def main():
         if args.simulation:
             
             #Set home position in sim
-            l_vals = PR2.Arm.L_POSTURES['side']
+            l_vals = L_POSTURES['side']
             Globals.robot.SetDOFValues(l_vals, Globals.robot.GetManipulator('leftarm').GetArmIndices())
-            Globals.robot.SetDOFValues(PR2.mirror_arm_joints(l_vals), Globals.robot.GetManipulator('rightarm').GetArmIndices())
+            Globals.robot.SetDOFValues(mirror_arm_joints(l_vals), Globals.robot.GetManipulator('rightarm').GetArmIndices())
 
             if curr_step > 1:
                 # for following steps in rope simulation, using simulation result
@@ -1044,7 +1072,7 @@ def main():
         '''
         Generating mini-trajectory
         '''
-        miniseg_starts, miniseg_ends = split_trajectory_by_gripper(seg_info, args.pot_threshold)
+        miniseg_starts, miniseg_ends, lr_open = split_trajectory_by_gripper(seg_info, args.pot_threshold)
         success = True
         redprint("mini segments: %s %s"%(miniseg_starts, miniseg_ends))
         
@@ -1052,7 +1080,7 @@ def main():
         portion = max(args.early_stop_portion, miniseg_ends[0] / float(segment_len))
         
         prev_vals = {lr:None for lr in 'lr'}
-        l_vals = PR2.Arm.L_POSTURES['side']
+        l_vals = L_POSTURES['side']
         for (i_miniseg, (i_start, i_end)) in enumerate(zip(miniseg_starts, miniseg_ends)):
             
             if args.execution =="real": Globals.pr2.update_rave()
@@ -1124,7 +1152,7 @@ def main():
                                 if prev_vals[lr] is not None:
                                     reference_sol = prev_vals[lr]
                                 else:
-                                    reference_sol = l_vals if lr == 'l' else PR2.mirror_arm_joints(l_vals)
+                                    reference_sol = l_vals if lr == 'l' else mirror_arm_joints(l_vals)
                         
                             
                             sols = [closer_angs(sol, reference_sol) for sol in sols]
@@ -1149,7 +1177,7 @@ def main():
                         if prev_vals[lr] is not None:
                             vals = prev_vals[lr]
                         else:
-                            vals = l_vals if lr == 'l' else PR2.mirror_arm_joints(l_vals)
+                            vals = l_vals if lr == 'l' else mirror_arm_joints(l_vals)
                         
                         init_joint_traj_interp = np.tile(vals,(len_miniseg, 1))
                     else:
@@ -1317,8 +1345,10 @@ def main():
             redprint("Executing joint trajectory for demo %s segment %s, part %i using arms '%s'"%(demo_name, seg_name, i_miniseg, bodypart2traj.keys()))
             
             for lr in 'lr':
-                gripper_open = binarize_gripper(seg_info[lr]["pot_angles"][i_start], args.pot_threshold)
-                prev_gripper_open = binarize_gripper(seg_info[lr]["pot_angles"][i_start-1], args.pot_threshold) if i_start != 0 else False
+                #gripper_open = binarize_gripper(seg_info[lr]["pot_angles"][i_start], args.pot_threshold)
+                #prev_gripper_open = binarize_gripper(seg_info[lr]["pot_angles"][i_start-1], args.pot_threshold) if i_start != 0 else False
+                gripper_open = lr_open[lr][i_miniseg]
+                prev_gripper_open = lr_open[lr][i_miniseg-1] if i_miniseg != 0 else False
                 if not set_gripper_maybesim(lr, gripper_open, prev_gripper_open):
                     redprint("Grab %s failed"%lr)
                     success = False

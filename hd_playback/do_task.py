@@ -99,11 +99,14 @@ from numpy.linalg import norm
 
 import trajoptpy, openravepy
  
-# try:
-#     from hd_rapprentice import pr2_trajectories, PR2
-#     import rospy
-# except ImportError:
-#     print "Couldn't import ros stuff"
+if args.execution:
+    try:
+        from hd_rapprentice import pr2_trajectories, PR2
+        import rospy
+        from hd_utils.ros_utils import xyzrgb2pc
+        from hd_extract.extract_data import get_ar_marker_poses
+    except ImportError:
+        print "Couldn't import ros stuff"
 
 
 from hd_rapprentice import registration, animate_traj, ros2rave, \
@@ -686,7 +689,6 @@ def main():
         LOG_COUNT = 0
 
     if args.execution:
-        from hd_rapprentice import PR2
         rospy.init_node("exec_task",disable_signals=True)
         Globals.pr2 = PR2.PR2()
         Globals.env = Globals.pr2.env
@@ -721,6 +723,7 @@ def main():
 
     # get rgbd from pr2?
     if not args.fake_data_segment or not args.fake_data_demo:
+        import cloudprocpy
         grabber = cloudprocpy.CloudGrabber()
         grabber.startRGBD()
 
@@ -741,19 +744,13 @@ def main():
         
         # Get ar marker for PR2:
         ar_run_tfm = None
-        if not args.fake_data_segment or not args.fake_data_demo:
+        if args.execution:
             try:
                 rgb, depth = grabber.getRGBD()
                 xyz = clouds.depth_to_xyz(depth, asus_xtion_pro_f)
+                pc = xyzrgb2pc(xyz, rgb)
                 
-                ar_tfms = None
-                if args.execution:
-                    from hd_extract.extract_data import get_ar_marker_poses
-                    from hd_utils.ros_utils import xyzrgb2pc
-                    pc = xyzrgb2pc(xyz, rgb)
-                    ar_tfms = get_ar_marker_poses(pc, ar_markers=[ar_marker])
-                
-                
+                ar_tfms = get_ar_marker_poses(pc, ar_markers=[ar_marker])
                 if ar_tfms:
                 
                     blueprint("Found ar marker %i for initialization!"%ar_marker)
@@ -1299,6 +1296,9 @@ def main():
             # if not success: break
             
             if len(bodypart2traj['larm']) > 0:
+                """HACK
+                """
+                is_final_seg = False
                 if is_final_seg and miniseg_ends[i_miniseg] < portion * segment_len:
                     success &= exec_traj_maybesim(bodypart2traj)
                 elif is_final_seg:
