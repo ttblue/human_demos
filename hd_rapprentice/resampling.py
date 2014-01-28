@@ -3,7 +3,6 @@ Resample time serieses to reduce the number of datapoints
 """
 from __future__ import division
 import numpy as np
-import fastrapp
 import scipy.interpolate as si
 import openravepy
 
@@ -166,6 +165,8 @@ def unif_resample(x,n,weights,tol=.001,deg=3):
     return out
 
 def test_resample():
+    import fastrapp
+
     x = [0,0,0,1,2,3,4,4,4]
     t = range(len(x))
     inds = adaptive_resample(x, max_err = 1e-5)
@@ -180,6 +181,8 @@ def test_resample():
     assert inds1.tolist() == [0,2,6,8]
 
 def test_resample_big():
+    import fastrapp
+
     from time import time
     t = np.linspace(0,1,1000)
     x0 = np.sin(t)[:,None]
