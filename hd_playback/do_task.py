@@ -98,19 +98,19 @@ from numpy.linalg import norm
 
 
 import trajoptpy, openravepy
-
-try:
-    from hd_rapprentice import pr2_trajectories, PR2
-    import rospy
-except ImportError:
-    print "Couldn't import ros stuff"
+ 
+# try:
+#     from hd_rapprentice import pr2_trajectories, PR2
+#     import rospy
+# except ImportError:
+#     print "Couldn't import ros stuff"
 
 
 from hd_rapprentice import registration, animate_traj, ros2rave, \
      plotting_openrave, task_execution, \
      planning, tps, resampling, \
      ropesim, rope_initialization
-from hd_utils import yes_or_no, ros_utils as ru, func_utils, clouds, math_utils as mu, cloud_proc_funcs
+from hd_utils import yes_or_no, func_utils, clouds, math_utils as mu, cloud_proc_funcs
 from hd_utils.pr2_utils import get_kinect_transform
 from hd_utils.colorize import *
 from hd_utils.utils import avg_transform
@@ -627,6 +627,9 @@ def close_traj(traj):
         curr_angs = new_angs
         
     return new_traj
+
+
+
     
 
 def downsample_objects(objs, factor):
@@ -646,6 +649,22 @@ def has_hitch(h5data, demo_name=None, seg_name=None):
         first_demo = h5data[h5data.keys()[0]]
         first_seg = first_demo[first_demo.keys()[0]]
         return "hitch_pos" in first_seg
+
+
+#ros stuffs
+def mirror_arm_joints(x):
+    "mirror image of joints (r->l or l->r)"
+    return np.r_[-x[0],x[1],-x[2],x[3],-x[4],x[5],-x[6]]
+
+
+L_POSTURES = dict(        
+    untucked = [0.4,  1.0,   0.0,  -2.05,  0.0,  -0.1,  0.0],
+    tucked = [0.06, 1.25, 1.79, -1.68, -1.73, -0.10, -0.09],
+    up = [ 0.33, -0.35,  2.59, -0.15,  0.59, -1.41, -0.27],
+    side = [  1.832,  -0.332,   1.011,  -1.437,   1.1  ,  -2.106,  3.074]
+)   
+
+
 
 
 def main():
@@ -668,6 +687,7 @@ def main():
         LOG_COUNT = 0
 
     if args.execution:
+        from hd_rapprentice import PR2
         rospy.init_node("exec_task",disable_signals=True)
         Globals.pr2 = PR2.PR2()
         Globals.env = Globals.pr2.env
@@ -727,9 +747,13 @@ def main():
                 rgb, depth = grabber.getRGBD()
                 xyz = clouds.depth_to_xyz(depth, asus_xtion_pro_f)
                 
-                pc = ru.xyzrgb2pc(xyz, rgb)
+                ar_tfms = None
+                if args.execution:
+                    from hd_utils.ros_utils import xyzrgb2pc
+                    pc = xyzrgb2pc(xyz, rgb)
+                    ar_tfms = get_ar_marker_poses(pc, ar_markers=[ar_marker])
                 
-                ar_tfms = get_ar_marker_poses(pc, ar_markers=[ar_marker])
+                
                 if ar_tfms:
                 
                     blueprint("Found ar marker %i for initialization!"%ar_marker)
@@ -804,9 +828,10 @@ def main():
                    
         if args.fake_data_segment and args.fake_data_demo:
             #Set home position in sim
-            l_vals = PR2.Arm.L_POSTURES['side']
+            #l_vals = PR2.Arm.L_POSTURES['side']
+            l_vals = L_POSTURES['side']
             Globals.robot.SetDOFValues(l_vals, Globals.robot.GetManipulator('leftarm').GetArmIndices())
-            Globals.robot.SetDOFValues(PR2.mirror_arm_joints(l_vals), Globals.robot.GetManipulator('rightarm').GetArmIndices())
+            Globals.robot.SetDOFValues(mirror_arm_joints(l_vals), Globals.robot.GetManipulator('rightarm').GetArmIndices())
 
             if args.simulation and curr_step > 1:
                 # for following steps in rope simulation, using simulation result
@@ -997,7 +1022,8 @@ def main():
         portion = max(args.early_stop_portion, miniseg_ends[0] / float(segment_len))
         
         prev_vals = {lr:None for lr in 'lr'}
-        l_vals = PR2.Arm.L_POSTURES['side']
+        #l_vals = PR2.Arm.L_POSTURES['side']
+        l_vals = L_POSTURES['side']
         for (i_miniseg, (i_start, i_end)) in enumerate(zip(miniseg_starts, miniseg_ends)):
             
             if args.execution =="real": Globals.pr2.update_rave()
@@ -1069,7 +1095,7 @@ def main():
                                 if prev_vals[lr] is not None:
                                     reference_sol = prev_vals[lr]
                                 else:
-                                    reference_sol = l_vals if lr == 'l' else PR2.mirror_arm_joints(l_vals)
+                                    reference_sol = l_vals if lr == 'l' else mirror_arm_joints(l_vals)
                         
                             
                             sols = [closer_angs(sol, reference_sol) for sol in sols]
@@ -1094,7 +1120,7 @@ def main():
                         if prev_vals[lr] is not None:
                             vals = prev_vals[lr]
                         else:
-                            vals = l_vals if lr == 'l' else PR2.mirror_arm_joints(l_vals)
+                            vals = l_vals if lr == 'l' else mirror_arm_joints(l_vals)
                         
                         init_joint_traj_interp = np.tile(vals,(len_miniseg, 1))
                     else:
