@@ -118,7 +118,6 @@ from hd_utils.defaults import demo_files_dir, hd_data_dir, asus_xtion_pro_f, \
         ar_init_dir, ar_init_demo_name, ar_init_playback_name, \
         tfm_head_dof, tfm_bf_head, tfm_gtf_ee, cad_files_dir
 
-from hd_extract.extract_data import get_ar_marker_poses
 
 
 
@@ -749,6 +748,7 @@ def main():
                 
                 ar_tfms = None
                 if args.execution:
+                    from hd_extract.extract_data import get_ar_marker_poses
                     from hd_utils.ros_utils import xyzrgb2pc
                     pc = xyzrgb2pc(xyz, rgb)
                     ar_tfms = get_ar_marker_poses(pc, ar_markers=[ar_marker])
