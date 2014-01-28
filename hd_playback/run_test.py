@@ -887,12 +887,13 @@ def main():
     seg_env_state = []
 
     while True:
-        
-        if args.max_steps_before_failure != -1 and curr_step > args.max_steps_before_failure:
+        seg_state = []
+
+        if args.max_steps_before_failure != -1 and curr_step+1 >= args.max_steps_before_failure:
+            seg_state.append(get_env_state()) 
             redprint("Number of steps %d exceeded maximum %d" % (curr_step, args.max_steps_before_failure))
             break
 
-        seg_state = []
         curr_step += 1
         '''
         Acquire point cloud
