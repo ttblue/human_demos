@@ -388,7 +388,11 @@ def registration_cost(xyz0, xyz1):
 
 DS_LEAF_SIZE = args.cloud_downsample
 
-def find_closest_auto(demofiles, new_xyz, init_tfm=None, n_jobs=3):
+def find_closest_auto(demofiles, new_xyz, sim_seg_num, init_tfm=None, n_jobs=3, seg_proximity=2):
+    """
+    sim_seg_num   : is the index of the segment being executed in the simulation: used to find 
+    seg_proximity : only segments with numbers in +- seg_proximity of sim_seg_num are selected. 
+    """
     if args.parallel:
         from joblib import Parallel, delayed
 
@@ -401,11 +405,11 @@ def find_closest_auto(demofiles, new_xyz, init_tfm=None, n_jobs=3):
     new_xyz = clouds.downsample(new_xyz,DS_LEAF_SIZE)
     
     avg = 0.0
-    
+
     keys = {}
     is_finalsegs = {}
     demotype_num = 0
-    seg_num = 0
+    seg_num = 0      ## this seg num is the index of all the segments in all the demos.
     for demofile in demofiles:
         for demo_name in demofile:
             if demo_name != "ar_demo":
@@ -413,16 +417,15 @@ def find_closest_auto(demofiles, new_xyz, init_tfm=None, n_jobs=3):
                     final_seg_id = len(demofile[demo_name].keys()) - 2
                 else:
                     final_seg_id = len(demofile[demo_name].keys()) - 1
-    
+
                 for seg_name in demofile[demo_name]:
                     keys[seg_num] = (demotype_num, demo_name, seg_name)
-                    
+
                     if seg_name == "seg%02d"%(final_seg_id):
                         is_finalsegs[seg_num] = True
                     else:
                         is_finalsegs[seg_num] = False
-    
-                    
+
                     seg_num += 1
                     demo_xyz = clouds.downsample(np.asarray(demofile[demo_name][seg_name]["cloud_xyz"]),DS_LEAF_SIZE)
                     if init_tfm is not None:
@@ -467,10 +470,18 @@ def find_closest_auto(demofiles, new_xyz, init_tfm=None, n_jobs=3):
         return keys[choice_ind], is_finalsegs[choice_ind]
 
 
+
 """
 Might need to debug this.
 """
-def find_closest_clusters(demofiles, clusterfiles, new_xyz, init_tfm=None, check_n=3, n_jobs=3):
+
+def append_to_dict_list(dic, key, item):
+    if key in dic.keys():
+        dic[key].append(item)
+    else:
+        dic[key] = [item]
+          
+def find_closest_clusters(demofiles, clusterfiles, new_xyz, sim_seg_num, seg_proximity=2, init_tfm=None, check_n=3, n_jobs=3):
     if args.parallel:
         from joblib import Parallel, delayed
     
@@ -538,35 +549,39 @@ def find_closest_clusters(demofiles, clusterfiles, new_xyz, init_tfm=None, check
         cv2.waitKey()
 
     #############################################################################
-    is_finalsegs = {}    
-    check_clouds = []
-    cluster_keys = {}
-    idx = 0
+    demo_seg_clouds = {}
+    demo_seg_info   = {}
+
+
+    def is_final_seg(seg_info):
+        dn, dname, sname = seg_info
+        if 'done' in demofiles[dn][dname].keys():
+            final_seg_id = len(demofiles[dn][dname].keys()) - 2
+        else:
+            final_seg_id = len(demofiles[dn][dname].keys()) - 1
+        return sname == "seg%02d"%(final_seg_id)
+    
     for c in best_clusters[:check_n]:
         dn, cluster = all_keys[c]
         cluster_segs = clusters[dn][cluster]
 
         for seg in cluster_segs:
             dname,sname = keys[dn][seg]
+        
+            snum  = int(sname.split('seg')[1])
+            sdist = int(np.abs(sim_seg_num - snum)//seg_proximity)
             
             cloud = clouds.downsample(np.asarray(demofiles[dn][dname][sname]["cloud_xyz"]),DS_LEAF_SIZE)
             if init_tfm is not None:
                 cloud = cloud.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
             
-            check_clouds.append(cloud)
-            cluster_keys[idx] = (dn, dname, sname)
-            if 'done' in demofiles[dn][dname].keys():
-                final_seg_id = len(demofiles[dn][dname].keys()) - 2
-            else:
-                final_seg_id = len(demofiles[dn][dname].keys()) - 1
+            append_to_dict_list(demo_seg_clouds, sdist, cloud)
+            append_to_dict_list(demo_seg_info, sdist, (dn,dname,sname))
 
-            if sname == "seg%02d"%(final_seg_id):
-                is_finalsegs[idx] = True
-            else:
-                is_finalsegs[idx] = False
-                
-            idx += 1
 
+    smallest_seg_dist = np.sort(demo_seg_clouds.keys())[0]
+    check_clouds = demo_seg_clouds[smallest_seg_dist]
+    cluster_keys = demo_seg_info[smallest_seg_dist]
     # Check the clusters with min costs
     if args.parallel:
         costs = Parallel(n_jobs=n_jobs,verbose=51)(delayed(registration_cost)(cloud, new_xyz) for cloud in check_clouds)
@@ -595,10 +610,11 @@ def find_closest_clusters(demofiles, clusterfiles, new_xyz, init_tfm=None, check
         cv2.waitKey()
     
     choice_ind = np.argmin(costs)
+    
     if dnum == 1:
-        return (cluster_keys[choice_ind][1],cluster_keys[choice_ind][2]) , is_finalsegs[choice_ind]
+        return (cluster_keys[choice_ind][1],cluster_keys[choice_ind][2]) , is_final_seg(cluster_keys[choice_ind])
     else:
-        return cluster_keys[choice_ind], is_finalsegs[choice_ind]
+        return cluster_keys[choice_ind], is_final_seg(cluster_keys[choice_ind])
 
 
 
@@ -992,7 +1008,10 @@ def main():
             elif args.select=="auto":
                 dnum, (demo_name, seg_name), is_final_seg = find_closest_auto(demofiles, new_xyz, init_tfm)
             else:
-                dnum, (demo_name, seg_name), is_final_seg = find_closest_clusters(demofiles, clusterfiles, new_xyz, init_tfm)
+                dnum, (demo_name, seg_name), is_final_seg = find_closest_clusters(demofiles, clusterfiles, new_xyz, curr_step-1, init_tfm=init_tfm)
+                
+            
+                
             seg_info = demofiles[dnum][demo_name][seg_name]
             redprint("closest demo: %i, %s, %s"%(dnum, demo_name, seg_name))
         else:
@@ -1001,7 +1020,7 @@ def main():
             elif args.select=="auto":
                 (demo_name, seg_name), is_final_seg = find_closest_auto(demofile, new_xyz, init_tfm)
             else:
-                (demo_name, seg_name), is_final_seg = find_closest_clusters(demofile, clusterfile, new_xyz, init_tfm)
+                (demo_name, seg_name), is_final_seg = find_closest_clusters(demofile, clusterfile, new_xyz, curr_step-1, init_tfm=init_tfm)
             seg_info = demofile[demo_name][seg_name]
             redprint("closest demo: %s, %s"%(demo_name, seg_name))
         
@@ -1356,7 +1375,7 @@ def main():
 
             seg_state.append(get_env_state())            
             # if not success: break
-            
+            is_final_seg = False
             if len(bodypart2traj['larm']) > 0:
                 if is_final_seg and miniseg_ends[i_miniseg] < portion * segment_len:
                     success &= exec_traj_maybesim(bodypart2traj)
