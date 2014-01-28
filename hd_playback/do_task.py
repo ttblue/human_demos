@@ -97,7 +97,7 @@ import importlib
 from numpy.linalg import norm
 
 
-import cloudprocpy, trajoptpy, openravepy
+import trajoptpy, openravepy
 
 try:
     from hd_rapprentice import pr2_trajectories, PR2
@@ -803,7 +803,6 @@ def main():
         rope_cloud = None     
                    
         if args.fake_data_segment and args.fake_data_demo:
-            
             #Set home position in sim
             l_vals = PR2.Arm.L_POSTURES['side']
             Globals.robot.SetDOFValues(l_vals, Globals.robot.GetManipulator('leftarm').GetArmIndices())
@@ -821,7 +820,7 @@ def main():
                     hitch_height = hitch_body.GetLinks()[0].GetGeometries()[0].GetCylinderHeight()
                     pos[2] = pos[2] - hitch_height/2
                     hitch_cloud = cloud_proc_funcs.generate_hitch_points(pos)
-                    hitch_cloud = clouds.downsample(hitch_cloud, args.cloud_downsample)
+                    hitch_cloud = clouds.downsample(hitch_cloud, args.cloud_downsample*2)
                     new_xyz = np.r_[new_xyz, hitch_cloud]
                 
             else:          
@@ -834,23 +833,25 @@ def main():
         
                 # if not rope simulation
                 new_xyz = new_xyz.dot(hmat[:3,:3].T) + hmat[:3,3][None,:]
-                
                 # if the first step in rope simulation
                 if args.simulation: # curr_step == 1
                     rope_nodes = rope_initialization.find_path_through_point_cloud(new_xyz)
                     Globals.sim.create(rope_nodes)
                     new_xyz = Globals.sim.observe_cloud(3)
                     new_xyz = clouds.downsample(new_xyz, args.cloud_downsample)
-                    
+#                     print new_xyz.shape
+#                     raw_input()
+
+
                     hitch = Globals.env.GetKinBody('hitch')
                     if hitch != None:
                         pos = hitch.GetTransform()[:3,3]
                         hitch_height = hitch_body.GetLinks()[0].GetGeometries()[0].GetCylinderHeight()
                         pos[2] = pos[2] - hitch_height/2
                         hitch_cloud = cloud_proc_funcs.generate_hitch_points(pos)
-                        hitch_cloud = clouds.downsample(hitch_cloud, args.cloud_downsample)
+                        hitch_cloud = clouds.downsample(hitch_cloud, args.cloud_downsample*2)
                         new_xyz = np.r_[new_xyz, hitch_cloud]
-            
+                    
             if args.closest_rope_hack:
                 if args.simulation:
                     rope_cloud = Globals.sim.observe_cloud(3)
@@ -883,7 +884,7 @@ def main():
                 hitch_normal = clouds.clouds_plane(new_xyz)
                 
                 hitch_cloud, hitch_pos = hitch_proc_func(rgb, depth, T_w_k, hitch_normal)
-                hitch_cloud = clouds.downsample(hitch_cloud, args.cloud_downsample)
+                hitch_cloud = clouds.downsample(hitch_cloud, args.cloud_downsample*2)
                 new_xyz = np.r_[new_xyz, hitch_cloud]
                 
             
@@ -928,11 +929,21 @@ def main():
         '''
         redprint("Generating end-effector trajectory")
 
+        OLD_DS_FACTOR = 1.5
         handles = []
-        old_xyz = np.squeeze(seg_info["cloud_xyz"])
+        if has_hitch(demofile):
+            obj = clouds.downsample(np.squeeze(seg_info["object"]), args.cloud_downsample*OLD_DS_FACTOR)
+            hitch = clouds.downsample(np.squeeze(seg_info["hitch"]),args.cloud_downsample*2)
+            #print obj.shape
+            old_xyz = np.r_[obj, hitch]
+        else:
+            old_xyz = clouds.downsample(np.squeeze(seg_info["cloud_xyz"]), args.cloud_downsample*OLD_DS_FACTOR)
         if args.use_ar_init:
             # Transform the old clouds approximately into PR2's frame
-            old_xyz = old_xyz.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]    
+            old_xyz = old_xyz.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
+        
+        #print old_xyz.shape
+        #print new_xyz.shape
     
         color_old = [(1,0,0,1) for _ in range(len(old_xyz))]
         color_new = [(0,0,1,1) for _ in range(len(new_xyz))]
