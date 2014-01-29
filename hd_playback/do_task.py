@@ -97,20 +97,23 @@ import importlib
 from numpy.linalg import norm
 
 
-import cloudprocpy, trajoptpy, openravepy
-
-try:
-    from hd_rapprentice import pr2_trajectories, PR2
-    import rospy
-except ImportError:
-    print "Couldn't import ros stuff"
+import trajoptpy, openravepy
+ 
+if args.execution:
+    try:
+        from hd_rapprentice import pr2_trajectories, PR2
+        import rospy
+        from hd_utils.ros_utils import xyzrgb2pc
+        from hd_extract.extract_data import get_ar_marker_poses
+    except ImportError:
+        print "Couldn't import ros stuff"
 
 
 from hd_rapprentice import registration, animate_traj, ros2rave, \
      plotting_openrave, task_execution, \
      planning, tps, resampling, \
      ropesim, rope_initialization
-from hd_utils import yes_or_no, ros_utils as ru, func_utils, clouds, math_utils as mu, cloud_proc_funcs
+from hd_utils import yes_or_no, func_utils, clouds, math_utils as mu, cloud_proc_funcs
 from hd_utils.pr2_utils import get_kinect_transform
 from hd_utils.colorize import *
 from hd_utils.utils import avg_transform
@@ -118,7 +121,6 @@ from hd_utils.defaults import demo_files_dir, hd_data_dir, asus_xtion_pro_f, \
         ar_init_dir, ar_init_demo_name, ar_init_playback_name, \
         tfm_head_dof, tfm_bf_head, tfm_gtf_ee, cad_files_dir
 
-from hd_extract.extract_data import get_ar_marker_poses
 
 
 
@@ -450,6 +452,7 @@ def find_closest_clusters(demofile, clusterfile, new_xyz, init_tfm=None, check_n
     keys = {int(key):keys[key] for key in keys}
     clusters = clusterfile['clusters']
     clusters = {int(c):clusters[c] for c in clusters}
+    
     for cluster in clusters:
         best_seg = clusters[cluster][0]
         dname, sname = keys[best_seg]
@@ -464,7 +467,7 @@ def find_closest_clusters(demofile, clusterfile, new_xyz, init_tfm=None, check_n
         ccosts = Parallel(n_jobs=n_jobs,verbose=51)(delayed(registration_cost)(cloud, new_xyz) for cloud in cluster_clouds)
     else:
         ccosts = []
-        for (i,ds_cloud) in cluster_clouds.items():
+        for (i,ds_cloud) in enumerate(cluster_clouds):
             ccosts.append(registration_cost(ds_cloud, new_xyz))
             print "completed %i/%i"%(i+1, len(cluster_clouds))
     
@@ -491,6 +494,7 @@ def find_closest_clusters(demofile, clusterfile, new_xyz, init_tfm=None, check_n
         print "press any key to continue"
         cv2.waitKey()
 
+    #############################################################################
     is_finalsegs = {}    
     check_clouds = []
     best_segs = []
@@ -625,6 +629,9 @@ def close_traj(traj):
         curr_angs = new_angs
         
     return new_traj
+
+
+
     
 
 def downsample_objects(objs, factor):
@@ -644,6 +651,22 @@ def has_hitch(h5data, demo_name=None, seg_name=None):
         first_demo = h5data[h5data.keys()[0]]
         first_seg = first_demo[first_demo.keys()[0]]
         return "hitch_pos" in first_seg
+
+
+#ros stuffs
+def mirror_arm_joints(x):
+    "mirror image of joints (r->l or l->r)"
+    return np.r_[-x[0],x[1],-x[2],x[3],-x[4],x[5],-x[6]]
+
+
+L_POSTURES = dict(        
+    untucked = [0.4,  1.0,   0.0,  -2.05,  0.0,  -0.1,  0.0],
+    tucked = [0.06, 1.25, 1.79, -1.68, -1.73, -0.10, -0.09],
+    up = [ 0.33, -0.35,  2.59, -0.15,  0.59, -1.41, -0.27],
+    side = [  1.832,  -0.332,   1.011,  -1.437,   1.1  ,  -2.106,  3.074]
+)   
+
+
 
 
 def main():
@@ -700,6 +723,7 @@ def main():
 
     # get rgbd from pr2?
     if not args.fake_data_segment or not args.fake_data_demo:
+        import cloudprocpy
         grabber = cloudprocpy.CloudGrabber()
         grabber.startRGBD()
 
@@ -720,12 +744,11 @@ def main():
         
         # Get ar marker for PR2:
         ar_run_tfm = None
-        if not args.fake_data_segment or not args.fake_data_demo:
+        if args.execution:
             try:
                 rgb, depth = grabber.getRGBD()
                 xyz = clouds.depth_to_xyz(depth, asus_xtion_pro_f)
-                
-                pc = ru.xyzrgb2pc(xyz, rgb)
+                pc = xyzrgb2pc(xyz, rgb)
                 
                 ar_tfms = get_ar_marker_poses(pc, ar_markers=[ar_marker])
                 if ar_tfms:
@@ -801,11 +824,11 @@ def main():
         rope_cloud = None     
                    
         if args.fake_data_segment and args.fake_data_demo:
-            
             #Set home position in sim
-            l_vals = PR2.Arm.L_POSTURES['side']
+            #l_vals = PR2.Arm.L_POSTURES['side']
+            l_vals = L_POSTURES['side']
             Globals.robot.SetDOFValues(l_vals, Globals.robot.GetManipulator('leftarm').GetArmIndices())
-            Globals.robot.SetDOFValues(PR2.mirror_arm_joints(l_vals), Globals.robot.GetManipulator('rightarm').GetArmIndices())
+            Globals.robot.SetDOFValues(mirror_arm_joints(l_vals), Globals.robot.GetManipulator('rightarm').GetArmIndices())
 
             if args.simulation and curr_step > 1:
                 # for following steps in rope simulation, using simulation result
@@ -819,7 +842,7 @@ def main():
                     hitch_height = hitch_body.GetLinks()[0].GetGeometries()[0].GetCylinderHeight()
                     pos[2] = pos[2] - hitch_height/2
                     hitch_cloud = cloud_proc_funcs.generate_hitch_points(pos)
-                    hitch_cloud = clouds.downsample(hitch_cloud, args.cloud_downsample)
+                    hitch_cloud = clouds.downsample(hitch_cloud, args.cloud_downsample*2)
                     new_xyz = np.r_[new_xyz, hitch_cloud]
                 
             else:          
@@ -832,23 +855,25 @@ def main():
         
                 # if not rope simulation
                 new_xyz = new_xyz.dot(hmat[:3,:3].T) + hmat[:3,3][None,:]
-                
                 # if the first step in rope simulation
                 if args.simulation: # curr_step == 1
                     rope_nodes = rope_initialization.find_path_through_point_cloud(new_xyz)
                     Globals.sim.create(rope_nodes)
                     new_xyz = Globals.sim.observe_cloud(3)
                     new_xyz = clouds.downsample(new_xyz, args.cloud_downsample)
-                    
+#                     print new_xyz.shape
+#                     raw_input()
+
+
                     hitch = Globals.env.GetKinBody('hitch')
                     if hitch != None:
                         pos = hitch.GetTransform()[:3,3]
                         hitch_height = hitch_body.GetLinks()[0].GetGeometries()[0].GetCylinderHeight()
                         pos[2] = pos[2] - hitch_height/2
                         hitch_cloud = cloud_proc_funcs.generate_hitch_points(pos)
-                        hitch_cloud = clouds.downsample(hitch_cloud, args.cloud_downsample)
+                        hitch_cloud = clouds.downsample(hitch_cloud, args.cloud_downsample*2)
                         new_xyz = np.r_[new_xyz, hitch_cloud]
-            
+                    
             if args.closest_rope_hack:
                 if args.simulation:
                     rope_cloud = Globals.sim.observe_cloud(3)
@@ -881,7 +906,7 @@ def main():
                 hitch_normal = clouds.clouds_plane(new_xyz)
                 
                 hitch_cloud, hitch_pos = hitch_proc_func(rgb, depth, T_w_k, hitch_normal)
-                hitch_cloud = clouds.downsample(hitch_cloud, args.cloud_downsample)
+                hitch_cloud = clouds.downsample(hitch_cloud, args.cloud_downsample*2)
                 new_xyz = np.r_[new_xyz, hitch_cloud]
                 
             
@@ -926,11 +951,21 @@ def main():
         '''
         redprint("Generating end-effector trajectory")
 
+        OLD_DS_FACTOR = 1.5
         handles = []
-        old_xyz = np.squeeze(seg_info["cloud_xyz"])
+        if has_hitch(demofile):
+            obj = clouds.downsample(np.squeeze(seg_info["object"]), args.cloud_downsample*OLD_DS_FACTOR)
+            hitch = clouds.downsample(np.squeeze(seg_info["hitch"]),args.cloud_downsample*2)
+            #print obj.shape
+            old_xyz = np.r_[obj, hitch]
+        else:
+            old_xyz = clouds.downsample(np.squeeze(seg_info["cloud_xyz"]), args.cloud_downsample*OLD_DS_FACTOR)
         if args.use_ar_init:
             # Transform the old clouds approximately into PR2's frame
-            old_xyz = old_xyz.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]    
+            old_xyz = old_xyz.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
+        
+        #print old_xyz.shape
+        #print new_xyz.shape
     
         color_old = [(1,0,0,1) for _ in range(len(old_xyz))]
         color_new = [(0,0,1,1) for _ in range(len(new_xyz))]
@@ -984,7 +1019,8 @@ def main():
         portion = max(args.early_stop_portion, miniseg_ends[0] / float(segment_len))
         
         prev_vals = {lr:None for lr in 'lr'}
-        l_vals = PR2.Arm.L_POSTURES['side']
+        #l_vals = PR2.Arm.L_POSTURES['side']
+        l_vals = L_POSTURES['side']
         for (i_miniseg, (i_start, i_end)) in enumerate(zip(miniseg_starts, miniseg_ends)):
             
             if args.execution =="real": Globals.pr2.update_rave()
@@ -1056,7 +1092,7 @@ def main():
                                 if prev_vals[lr] is not None:
                                     reference_sol = prev_vals[lr]
                                 else:
-                                    reference_sol = l_vals if lr == 'l' else PR2.mirror_arm_joints(l_vals)
+                                    reference_sol = l_vals if lr == 'l' else mirror_arm_joints(l_vals)
                         
                             
                             sols = [closer_angs(sol, reference_sol) for sol in sols]
@@ -1081,7 +1117,7 @@ def main():
                         if prev_vals[lr] is not None:
                             vals = prev_vals[lr]
                         else:
-                            vals = l_vals if lr == 'l' else PR2.mirror_arm_joints(l_vals)
+                            vals = l_vals if lr == 'l' else mirror_arm_joints(l_vals)
                         
                         init_joint_traj_interp = np.tile(vals,(len_miniseg, 1))
                     else:
@@ -1260,6 +1296,9 @@ def main():
             # if not success: break
             
             if len(bodypart2traj['larm']) > 0:
+                """HACK
+                """
+                is_final_seg = False
                 if is_final_seg and miniseg_ends[i_miniseg] < portion * segment_len:
                     success &= exec_traj_maybesim(bodypart2traj)
                 elif is_final_seg:
@@ -1295,6 +1334,9 @@ def main():
         
         if args.fake_data_demo and args.fake_data_segment and not args.simulation: break
 
+    demofile.close()
+    if args.select == "clusters":
+        clusterfile.close()
 
 if __name__ == "__main__":
     main()

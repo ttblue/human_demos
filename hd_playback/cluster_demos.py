@@ -19,9 +19,9 @@ Clusters based on costs in file.
 
 # Weights for different costs
 weights = {}
-weights['tps'] = 0.5
-weights['traj'] = 1.2
-weights['traj_f'] = 1.2
+weights['tps'] = 1.0
+weights['traj'] = 0.25
+weights['traj_f'] = 0.25
 
 
 def get_costs (cfile):

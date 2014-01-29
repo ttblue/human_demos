@@ -5,6 +5,7 @@ from defaults import demo_files_dir
 import pylab, h5py
 from hd_utils.clouds_utils import sample_random_rope
 from hd_utils.yes_or_no import yes_or_no
+from hd_utils.colorize import colorize
 import clouds 
 from mayavi import mlab
 
@@ -44,8 +45,10 @@ demofile = h5py.File(h5file, 'r')
 
 demo_type_dir = osp.join(demo_files_dir, args.demo_type)
 
-
+demo_idx = 1
 for demo in sorted(demofile.keys()):
+    print colorize("perturb demo %d of %d"%(demo_idx, len(demofile.keys())), "magenta", True)
+    demo_idx += 1
     demo_name = demo
     
     if demo_name in perturb_demofile.keys():
@@ -100,7 +103,7 @@ for demo in sorted(demofile.keys()):
     n_perturbed = 0
     n_perturbed_attempt = 0
             
-    while n_perturbed <= args.perturb_num and n_perturbed_attempt < args.max_perturb_attempt:
+    while n_perturbed < args.perturb_num and n_perturbed_attempt < args.max_perturb_attempt:
         
         if has_hitch:
             new_object_xyz = sample_random_rope(demofile[demo_name]['seg00']['object'], args.interactive)
@@ -138,5 +141,5 @@ for demo in sorted(demofile.keys()):
                   
 
     if args.interactive:
-        if yes_or_no("Stop perturbation?"):
+        if yes_or_no(colorize("Stop perturbation?", "red", True)):
             break        

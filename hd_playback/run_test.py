@@ -23,6 +23,7 @@ parser.add_argument("--demo_name", type=str)
 parser.add_argument("--perturb_name", type=str)
 
 parser.add_argument("--demo_type", type=str)
+parser.add_argument("--use_diff_length", action="store_true", default=False)
 parser.add_argument("--cloud_proc_func", default="extract_red")
 parser.add_argument("--cloud_proc_mod", default="hd_utils.cloud_proc_funcs")
     
@@ -101,18 +102,21 @@ from numpy.linalg import norm
 
 import cloudprocpy, trajoptpy, openravepy
 
-try:
-    from hd_rapprentice import pr2_trajectories, PR2
-    import rospy
-except ImportError:
-    print "Couldn't import ros stuff"
+if args.execution:
+    try:
+        from hd_rapprentice import pr2_trajectories, PR2
+        import rospy
+        from hd_utils import ros_utils as ru
+        from hd_extract.extract_data import get_ar_marker_poses
+    except ImportError:
+        print "Couldn't import ros stuff"
 
 
 from hd_rapprentice import registration, animate_traj, ros2rave, \
      plotting_openrave, task_execution, \
      planning, tps, resampling, \
      ropesim, rope_initialization
-from hd_utils import yes_or_no, ros_utils as ru, func_utils, clouds, math_utils as mu, cloud_proc_funcs
+from hd_utils import yes_or_no, func_utils, clouds, math_utils as mu, cloud_proc_funcs
 from hd_utils.pr2_utils import get_kinect_transform
 from hd_utils.colorize import *
 from hd_utils.utils import avg_transform
@@ -120,7 +124,6 @@ from hd_utils.defaults import demo_files_dir, hd_data_dir, asus_xtion_pro_f, \
         ar_init_dir, ar_init_demo_name, ar_init_playback_name, \
         tfm_head_dof, tfm_bf_head, tfm_gtf_ee, cad_files_dir
 
-from hd_extract.extract_data import get_ar_marker_poses
 
 
 
@@ -170,7 +173,7 @@ def closer_angs(x_array,a_array,dr=0):
     return [closer_ang(x, a, dr) for (x, a) in zip(x_array, a_array)]
 
 
-def split_trajectory_by_gripper(seg_info, pot_angle_threshold, thresh=5):
+def split_trajectory_by_gripper(seg_info, pot_angle_threshold, ms_thresh=2):
     lgrip = np.asarray(seg_info["l"]["pot_angles"])
     rgrip = np.asarray(seg_info["r"]["pot_angles"])
     
@@ -193,22 +196,29 @@ def split_trajectory_by_gripper(seg_info, pot_angle_threshold, thresh=5):
     seg_starts = np.unique(np.r_[0, after_transitions])
     seg_ends = np.unique(np.r_[before_transitions, n_steps-1])
     
+    lr_open = {lr:[] for lr in 'lr'}
+    #return seg_starts, seg_ends
     new_seg_starts = []
     new_seg_ends = []
     for i in range(len(seg_starts)):
-        if seg_ends[i]- seg_starts[i] >= thresh:
+        if seg_ends[i]- seg_starts[i] >= ms_thresh:
             new_seg_starts.append(seg_starts[i])
             new_seg_ends.append(seg_ends[i])
-    
+            lval = True if lgrip[seg_starts[i]] >= thresh else False
+            lr_open['l'].append(lval)
+            rval = True if rgrip[seg_starts[i]] >= thresh else False
+            lr_open['r'].append(rval)
+            
+     
 #     import IPython
 #     IPython.embed()
-
-    return new_seg_starts, new_seg_ends
+ 
+    return new_seg_starts, new_seg_ends, lr_open
 
 def binarize_gripper(angle, pot_angle_threshold):
     open_angle = .08
     closed_angle = 0
-    if angle > pot_angle_threshold: return open_angle
+    if angle >= pot_angle_threshold: return open_angle
     else: return closed_angle
     
     
@@ -244,7 +254,6 @@ def set_gripper_maybesim(lr, is_open, prev_is_open):
                 if args.interactive: Globals.viewer.Idle()
         # add constraints if necessary
         if not is_open and prev_is_open:
-            
             if not Globals.sim.grab_rope(lr):
                 redprint("Grab failed")
                 return False
@@ -329,36 +338,44 @@ def exec_traj_maybesim(bodypart2traj):
 
     return True
 
-def find_closest_manual(demofile, _new_xyz):
+def find_closest_manual(demofiles, _new_xyz):
     """for now, just prompt the user"""
     
+    if not isinstance(demofiles, list):
+        demofiles = [demofiles]
 
     print "choose from the following options (type an integer)"
     seg_num = 0
+    demotype_num = 0
     keys = {}
     is_finalsegs = {}
-    for demo_name in demofile:
-        if demo_name != "ar_demo":
-            if 'done' in demofile[demo_name].keys():
-                final_seg_id = len(demofile[demo_name].keys()) - 2
-            else:
-                final_seg_id = len(demofile[demo_name].keys()) - 1
-                
-            
-            for seg_name in demofile[demo_name]:
-                if seg_name != 'done':
-                    keys[seg_num] = (demo_name, seg_name)
-                    print "%i: %s, %s"%(seg_num, demo_name, seg_name)
+    for demofile in demofiles:
+        print "Type %i: "%(demotype_num + 1)
+        for demo_name in demofile:
+            if demo_name != "ar_demo":
+                if 'done' in demofile[demo_name].keys():
+                    final_seg_id = len(demofile[demo_name].keys()) - 2
+                else:
+                    final_seg_id = len(demofile[demo_name].keys()) - 1
                     
-                    if seg_name == "seg%02d"%(final_seg_id):
-                        is_finalsegs[seg_num] = True
-                    else:
-                        is_finalsegs[seg_num] = False
-
-                    seg_num += 1
-
+                
+                for seg_name in demofile[demo_name]:
+                    if seg_name != 'done':
+                        keys[seg_num] = (demotype_num, demo_name, seg_name)
+                        print "%i: %i, %s, %s"%(seg_num, demotype_num+1, demo_name, seg_name)
+                        
+                        if seg_name == "seg%02d"%(final_seg_id):
+                            is_finalsegs[seg_num] = True
+                        else:
+                            is_finalsegs[seg_num] = False
+    
+                        seg_num += 1
+        demotype_num +=1
     choice_ind = task_execution.request_int_in_range(seg_num)
-    return keys[choice_ind], is_finalsegs[choice_ind]
+    if demotype_num == 1:
+        return (keys[choice_ind][1],keys[choice_ind][2]) , is_finalsegs[choice_ind]
+    else:
+        return keys[choice_ind], is_finalsegs[choice_ind]
 
 
 def registration_cost(xyz0, xyz1):
@@ -369,44 +386,54 @@ def registration_cost(xyz0, xyz1):
     return cost
 
 
-def find_closest_auto(demofile, new_xyz, init_tfm=None, n_jobs=3):
+DS_LEAF_SIZE = args.cloud_downsample
+
+def find_closest_auto(demofiles, new_xyz, sim_seg_num, init_tfm=None, n_jobs=3, seg_proximity=2):
+    """
+    sim_seg_num   : is the index of the segment being executed in the simulation: used to find 
+    seg_proximity : only segments with numbers in +- seg_proximity of sim_seg_num are selected. 
+    """
     if args.parallel:
         from joblib import Parallel, delayed
+
+    if not isinstance(demofiles, list):
+        demofiles = [demofiles]
         
     demo_clouds = []
     
-    DS_LEAF_SIZE = 0.045
+    
     new_xyz = clouds.downsample(new_xyz,DS_LEAF_SIZE)
     
     avg = 0.0
-    
+
     keys = {}
     is_finalsegs = {}
-
-    seg_num = 0
-    for demo_name in demofile:
-        if demo_name != "ar_demo":
-            if 'done' in demofile[demo_name].keys():
-                final_seg_id = len(demofile[demo_name].keys()) - 2
-            else:
-                final_seg_id = len(demofile[demo_name].keys()) - 1
-
-            for seg_name in demofile[demo_name]:
-                keys[seg_num] = (demo_name, seg_name)
-                
-                if seg_name == "seg%02d"%(final_seg_id):
-                    is_finalsegs[seg_num] = True
+    demotype_num = 0
+    seg_num = 0      ## this seg num is the index of all the segments in all the demos.
+    for demofile in demofiles:
+        for demo_name in demofile:
+            if demo_name != "ar_demo":
+                if 'done' in demofile[demo_name].keys():
+                    final_seg_id = len(demofile[demo_name].keys()) - 2
                 else:
-                    is_finalsegs[seg_num] = False
+                    final_seg_id = len(demofile[demo_name].keys()) - 1
 
-                
-                seg_num += 1
-                demo_xyz = clouds.downsample(np.asarray(demofile[demo_name][seg_name]["cloud_xyz"]),DS_LEAF_SIZE)
-                if init_tfm is not None:
-                    demo_xyz = demo_xyz.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
-                print demo_xyz.shape
-                avg += demo_xyz.shape[0]
-                demo_clouds.append(demo_xyz)
+                for seg_name in demofile[demo_name]:
+                    keys[seg_num] = (demotype_num, demo_name, seg_name)
+
+                    if seg_name == "seg%02d"%(final_seg_id):
+                        is_finalsegs[seg_num] = True
+                    else:
+                        is_finalsegs[seg_num] = False
+
+                    seg_num += 1
+                    demo_xyz = clouds.downsample(np.asarray(demofile[demo_name][seg_name]["cloud_xyz"]),DS_LEAF_SIZE)
+                    if init_tfm is not None:
+                        demo_xyz = demo_xyz.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
+                    print demo_xyz.shape
+                    avg += demo_xyz.shape[0]
+                    demo_clouds.append(demo_xyz)
+        demotype_num +=1
     
     # raw_input(avg/len(demo_clouds))
     if args.parallel:
@@ -435,36 +462,65 @@ def find_closest_auto(demofile, new_xyz, init_tfm=None, n_jobs=3):
         print "press any key to continue"
         cv2.waitKey()
     
-    ibest = np.argmin(costs)
-    return keys[ibest], is_finalsegs[ibest]
+    choice_ind = np.argmin(costs)
+    
+    if demotype_num == 1:
+        return (keys[choice_ind][1],keys[choice_ind][2]) , is_finalsegs[choice_ind]
+    else:
+        return keys[choice_ind], is_finalsegs[choice_ind]
 
 
-def find_closest_clusters(demofile, clusterfile, new_xyz, init_tfm=None, check_n=2, n_jobs=3):
+
+"""
+Might need to debug this.
+"""
+
+def append_to_dict_list(dic, key, item):
+    if key in dic.keys():
+        dic[key].append(item)
+    else:
+        dic[key] = [item]
+          
+def find_closest_clusters(demofiles, clusterfiles, new_xyz, sim_seg_num, seg_proximity=2, init_tfm=None, check_n=3, n_jobs=3):
     if args.parallel:
         from joblib import Parallel, delayed
     
-    DS_LEAF_SIZE = 0.045
+    if not isinstance(demofiles, list): demofiles = [demofiles]
+    if not isinstance(clusterfiles, list): clusterfiles = [clusterfiles]
+
     new_xyz = clouds.downsample(new_xyz,DS_LEAF_SIZE)
         
     # Store all the best cluster clouds
-    cluster_clouds = {}
-    keys = clusterfile['keys']
-    clusters = clusterfile['clusters']
-    for cluster in clusters:
-        best_seg = clusters[cluster][0]
-        dname, sname = keys[best_seg]
-        cloud = clouds.downsample(np.asarray(demofile[dname][sname]["cloud_xyz"]),DS_LEAF_SIZE)
-        if init_tfm is not None:
-            cloud = cloud.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
+    clusters = {}
+    keys = {}
+    cluster_clouds = []
+    all_keys = {}
+    idx = 0
+    dnum = 0
+    for demofile,clusterfile in zip(demofiles, clusterfiles):        
+        keys[dnum] = clusterfile['keys']
+        keys[dnum] = {int(key):keys[dnum][key] for key in keys[dnum]}
+        clusters[dnum] = clusterfile['clusters']
+        clusters[dnum] = {int(c):clusters[dnum][c] for c in clusters[dnum]}
 
-        cluster_clouds[cluster] = cloud
+        for cluster in clusters[dnum]:
+            best_seg = clusters[dnum][cluster][0]
+            dname, sname = keys[dnum][best_seg]
+            cloud = clouds.downsample(np.asarray(demofile[dname][sname]["cloud_xyz"]),DS_LEAF_SIZE)
+            if init_tfm is not None:
+                cloud = cloud.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
+    
+            all_keys[idx] = (dnum, cluster)
+            cluster_clouds.append(cloud)
+            idx += 1
+        dnum += 1
 
     # Check the clusters with min costs
     if args.parallel:
-        ccosts = Parallel(n_jobs=n_jobs,verbose=51)(delayed(registration_cost)(cluster_clouds[i], new_xyz) for i in cluster_clouds)
+        ccosts = Parallel(n_jobs=n_jobs,verbose=51)(delayed(registration_cost)(cloud, new_xyz) for cloud in cluster_clouds)
     else:
         ccosts = []
-        for (i,ds_cloud) in cluster_clouds.items():
+        for (i,ds_cloud) in enumerate(cluster_clouds):
             ccosts.append(registration_cost(ds_cloud, new_xyz))
             print "completed %i/%i"%(i+1, len(cluster_clouds))
     
@@ -473,55 +529,92 @@ def find_closest_clusters(demofile, clusterfile, new_xyz, init_tfm=None, check_n
     
     best_clusters = np.argsort(ccosts)
     check_n = min(check_n, len(best_clusters))
+    
+    if args.show_neighbors:
+        nshow = min(check_n*3, len(cluster_clouds))
+        import cv2, hd_rapprentice.cv_plot_utils as cpu, math
+        closeinds = best_clusters[:nshow]
+        
+        near_rgbs = []
+        for i in closeinds:
+            dn, cluster = all_keys[i]
+            (demo_name, seg_name) = keys[dn][clusters[dn][cluster][0]]
+            near_rgbs.append(np.asarray(demofiles[dn][demo_name][seg_name]["rgb"]))
+        
+        rows = 6
+        cols = int(math.ceil(nshow*1.0/rows))
+        bigimg = cpu.tile_images(near_rgbs, rows, cols, max_width=300)
+        cv2.imshow("neighbors", bigimg)
+        print "press any key to continue"
+        cv2.waitKey()
 
-    is_finalsegs = {}    
-    check_clouds = {}
-    best_segs = []
+    #############################################################################
+    demo_seg_clouds = {}
+    demo_seg_info   = {}
+
+
+    def is_final_seg(seg_info):
+        dn, dname, sname = seg_info
+        if 'done' in demofiles[dn][dname].keys():
+            final_seg_id = len(demofiles[dn][dname].keys()) - 2
+        else:
+            final_seg_id = len(demofiles[dn][dname].keys()) - 1
+        return sname == "seg%02d"%(final_seg_id)
+    
     for c in best_clusters[:check_n]:
-        cluster_segs = clusters[c]
-        best_segs.extend(cluster_segs)
+        dn, cluster = all_keys[c]
+        cluster_segs = clusters[dn][cluster]
+
         for seg in cluster_segs:
-            dname,sname = keys[seg]
-            check_clouds[seg] = clouds.downsample(np.asarray(demofile[dname][sname]["cloud_xyz"]),DS_LEAF_SIZE)
-            if 'done' in demofile[dname].keys():
-                final_seg_id = len(demofile[dname].keys()) - 2
-            else:
-                final_seg_id = len(demofile[dname].keys()) - 1
+            dname,sname = keys[dn][seg]
+        
+            snum  = int(sname.split('seg')[1])
+            sdist = int(np.abs(sim_seg_num - snum)//seg_proximity)
+            
+            cloud = clouds.downsample(np.asarray(demofiles[dn][dname][sname]["cloud_xyz"]),DS_LEAF_SIZE)
+            if init_tfm is not None:
+                cloud = cloud.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
+            
+            append_to_dict_list(demo_seg_clouds, sdist, cloud)
+            append_to_dict_list(demo_seg_info, sdist, (dn,dname,sname))
 
-            if sname == "seg%02d"%(final_seg_id):
-                is_finalsegs[seg] = True
-            else:
-                is_finalsegs[seg] = False
 
+    smallest_seg_dist = np.sort(demo_seg_clouds.keys())[0]
+    check_clouds = demo_seg_clouds[smallest_seg_dist]
+    cluster_keys = demo_seg_info[smallest_seg_dist]
     # Check the clusters with min costs
     if args.parallel:
-        costs = Parallel(n_jobs=n_jobs,verbose=51)(delayed(registration_cost)(check_clouds[i], new_xyz) for i in check_clouds)
+        costs = Parallel(n_jobs=n_jobs,verbose=51)(delayed(registration_cost)(cloud, new_xyz) for cloud in check_clouds)
     else:
         costs = []
-        for (i,ds_cloud) in check_clouds.items():
+        for (i,ds_cloud) in enumerate(check_clouds):
             costs.append(registration_cost(ds_cloud, new_xyz))
             print "completed %i/%i"%(i+1, len(check_clouds))
     
     print "Costs: \n", costs
     
     if args.show_neighbors:
-        nshow = min(5, len(check_clouds))
-        import cv2, hd_rapprentice.cv_plot_utils as cpu
+        nshow = min(30, len(check_clouds))
         sortinds = np.argsort(costs)[:nshow]
         
         near_rgbs = []
         for i in sortinds:
-            (demo_name, seg_name) = keys[i]
-            near_rgbs.append(np.asarray(demofile[demo_name][seg_name]["rgb"]))
+            (dn, demo_name, seg_name) = cluster_keys[i]
+            near_rgbs.append(np.asarray(demofiles[dn][demo_name][seg_name]["rgb"]))
         
-        bigimg = cpu.tile_images(near_rgbs, 1, nshow)
+        rows = 6
+        cols = int(math.ceil(nshow*1.0/rows))
+        bigimg = cpu.tile_images(near_rgbs, rows, cols, max_width=1000)
         cv2.imshow("neighbors", bigimg)
         print "press any key to continue"
         cv2.waitKey()
     
-    ibest = best_segs[np.argmin(costs)]
+    choice_ind = np.argmin(costs)
     
-    return keys[ibest], is_finalsegs[ibest]
+    if dnum == 1:
+        return (cluster_keys[choice_ind][1],cluster_keys[choice_ind][2]) , is_final_seg(cluster_keys[choice_ind])
+    else:
+        return cluster_keys[choice_ind], is_final_seg(cluster_keys[choice_ind])
 
 
 
@@ -621,20 +714,52 @@ def has_hitch(h5data, demo_name=None, seg_name=None):
         first_demo = h5data[h5data.keys()[0]]
         first_seg = first_demo[first_demo.keys()[0]]
         return "hitch_pos" in first_seg
+    
+    
+#ros stuffs
+def mirror_arm_joints(x):
+    "mirror image of joints (r->l or l->r)"
+    return np.r_[-x[0],x[1],-x[2],x[3],-x[4],x[5],-x[6]]
 
+
+L_POSTURES = dict(        
+    untucked = [0.4,  1.0,   0.0,  -2.05,  0.0,  -0.1,  0.0],
+    tucked = [0.06, 1.25, 1.79, -1.68, -1.73, -0.10, -0.09],
+    up = [ 0.33, -0.35,  2.59, -0.15,  0.59, -1.41, -0.27],
+    side = [  1.832,  -0.332,   1.011,  -1.437,   1.1  ,  -2.106,  3.074]
+)   
+
+use_diff_length = args.use_diff_length
 
 def main():
+    global use_diff_length
+    
     init_state_h5file = h5py.File(args.init_state_h5+".h5", "r")
     print args.init_state_h5+".h5"
     
-    demotype_dir = osp.join(demo_files_dir, args.demo_type)
-    demo_h5file = osp.join(demotype_dir, args.demo_type+".h5")
-    print demo_h5file
-    demofile = h5py.File(demo_h5file, 'r')
+    if use_diff_length:
+        from glob import glob
+        demotype_dirs = glob(osp.join(demo_files_dir, args.demo_type+'[0-9]*'))
+        demo_types = [osp.basename(demotype_dir) for demotype_dir in demotype_dirs]
+        demo_h5files = [osp.join(demotype_dir, demo_type+".h5") for demo_type in demo_types]
+        print demo_h5files
+        demofiles = [h5py.File(demofile, 'r') for demofile in demo_h5files]
+        if len(demofiles) == 1: 
+            demofile = demofiles
+            use_diff_length = False
+    else:
+        demotype_dir = osp.join(demo_files_dir, args.demo_type)
+        demo_h5file = osp.join(demotype_dir, args.demo_type+".h5")
+        print demo_h5file
+        demofile = h5py.File(demo_h5file, 'r')
     
     if args.select == "clusters":
-        c_h5file = osp.join(demotype_dir, args.demo_type+"_clusters.h5")
-        clusterfile = h5py.File(c_h5file, 'r') 
+        if use_diff_length:
+            c_h5files = [osp.join(demotype_dir, demo_type+"_clusters.h5") for demo_type in demo_types]
+            clusterfiles = [h5py.File(c_h5file, 'r') for c_h5file in c_h5files]
+        else:
+            c_h5file = osp.join(demotype_dir, args.demo_type+"_clusters.h5")
+            clusterfile = h5py.File(c_h5file, 'r') 
     
     trajoptpy.SetInteractive(args.interactive)
     
@@ -702,7 +827,6 @@ def main():
             try:
                 rgb, depth = grabber.getRGBD()
                 xyz = clouds.depth_to_xyz(depth, asus_xtion_pro_f)
-                
                 pc = ru.xyzrgb2pc(xyz, rgb)
                 
                 ar_tfms = get_ar_marker_poses(pc, ar_markers=[ar_marker])
@@ -763,12 +887,13 @@ def main():
     seg_env_state = []
 
     while True:
-        
-        if args.max_steps_before_failure != -1 and curr_step > args.max_steps_before_failure:
+        seg_state = []
+
+        if args.max_steps_before_failure != -1 and curr_step+1 >= args.max_steps_before_failure:
+            seg_state.append(get_env_state()) 
             redprint("Number of steps %d exceeded maximum %d" % (curr_step, args.max_steps_before_failure))
             break
 
-        seg_state = []
         curr_step += 1
         '''
         Acquire point cloud
@@ -781,11 +906,11 @@ def main():
         if args.simulation:
             
             #Set home position in sim
-            l_vals = PR2.Arm.L_POSTURES['side']
+            l_vals = L_POSTURES['side']
             Globals.robot.SetDOFValues(l_vals, Globals.robot.GetManipulator('leftarm').GetArmIndices())
-            Globals.robot.SetDOFValues(PR2.mirror_arm_joints(l_vals), Globals.robot.GetManipulator('rightarm').GetArmIndices())
+            Globals.robot.SetDOFValues(mirror_arm_joints(l_vals), Globals.robot.GetManipulator('rightarm').GetArmIndices())
 
-            if args.simulation and curr_step > 1:
+            if curr_step > 1:
                 # for following steps in rope simulation, using simulation result
                 new_xyz = Globals.sim.observe_cloud(3)
                 new_xyz = clouds.downsample(new_xyz, args.cloud_downsample)
@@ -833,9 +958,9 @@ def main():
                     rope_cloud = clouds.downsample(rope_cloud, args.cloud_downsample)
                 else:
                     if has_hitch(init_state_h5file, args.demo_name, args.perturb_name):
-                        rope_cloud = demofile[args.demo_name][args.perturb_name]['object']
+                        rope_cloud = init_state_h5file[args.demo_name][args.perturb_name]['object']
                     else:
-                        rope_cloud = demofile[args.demo_name][args.perturb_name]['cloud_xyz']
+                        rope_cloud = init_state_h5file[args.demo_name][args.perturb_name]['cloud_xyz']
 
 
         else:
@@ -855,6 +980,7 @@ def main():
             if args.closest_rope_hack:
                 rope_cloud = np.array(new_xyz)
             
+            if use_diff_length: demofile = demofiles[0]
             if has_hitch(demofile):
                 hitch_normal = clouds.clouds_plane(new_xyz)
                 
@@ -877,16 +1003,28 @@ def main():
         Finding closest demonstration
         '''
         redprint("Finding closest demonstration")
-        if args.select=="manual":
-            (demo_name, seg_name), is_final_seg = find_closest_manual(demofile, new_xyz)
-        elif args.select=="auto":
-            (demo_name, seg_name), is_final_seg = find_closest_auto(demofile, new_xyz, init_tfm)
+        if use_diff_length:
+            if args.select=="manual":
+                dnum, (demo_name, seg_name), is_final_seg = find_closest_manual(demofiles, new_xyz)
+            elif args.select=="auto":
+                dnum, (demo_name, seg_name), is_final_seg = find_closest_auto(demofiles, new_xyz, init_tfm)
+            else:
+                dnum, (demo_name, seg_name), is_final_seg = find_closest_clusters(demofiles, clusterfiles, new_xyz, curr_step-1, init_tfm=init_tfm)
+                
+            
+                
+            seg_info = demofiles[dnum][demo_name][seg_name]
+            redprint("closest demo: %i, %s, %s"%(dnum, demo_name, seg_name))
         else:
-            (demo_name, seg_name), is_final_seg = find_closest_clusters(demofile, clusterfile, new_xyz, init_tfm)
-
+            if args.select=="manual":
+                (demo_name, seg_name), is_final_seg = find_closest_manual(demofile, new_xyz)
+            elif args.select=="auto":
+                (demo_name, seg_name), is_final_seg = find_closest_auto(demofile, new_xyz, init_tfm)
+            else:
+                (demo_name, seg_name), is_final_seg = find_closest_clusters(demofile, clusterfile, new_xyz, curr_step-1, init_tfm=init_tfm)
+            seg_info = demofile[demo_name][seg_name]
+            redprint("closest demo: %s, %s"%(demo_name, seg_name))
         
-        seg_info = demofile[demo_name][seg_name]
-        redprint("closest demo: %s, %s"%(demo_name, seg_name))
         if "done" == seg_name:
             redprint("DONE!")
             break
@@ -954,7 +1092,7 @@ def main():
         '''
         Generating mini-trajectory
         '''
-        miniseg_starts, miniseg_ends = split_trajectory_by_gripper(seg_info, args.pot_threshold)
+        miniseg_starts, miniseg_ends, lr_open = split_trajectory_by_gripper(seg_info, args.pot_threshold)
         success = True
         redprint("mini segments: %s %s"%(miniseg_starts, miniseg_ends))
         
@@ -962,7 +1100,7 @@ def main():
         portion = max(args.early_stop_portion, miniseg_ends[0] / float(segment_len))
         
         prev_vals = {lr:None for lr in 'lr'}
-        l_vals = PR2.Arm.L_POSTURES['side']
+        l_vals = L_POSTURES['side']
         for (i_miniseg, (i_start, i_end)) in enumerate(zip(miniseg_starts, miniseg_ends)):
             
             if args.execution =="real": Globals.pr2.update_rave()
@@ -1034,7 +1172,7 @@ def main():
                                 if prev_vals[lr] is not None:
                                     reference_sol = prev_vals[lr]
                                 else:
-                                    reference_sol = l_vals if lr == 'l' else PR2.mirror_arm_joints(l_vals)
+                                    reference_sol = l_vals if lr == 'l' else mirror_arm_joints(l_vals)
                         
                             
                             sols = [closer_angs(sol, reference_sol) for sol in sols]
@@ -1059,7 +1197,7 @@ def main():
                         if prev_vals[lr] is not None:
                             vals = prev_vals[lr]
                         else:
-                            vals = l_vals if lr == 'l' else PR2.mirror_arm_joints(l_vals)
+                            vals = l_vals if lr == 'l' else mirror_arm_joints(l_vals)
                         
                         init_joint_traj_interp = np.tile(vals,(len_miniseg, 1))
                     else:
@@ -1227,8 +1365,10 @@ def main():
             redprint("Executing joint trajectory for demo %s segment %s, part %i using arms '%s'"%(demo_name, seg_name, i_miniseg, bodypart2traj.keys()))
             
             for lr in 'lr':
-                gripper_open = binarize_gripper(seg_info[lr]["pot_angles"][i_start], args.pot_threshold)
-                prev_gripper_open = binarize_gripper(seg_info[lr]["pot_angles"][i_start-1], args.pot_threshold) if i_start != 0 else False
+                #gripper_open = binarize_gripper(seg_info[lr]["pot_angles"][i_start], args.pot_threshold)
+                #prev_gripper_open = binarize_gripper(seg_info[lr]["pot_angles"][i_start-1], args.pot_threshold) if i_start != 0 else False
+                gripper_open = lr_open[lr][i_miniseg]
+                prev_gripper_open = lr_open[lr][i_miniseg-1] if i_miniseg != 0 else False
                 if not set_gripper_maybesim(lr, gripper_open, prev_gripper_open):
                     redprint("Grab %s failed"%lr)
                     success = False
@@ -1236,7 +1376,7 @@ def main():
 
             seg_state.append(get_env_state())            
             # if not success: break
-            
+            is_final_seg = False
             if len(bodypart2traj['larm']) > 0:
                 if is_final_seg and miniseg_ends[i_miniseg] < portion * segment_len:
                     success &= exec_traj_maybesim(bodypart2traj)
@@ -1272,6 +1412,16 @@ def main():
     init_state_h5file.close()
     demofile.close()
 
+    if use_diff_length:
+        for demofile in demofiles: demofile.close()
+        if args.select == "clusters":
+            for clusterfile in clusterfiles: clusterfile.close()
+    else:
+        demofile.close()
+        if args.select == "clusters":
+            clusterfile.close()
+    
+    import cPickle as cp
     state_file_name = osp.join(demo_files_dir, args.demo_type, osp.splitext(osp.basename(args.init_state_h5))[0], args.demo_name+"_"+args.perturb_name+".cp")
     print state_file_name
     with open(state_file_name, "w") as f:

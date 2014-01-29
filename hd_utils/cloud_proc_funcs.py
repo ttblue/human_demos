@@ -1,4 +1,3 @@
-import cloudprocpy
 import cv2, numpy as np
 import os.path as osp
 import skimage.morphology as skim
@@ -26,6 +25,7 @@ def remove_outlier_connected_component(xyz, max_dist = .03):
     return xyz
     
 def extract_color(rgb, depth, mask, T_w_k, xyz_mask=None, use_outlier_removal=False, outlier_thresh=2, outlier_k=20):
+
     """
     extract red points and downsample
     """
@@ -76,7 +76,7 @@ def extract_color(rgb, depth, mask, T_w_k, xyz_mask=None, use_outlier_removal=Fa
 
 
 def extract_red(rgb, depth, T_w_k):
-    red_mask = [lambda(x): (x<15)|(x>145), lambda(x): x>70, lambda(x): x>100]
+    red_mask = [lambda(x): (x<20)|(x>135), lambda(x): x>70, lambda(x): x>100]
     xyz_mask = (lambda(xyz): xyz[:, :, 2] > 0.95)
     return extract_color(rgb, depth, red_mask, T_w_k, xyz_mask, True)
 
@@ -89,18 +89,6 @@ def extract_yellow(rgb, depth, T_w_k):
     #xyz_mask = (lambda(xyz): xyz[:, :, 2] < 0.9)
     xyz_mask = None
     return extract_color(rgb, depth, yellow_mask, T_w_k, xyz_mask)
-
-
-def generate_hitch_points(pos, radius=0.016, length=0.215):
-    ang = np.linspace(0, 2*np.pi, 30)
-    circ_pts = radius*np.c_[np.cos(ang), np.sin(ang)] + pos[None,:2]
-    circ_zs  = np.linspace(pos[2], length+pos[2], 30)
-
-    rod_pts  = np.empty((0,3))
-    for z in circ_zs:
-        rod_pts = np.r_[rod_pts, np.c_[circ_pts, z*np.ones((len(circ_pts),1))] ]
-        
-    return rod_pts
     
 
 def extract_hitch(rgb, depth, T_w_k, dir=None, radius=0.016, length =0.215, height_range=[0.70,0.80]):
@@ -200,9 +188,21 @@ def grabcut(rgb, depth, T_w_k):
     return clouds.downsample(xyz_sel, .01)
     #rgb_sel = rgb[yl:yl+h, xl:xl+w,:][mask.astype('bool')]
         
+    
+def generate_hitch_points(pos, radius=0.016, length=0.215):
+    ang = np.linspace(0, 2*np.pi, 30)
+    circ_pts = radius*np.c_[np.cos(ang), np.sin(ang)] + pos[None,:2]
+    circ_zs  = np.linspace(pos[2], length+pos[2], 30)
+
+    rod_pts  = np.empty((0,3))
+    for z in circ_zs:
+        rod_pts = np.r_[rod_pts, np.c_[circ_pts, z*np.ones((len(circ_pts),1))] ]
+        
+    return rod_pts
 
 
 def extract_red_alphashape(cloud, robot):
+    import cloudprocpy
     """
     extract red, get alpha shape, downsample
     """
