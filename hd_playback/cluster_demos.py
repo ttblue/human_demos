@@ -20,8 +20,8 @@ Clusters based on costs in file.
 # Weights for different costs
 weights = {}
 weights['tps'] = 1.0
-weights['traj'] = 0.25
-weights['traj_f'] = 0.25
+weights['traj'] = 0.2
+weights['traj_f'] = 0.4
 
 
 def get_costs (cfile):
@@ -117,12 +117,15 @@ def cluster_and_rank_demos(sm, n_clusters, eigen_solver='arpack', assign_labels=
     # Maybe re-cluster large demos
     return rank_demos_in_cluster(clusters, sm)
 
-def gen_h5_clusters (demo_type, cluster_data, keys):
+def gen_h5_clusters (demo_type, cluster_data, keys, file_path=None):
     """
     Save .h5 file.
     """
-    cluster_path = osp.join(demo_files_dir, demo_type, demo_type+'_clusters.h5')
-    hdf = h5py.File(cluster_path,'w')
+    if file_path is not None:
+        hdf = h5py.File(file_path,'w')
+    else:
+        cluster_path = osp.join(demo_files_dir, demo_type, demo_type+'_clusters.h5')
+        hdf = h5py.File(cluster_path,'w')
     
     cgroup = hdf.create_group('clusters')
     for cluster in cluster_data:
@@ -132,7 +135,7 @@ def gen_h5_clusters (demo_type, cluster_data, keys):
     for key in keys:
         kgroup[str(key)] = keys[key] 
 
-def cluster_demos (demo_type, n_clusters, save_to_file=False, visualize=False):
+def cluster_demos (demo_type, n_clusters, save_to_file=False, visualize=False, file_path=None):
     """
     Clusters and ranks demos.
     """
@@ -197,7 +200,7 @@ def cluster_demos (demo_type, n_clusters, save_to_file=False, visualize=False):
     
     
     if save_to_file:
-        gen_h5_clusters(demo_type, cdata, keys)
+        gen_h5_clusters(demo_type, cdata, keys, file_path)
     else:
         return cdata
     
