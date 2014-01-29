@@ -184,7 +184,8 @@ if not args.no_clouds:
             started = True
 
         if not started: continue
-        
+    	
+	hitch_found = False    
         for (seg_name, seg_info) in demo_info.items():
             
             if args.prompt and args.visualize:
@@ -198,7 +199,9 @@ if not args.no_clouds:
                 fig.clf()
                 ax = fig.gca(projection='3d')
                 ax.set_autoscale_on(False)
-                ax.plot(xyz[:,0], xyz[:,1], xyz[:,2], 'o')
+                xyzm = np.mean(xyz, axis=0)
+                ax.plot(xyz[:,0]-xyzm[0], xyz[:,1]-xyzm[1]+1.0, xyz[:,2]-xyzm[2], 'o')
+                #ax.plot(xyz[:,0], xyz[:,1], xyz[:,2], 'o')
                 fig.show()
                 print demo_name, seg_name
                 q = raw_input("Hit c to change the pc. q to exit")
@@ -216,13 +219,17 @@ if not args.no_clouds:
 #                 mlab.points3d(xyz[:,0], xyz[:,1], xyz[:,2], color=(0,0,1), scale_factor=.005)
                 xyz2 = cloud
                 if args.has_hitch:
-                    hitch_normal = clouds.clouds_plane(cloud)
-                    hitch, hitch_pos = hitch_proc_func(np.asarray(seg_info["rgb"]), np.asarray(seg_info["depth"]), np.eye(4), hitch_normal)
+		    if not hitch_found:
+                    	hitch_normal = clouds.clouds_plane(cloud)
+                    	hitch, hitch_pos = hitch_proc_func(np.asarray(seg_info["rgb"]), np.asarray(seg_info["depth"]), np.eye(4), hitch_normal)
+			hitch_found = True
                     xyz2 = np.r_[xyz2, hitch]
                 fig.clf()
                 ax = fig.gca(projection='3d')
                 ax.set_autoscale_on(False)
-                ax.plot(xyz2[:,0], xyz2[:,1], xyz2[:,2], 'o')
+                xyzm2 = np.mean(xyz2, axis=0)
+                ax.plot(xyz2[:,0]-xyzm2[0], xyz2[:,1]-xyzm2[1]+1.0, xyz2[:,2]-xyzm2[2], 'o')
+                #ax.plot(xyz2[:,0], xyz2[:,1], xyz2[:,2], 'o')
                 fig.show()
                 print demo_name, seg_name
                 print "Before", xyz.shape
@@ -243,9 +250,10 @@ if not args.no_clouds:
                     IPython.embed()
 
             if args.has_hitch:
-                hitch_normal = clouds.clouds_plane(cloud)
-                
-                hitch, hitch_pos = hitch_proc_func(np.asarray(seg_info["rgb"]), np.asarray(seg_info["depth"]), np.eye(4), hitch_normal)
+		if not hitch_found:
+		    hitch_normal = clouds.clouds_plane(cloud)
+		    hitch, hitch_pos = hitch_proc_func(np.asarray(seg_info["rgb"]), np.asarray(seg_info["depth"]), np.eye(4), hitch_normal)
+		    hitch_found = True
                 seg_info["full_hitch"] = hitch
                 seg_info["full_object"] = cloud
                 seg_info["hitch"] = clouds.downsample(hitch, .01)

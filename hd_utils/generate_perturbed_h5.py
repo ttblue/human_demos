@@ -39,7 +39,6 @@ else:
     else:
         perturb_demofile = h5py.File(perturb_h5file, "w")
     
-    
 
 demofile = h5py.File(h5file, 'r')
 
@@ -137,8 +136,6 @@ for demo in sorted(demofile.keys()):
             n_perturb_existed += 1
             n_perturbed_attempt += 1
             
-            
-                  
 
     if args.interactive:
         if yes_or_no(colorize("Stop perturbation?", "red", True)):
