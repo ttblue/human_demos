@@ -20,8 +20,10 @@ Clusters based on costs in file.
 # Weights for different costs
 weights = {}
 weights['tps'] = 1.0
-weights['traj'] = 0.2
-weights['traj_f'] = 0.4
+weights['traj'] = 0.6
+weights['traj_f'] = 0.6
+
+
 
 
 def get_costs (cfile):
@@ -221,7 +223,7 @@ def cluster_demos_from_file (demo_file_path, cost_file, n_clusters, visualize=Fa
     costs = get_costs(cost_file)
     print "Loaded costs."
     
-    cdata, keys = cluster_demos(demofile, costs, n_clusters, visualize=False)
+    cdata, keys = cluster_demos(demofile, costs, n_clusters, visualize)
     
     if save_to_file:
         if save_file_path is None:

@@ -25,7 +25,7 @@ init_perturbation_map = {'overhand_noik'  : 'overhand_noik',
                          'pile_hitch'     : 'pile_hitch160'}
 
 def get_rope_lengths(demo_type):
-    if 'hitch' in demo_type or demo_type=='double_overhand':
+    if 'hitch' in demo_type or demo_type in ['double_overhand', 'square_knot']:
         return [140, 160, 180]
     else:
         return [120,140,160]
