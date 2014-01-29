@@ -1257,11 +1257,10 @@ def main():
                 if args.execution:
                     time.sleep(5)
             
-            seg_env_state.append(seg_state) 
+        seg_env_state.append(seg_state) 
 
             #if not success: break
-            
-            
+
         if args.simulation:
             Globals.sim.settle(animate=args.animation)
 
@@ -1272,15 +1271,13 @@ def main():
 
     init_state_h5file.close()
     demofile.close()
-    
-    import cPickle as cp
+
     state_file_name = osp.join(demo_files_dir, args.demo_type, osp.splitext(osp.basename(args.init_state_h5))[0], args.demo_name+"_"+args.perturb_name+".cp")
     print state_file_name
     with open(state_file_name, "w") as f:
-        data= {"demo_name": args.demo_name, "perturb_name": args.perturb_name, "seg_info": seg_env_state}
-        cp.dump(data, f)
-    
-        
+        data = {"demo_name": args.demo_name, "perturb_name": args.perturb_name, "seg_info": seg_env_state}
+        cPickle.dump(data, f)
+
 
 if __name__ == "__main__":
     main()
