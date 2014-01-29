@@ -108,7 +108,7 @@ def add_traj_to_hdf(traj, annotation, hdfroot, demo_name):
     '''
     
     demo_group = hdfroot.create_group(demo_name)
-    
+
     for seg_info in annotation:
         seg_name = seg_info["name"]
         if seg_name == "done": continue
