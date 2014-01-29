@@ -1410,7 +1410,6 @@ def main():
         redprint("Demo %s Segment %s result: %s"%(demo_name, seg_name, success))
 
     init_state_h5file.close()
-    demofile.close()
 
     if use_diff_length:
         for demofile in demofiles: demofile.close()
