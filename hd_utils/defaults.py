@@ -123,8 +123,11 @@ tfm_head_kinect = np.array(
                             )
 
 
-
-
+"""
+Stuff for testing on cloud:
+"""
+testing_h5s_dir        =  osp.join(data_dir, 'testing_h5s')
+init_state_pertubs_dir = osp.join(data_dir, 'init_state_perturbs')
 
 
 

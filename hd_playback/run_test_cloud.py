@@ -52,15 +52,15 @@ from hd_utils.utils import avg_transform
 from hd_utils.defaults import demo_files_dir, hd_data_dir, asus_xtion_pro_f, \
         ar_init_dir, ar_init_demo_name, ar_init_playback_name, \
         tfm_head_dof, tfm_bf_head, tfm_gtf_ee, cad_files_dir
-
-
-
+        
+from hd_utils.defaults import testing_h5_dir, init_state_perturbs_dir
+from hd_evalulate.split_for_testing import get_rope_lengths
 
 class Globals:
-    robot = None
-    env = None
-    pr2 = None
-    sim = None
+    robot  = None
+    env    = None
+    pr2    = None
+    sim    = None
     viewer = None
 
 
@@ -75,6 +75,7 @@ def get_env_state():
 def smaller_ang(x):
     return (x + np.pi)%(2*np.pi) - np.pi
 
+
 def closer_ang(x,a,dr=0):
     """                                                
     find angle y (==x mod 2*pi) that is close to a                             
@@ -88,18 +89,15 @@ def closer_ang(x,a,dr=0):
         return a + (x-a)%(2*np.pi)
     elif dr == -1:
         return a + (x-a)%(2*np.pi) - 2*np.pi
+
     
-def closer_angs(x_array,a_array,dr=0):
-    
+def closer_angs(x_array,a_array,dr=0):   
     return [closer_ang(x, a, dr) for (x, a) in zip(x_array, a_array)]
 
 
 def split_trajectory_by_gripper(seg_info, pot_angle_threshold, ms_thresh=2):
     lgrip = np.asarray(seg_info["l"]["pot_angles"])
     rgrip = np.asarray(seg_info["r"]["pot_angles"])
-    
-    print rgrip
-    print lgrip
     
     thresh = pot_angle_threshold # open/close threshold
 
@@ -654,13 +652,10 @@ def main():
 
     init_state_h5file = h5py.File(args.init_state_h5+".h5", "r")
 
-    if use_diff_length:
-        from glob import glob
-        demotype_dirs = glob(osp.join(demo_files_dir, args.demo_type+'[0-9]*'))
-        demo_types    = [osp.basename(demotype_dir) for demotype_dir in demotype_dirs]
-        demo_h5files  = [osp.join(demotype_dir, demo_type+".h5") for demo_type in demo_types]
-        print demo_h5files
-        demofiles = [h5py.File(demofile, 'r') for demofile in demo_h5files]
+    if use_diff_length:        
+        demo_data_dir  = osp.join(init_state_perturbs_dir, args.demo_type)
+        demo_h5files   = [osp.join(demo_data_dir, "%s%d"%(args.demo_type, l),  "%s%d.h5"%(args.demo_type,l)) for l in get_rope_lengths(args.demo_type)]
+        demofiles      = [h5py.File(demofile, 'r') for demofile in demo_h5files]
         if len(demofiles) == 1: 
             demofile = demofiles
             use_diff_length = False
@@ -669,7 +664,7 @@ def main():
         demo_h5file = osp.join(demotype_dir, args.demo_type+".h5")
         print demo_h5file
         demofile = h5py.File(demo_h5file, 'r')
-    
+
     if args.select == "clusters":
         if use_diff_length:
             c_h5files = [osp.join(demotype_dir, demo_type+"_clusters.h5") for demo_type in demo_types]
@@ -1318,15 +1313,10 @@ def main():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(usage=usage)
 
-    parser.add_argument("--init_state_h5", type=str)
-    parser.add_argument("--demo_name", type=str)
-    parser.add_argument("--perturb_name", type=str)
-    
-    parser.add_argument("--demo_type", type=str)
-    parser.add_argument("--use_diff_length", action="store_true", default=False)
+    parser.add_argument("--use_diff_length", action="store_false", default=True)
     parser.add_argument("--cloud_proc_func", default="extract_red")
     parser.add_argument("--cloud_proc_mod", default="hd_utils.cloud_proc_funcs")
-        
+
     parser.add_argument("--execution", type=int, default=0)
     parser.add_argument("--animation", type=int, default=0)
     parser.add_argument("--simulation", type=int, default=0)
@@ -1367,7 +1357,17 @@ if __name__ == "__main__":
     parser.add_argument("--closest_rope_hack", action="store_true", default=False)
     parser.add_argument("--closest_rope_hack_thresh", type=float, default=0.01)
     parser.add_argument("--cloud_downsample", type=float, default=.01)
+
+    
+    parser.add_argument("--ndemos", type=int)
+    parser.add_argument("--demo_type", type=str)
+    parser.add_argument("--demo_data_h5_prefix", type=str)
+    parser.add_argument("--init_state_h5", type=str)
+    parser.add_argument("--init_demo_name", type=str)
+    parser.add_argument("--init_seg_name", type=str)    
+    parser.add_argument("--rope_scaling_factor", type=float, default=1.0)
     parser.add_argument("--state_save_fname", type=str)
+
 
     args = parser.parse_args()
     
