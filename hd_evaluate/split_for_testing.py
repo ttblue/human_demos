@@ -37,8 +37,8 @@ def sample_rope_scaling(rope_lengths):
 perturbations_dir = osp.join(data_dir, 'init_state_perturbations') 
 perturbations_dir = "/home/ankush/sandbox444/human_demos/hd_evaluate/init_state_perturbations"
 
-demo_files_dir    = "/home/ankush/sandbox444/human_demos/hd_evaluate/sample_dat"
-data_dir          = "/home/ankush/sandbox444/human_demos/hd_evaluate/sample_dat"
+#demo_files_dir    = "/home/ankush/sandbox444/human_demos/hd_evaluate/sample_dat"
+#data_dir          = "/home/ankush/sandbox444/human_demos/hd_evaluate/sample_dat"
 
 
 def split_pertubations_into_two(perturb_fname, sizes = [50, 25, 4]):
@@ -139,7 +139,7 @@ def generate_test_cmdline_params(demo_type, generate_h5s=False):
                 for init_demo_idx in init_subset[np.max(init_subset.keys())]:      ## x50
                     init_config_data = perturb_file[perturb_file.keys()[init_demo_idx]]
                     init_demo_name   = perturb_file.keys()[init_demo_idx]
-                    for init_seg_name in init_config_data.keys():                 ## x10
+                    for init_perturb_name in init_config_data.keys():                 ## x10
                         demo_data_h5_prefix = "size%d_set%d"%(ndemos, demo_set+1)
                         init_state_h5       = init_perturbation_map[demo_type]
                         rope_scaling_factor = sample_rope_scaling(rope_lengths)
@@ -149,7 +149,7 @@ def generate_test_cmdline_params(demo_type, generate_h5s=False):
                                                demo_data_h5_prefix,
                                                init_state_h5,
                                                str(init_demo_name),
-                                               str(init_seg_name),
+                                               str(init_perturb_name),
                                                rope_scaling_factor,
                                                str(results_fname)])
 

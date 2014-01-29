@@ -63,6 +63,10 @@ class Globals:
     sim    = None
     viewer = None
 
+args            = None
+cloud_proc_mod  = None
+cloud_proc_func = None
+hitch_proc_func = None
 
 def get_env_state():
     state =  [Globals.robot.GetTransform(), Globals.robot.GetDOFValues(), Globals.sim.rope.GetNodes()]
@@ -647,13 +651,20 @@ L_POSTURES = dict(
 
 
 
-def main():
+def main(pargs):
+    global args, cloud_proc_mod, cloud_proc_func, hitch_proc_func
+    args = pargs
+    cloud_proc_mod  = importlib.import_module(args.cloud_proc_mod)
+    cloud_proc_func = getattr(cloud_proc_mod, args.cloud_proc_func)
+    hitch_proc_func = getattr(cloud_proc_mod, "extract_hitch")
+    
+    
     use_diff_length = args.use_diff_length
 
     init_state_h5file = h5py.File(args.init_state_h5+".h5", "r")
 
     if use_diff_length:        
-        demo_data_dir  = osp.join(init_state_perturbs_dir, args.demo_type)
+        demo_data_dir  = osp.join(testing_h5s_dir, args.demo_type)
         demo_h5files   = [osp.join(demo_data_dir, "%s%d"%(args.demo_type, l),  "%s%d.h5"%(args.demo_type,l)) for l in get_rope_lengths(args.demo_type)]
         demofiles      = [h5py.File(demofile, 'r') for demofile in demo_h5files]
         if len(demofiles) == 1: 
@@ -779,9 +790,9 @@ def main():
 
     if args.simulation:
 
-        if has_hitch(init_state_h5file, args.demo_name, args.perturb_name):
+        if has_hitch(init_state_h5file, args.init_demo_name, args.init_perturb_name):
             Globals.env.Load(osp.join(cad_files_dir, 'hitch.xml'))
-            hitch_pos = init_state_h5file[args.demo_name][args.perturb_name]['hitch_pos']
+            hitch_pos = init_state_h5file[args.init_demo_name][args.init_perturb_name]['hitch_pos']
             hitch_body = Globals.env.GetKinBody('hitch')
             table_body = Globals.env.GetKinBody('table')
             if init_tfm != None:
@@ -837,8 +848,8 @@ def main():
                     hitch_cloud = clouds.downsample(hitch_cloud, args.cloud_downsample)
                     new_xyz = np.r_[new_xyz, hitch_cloud]
                 
-            else:          
-                init_seg = init_state_h5file[args.demo_name][args.perturb_name]
+            else:
+                init_seg = init_state_h5file[args.init_demo_name][args.init_perturb_name]
                 new_xyz = np.squeeze(init_seg["cloud_xyz"])
         
                 hmat = openravepy.matrixFromAxisAngle(args.fake_data_transform[3:6])
@@ -851,12 +862,12 @@ def main():
                 # if the first step in rope simulation
                 if args.simulation: # curr_step == 1
                     rope_nodes = rope_initialization.find_path_through_point_cloud(new_xyz)
-                    if args.rope_scale_factor != 1.0:
-                        rope_nodes =  cu.scale_rope(rope_nodes, args.rope_scale_factor, center=True)
+                    if args.rope_scaling_factor != 1.0:
+                        rope_nodes =  cu.scale_rope(rope_nodes, args.rope_scaling_factor, center=True)
                     Globals.sim.create(rope_nodes)
                     new_xyz = Globals.sim.observe_cloud(3)
                     new_xyz = clouds.downsample(new_xyz, args.cloud_downsample)
-                    
+
                     hitch = Globals.env.GetKinBody('hitch')
                     if hitch != None:
                         pos = hitch.GetTransform()[:3,3]
@@ -871,11 +882,10 @@ def main():
                     rope_cloud = Globals.sim.observe_cloud(3)
                     rope_cloud = clouds.downsample(rope_cloud, args.cloud_downsample)
                 else:
-                    if has_hitch(init_state_h5file, args.demo_name, args.perturb_name):
-                        rope_cloud = init_state_h5file[args.demo_name][args.perturb_name]['object']
+                    if has_hitch(init_state_h5file, args.init_demo_name, args.init_perturb_name):
+                        rope_cloud = init_state_h5file[args.init_demo_name][args.init_perturb_name]['object']
                     else:
-                        rope_cloud = init_state_h5file[args.demo_name][args.perturb_name]['cloud_xyz']
-
+                        rope_cloud = init_state_h5file[args.init_demo_name][args.init_perturb_name]['cloud_xyz']
 
         else:
             Globals.pr2.head.set_pan_tilt(0,1.2)
@@ -1305,10 +1315,12 @@ def main():
             clusterfile.close()
 
     
-    return_dat = {"demo_name": args.demo_name,
-                  "perturb_name": args.perturb_name,
-                  "seg_info": seg_env_state,
-                  "state_save_fname": args.state_save_fname}
+    return_dat = {"demo_type"         : args.demo_type,
+                  "ndemos"            : args.ndemos,
+                  "init_demo_name"    : args.init_demo_name,
+                  "init_perturb_name" : args.init_perturb_name,
+                  "seg_info"          : seg_env_state,
+                  "state_save_fname"  : args.state_save_fname}
 
     return return_dat
 
@@ -1323,14 +1335,12 @@ if __name__ == "__main__":
     parser.add_argument("--animation", type=int, default=0)
     parser.add_argument("--simulation", type=int, default=0)
     parser.add_argument("--parallel", type=int, default=1)
-    parser.add_argument("--cloud", type=int, default=0)
     parser.add_argument("--downsample", help="downsample traj.", type=int, default=1)
 
     parser.add_argument("--prompt", action="store_true")
     parser.add_argument("--show_neighbors", action="store_true")
     parser.add_argument("--select", default="manual")
     parser.add_argument("--log", action="store_true")
-    
     
     parser.add_argument("--fake_data_transform", type=float, nargs=6, metavar=("tx","ty","tz","rx","ry","rz"),
         default=[0,0,0,0,0,0], help="translation=(tx,ty,tz), axis-angle rotation=(rx,ry,rz)")
@@ -1360,19 +1370,19 @@ if __name__ == "__main__":
     parser.add_argument("--closest_rope_hack_thresh", type=float, default=0.01)
     parser.add_argument("--cloud_downsample", type=float, default=.01)
 
-    
+
     parser.add_argument("--ndemos", type=int)
     parser.add_argument("--demo_type", type=str)
     parser.add_argument("--demo_data_h5_prefix", type=str)
     parser.add_argument("--init_state_h5", type=str)
     parser.add_argument("--init_demo_name", type=str)
-    parser.add_argument("--init_seg_name", type=str)    
+    parser.add_argument("--init_perturb_name", type=str)    
     parser.add_argument("--rope_scaling_factor", type=float, default=1.0)
     parser.add_argument("--state_save_fname", type=str)
 
 
     args = parser.parse_args()
-    
+
     cloud_proc_mod  = importlib.import_module(args.cloud_proc_mod)
     cloud_proc_func = getattr(cloud_proc_mod, args.cloud_proc_func)
     hitch_proc_func = getattr(cloud_proc_mod, "extract_hitch")
