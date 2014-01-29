@@ -1,5 +1,5 @@
 """
-Script to split the indices etc. for paralle testing on the cloud.
+Script to split the indices etc. for parallel testing on the cloud.
 
 This generates library of demos with different number of demos, initial state configuraion files
 and the file of the command line arguments to be executed in parallel on the cloud.
@@ -31,27 +31,34 @@ def get_rope_lengths(demo_type):
         return [120,140,160]
 
 def sample_rope_scaling(rope_lengths):
-    return np.random.uniform(rope_lengths[0], rope_lengths[2])/(rope_lengths[1]+0.0)
+    return np.round(np.random.uniform(rope_lengths[0], rope_lengths[2])/(rope_lengths[1]+0.0), 2)
 
 
 perturbations_dir = osp.join(data_dir, 'init_state_perturbations') 
+perturbations_dir = "/home/ankush/sandbox444/human_demos/hd_evaluate/init_state_perturbations"
+
+demo_files_dir    = "/home/ankush/sandbox444/human_demos/hd_evaluate/sample_dat"
+data_dir          = "/home/ankush/sandbox444/human_demos/hd_evaluate/sample_dat"
 
 
 def split_pertubations_into_two(perturb_fname, sizes = [50, 25, 4]):
-    perturb_dat  = h5py.File(perturb_fname)
+    perturb_dat  = h5py.File(perturb_fname, 'r')
     num_perturbs = len(perturb_dat.keys())
-    
+
     assert num_perturbs >= 90, colorize("not enough demos in the perturbation file : %s"%perturb_fname)
-    
+
     subset1, subset2 = {}, {}
     for i in xrange(len(sizes)):
         if i==0:
-            subset1[sizes[i]] = np.random.shuffle(range(num_perturbs))[:sizes[i]]
-            subset2[sizes[i]] = np.random.shuffle(range(num_perturbs))[sizes[i]:]
+            random_indices = range(num_perturbs)
+            np.random.shuffle(random_indices)
+            subset1[sizes[i]] = random_indices[:sizes[i]]
+            subset2[sizes[i]] = random_indices[sizes[i]:]
         else:
-            subset1[sizes[i]] = subset1[sizes[i-1]][np.random.choice(range(len(subset1[sizes[i-1]])), sizes[i], replace=False)]
-            subset2[sizes[i]] = subset2[sizes[i-1]][np.random.choice(range(len(subset2[sizes[i-1]])), sizes[i], replace=False)] 
+            subset1[sizes[i]] = [subset1[sizes[i-1]][x] for x in np.random.choice(range(len(subset1[sizes[i-1]])), sizes[i], replace=False)]
+            subset2[sizes[i]] = [subset2[sizes[i-1]][x] for x in np.random.choice(range(len(subset2[sizes[i-1]])), sizes[i], replace=False)] 
 
+    perturb_dat.close()
     return subset1, subset2
 
 
@@ -66,19 +73,17 @@ def generate_testing_h5_files(demo_type, subset1, subset2, rope_lengths=[120,140
                 continue
             pkey = parent_h5.keys()[idx]
             parent_h5.copy(pkey, child_h5)
-    
-    
-    demo_h5_fnames = {l :osp.join(demo_files_dir, demo_type, l, ".h5") for l in rope_lengths}
-    demo_h5_files = {}
+
+    demo_h5_fnames = {l : osp.join(demo_files_dir, "%s%d"%(demo_type, l),  "%s%d.h5"%(demo_type,l)) for l in rope_lengths}
+    demo_h5_files  = {}
 
     for h5_fname in demo_h5_fnames.values():
         if not osp.exists(h5_fname):
-            print colorize(" %s : does not exist. Exiting.."%h5_fname)
+            print colorize(" %s : does not exist. Exiting..."%h5_fname, "red", True)
             sys.exit(-1)
-    
+
     for l in rope_lengths:
-        demo_h5_files[l] = h5py.File(demo_h5_fnames[l])
-    
+        demo_h5_files[l] = h5py.File(demo_h5_fnames[l], 'r')
 
     out_dir = osp.join(data_dir, "testing_h5s", demo_type)
     if not osp.exists(out_dir):
@@ -100,24 +105,26 @@ def generate_testing_h5_files(demo_type, subset1, subset2, rope_lengths=[120,140
 
             subset1_h5_file.close()
             subset2_h5_file.close()
-    
-    for h5file in demo_h5_files:
+            print colorize("saved : %s"%subset1_h5_name, "green", True)            
+            print colorize("saved : %s"%subset2_h5_name, "green", True)
+
+    for h5file in demo_h5_files.values():
         h5file.close()
 
 
 def generate_test_cmdline_params(demo_type, generate_h5s=False):
     """
-    rope_lengths = [120,140,160] or [140,160,180]
+    saves ~6000 sets of command line arguments.
     """
     rope_lengths     = get_rope_lengths(demo_type)
     perturb_fname    = init_perturbation_map[demo_type] + '_perturb.h5'
     perturb_fname    = osp.join(perturbations_dir, perturb_fname)
     perturb_file     = h5py.File(perturb_fname, "r") 
-    subsets = split_pertubations_into_two(perturb_fname, rope_lengths)
+    subsets = split_pertubations_into_two(perturb_fname)
 
     if generate_h5s:
         generate_testing_h5_files(demo_type, subsets[0], subsets[1], rope_lengths)
-    
+
     cmdline_params = []
     cmdline_dir = osp.join(data_dir, "testing_commands")
     if not osp.exists(cmdline_dir):
@@ -136,15 +143,15 @@ def generate_test_cmdline_params(demo_type, generate_h5s=False):
                         demo_data_h5_prefix = "size%d_set%d"%(ndemos, demo_set+1)
                         init_state_h5       = init_perturbation_map[demo_type]
                         rope_scaling_factor = sample_rope_scaling(rope_lengths)
-                        results_fname       = osp.join(demo_type, "%d_demos"%ndemos, "initset%d_demoset%d"%(init_set, demo_set), "perturb_%s_%s.cp"%(init_demo_name, init_seg_name))
-                        cmdline_params.append([demo_data_h5_prefix,
+                        results_fname       = osp.join(demo_type, "%d_demos"%ndemos, "initset%d_demoset%d"%(init_set+1, demo_set+1), "perturb_%s_%s.cp"%(init_demo_name, init_seg_name))
+                        cmdline_params.append([ndemos,
+                                               demo_data_h5_prefix,
                                                init_state_h5,
-                                               init_demo_name,
-                                               init_seg_name,
+                                               str(init_demo_name),
+                                               str(init_seg_name),
                                                rope_scaling_factor,
-                                               results_fname])
-    
+                                               str(results_fname)])
+
     cmdline_file = osp.join(cmdline_dir, "%s_cmds.cp"%demo_type)
     cp.dump(cmdline_params, open(cmdline_file, 'w'))
-    print colorize("wrote : %s"%cmdline_file, "green", True)
-
+    print colorize("wrote : %s"%cmdline_file, "yellow", True)
