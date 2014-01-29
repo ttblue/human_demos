@@ -76,7 +76,11 @@ def extract_color(rgb, depth, mask, T_w_k, xyz_mask=None, use_outlier_removal=Fa
 
 
 def extract_red(rgb, depth, T_w_k):
+<<<<<<< HEAD
     red_mask = [lambda(x): (x<15)|(x>145), lambda(x): x>100, lambda(x): x>100]
+=======
+    red_mask = [lambda(x): (x<15)|(x>125), lambda(x): x>80, lambda(x): x>100]
+>>>>>>> f447ad4decf1d79bc694b871c408f5541003d414
     xyz_mask = (lambda(xyz): xyz[:, :, 2] > 0.95)
     return extract_color(rgb, depth, red_mask, T_w_k, xyz_mask, True)
 

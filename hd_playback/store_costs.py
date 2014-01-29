@@ -158,7 +158,7 @@ def save_costs_symmetric(segs, keys, cost_file, num_segs=None):
         name = name_keys[y]
         ts = time.time()
         print 'Segment '+name_keys[y]
-        seg_costs = Parallel(n_jobs=3,verbose=51)(delayed(all_costs)(new_seg, segs[i], name_keys[i]) for i in range(y+1, num_segs))
+        seg_costs = Parallel(n_jobs=4,verbose=51)(delayed(all_costs)(new_seg, segs[i], name_keys[i]) for i in range(y+1, num_segs))
         te = time.time()
         print "Time: %f"%(te-ts)
 
@@ -202,7 +202,7 @@ def main(demo_type, num_segs=None):
     iden = ''
     if num_segs is not None:
         iden = str(num_segs)
-    cost_file = osp.join(similarity_costs_dir, demo_type)+iden+'.costs'
+    cost_file = osp.join(demo_files_dir, demo_type, demo_type)+iden+'.costs'
     
     keys, segs = extract_segs(demofile, num_segs)
     save_costs_symmetric(segs, keys, cost_file, num_segs)

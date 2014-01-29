@@ -14,68 +14,6 @@ Actually run on the robot without pausing or animating
 ./do_task.py demo_full/demo_full.h5 --execution=1 --animation=0
 
 
-"""
-parser = argparse.ArgumentParser(usage=usage)
-
-
-parser.add_argument("--init_state_h5", type=str)
-parser.add_argument("--demo_name", type=str)
-parser.add_argument("--perturb_name", type=str)
-
-parser.add_argument("--demo_type", type=str)
-parser.add_argument("--use_diff_length", action="store_true", default=False)
-parser.add_argument("--cloud_proc_func", default="extract_red")
-parser.add_argument("--cloud_proc_mod", default="hd_utils.cloud_proc_funcs")
-    
-parser.add_argument("--execution", type=int, default=0)
-parser.add_argument("--animation", type=int, default=0)
-parser.add_argument("--simulation", type=int, default=0)
-parser.add_argument("--parallel", type=int, default=1)
-parser.add_argument("--cloud", type=int, default=0)
-parser.add_argument("--downsample", help="downsample traj.", type=int, default=1)
-
-parser.add_argument("--prompt", action="store_true")
-parser.add_argument("--show_neighbors", action="store_true")
-parser.add_argument("--select", default="manual")
-parser.add_argument("--log", action="store_true")
-
-
-parser.add_argument("--fake_data_transform", type=float, nargs=6, metavar=("tx","ty","tz","rx","ry","rz"),
-    default=[0,0,0,0,0,0], help="translation=(tx,ty,tz), axis-angle rotation=(rx,ry,rz)")
-
-
-parser.add_argument("--trajopt_init",type=str,default="openrave_ik")
-parser.add_argument("--pot_threshold",type=float, default=15)
-
-parser.add_argument("--use_ar_init", action="store_true", default=False)
-parser.add_argument("--ar_demo_file",type=str, default="")
-parser.add_argument("--ar_run_file",type=str, default="")
-parser.add_argument("--use_base", action="store_true", default=False)
-parser.add_argument("--not_allow_base", help="dont allow base movement when use_base", action="store_true", default=False)
-parser.add_argument("--early_stop_portion", help="stop early in the final segment to avoid bullet simulation problem", type=float, default=0.5)
-parser.add_argument("--no_traj_resample", action="store_true", default=False)
-
-parser.add_argument("--interactive",action="store_true")
-parser.add_argument("--remove_table", action="store_true")
-
-parser.add_argument("--friction", help="friction value in bullet", type=float, default=1.0)
-
-parser.add_argument("--max_steps_before_failure", type=int, default=-1)
-parser.add_argument("--tps_bend_cost_init", type=float, default=10)
-parser.add_argument("--tps_bend_cost_final", type=float, default=.1)
-parser.add_argument("--tps_n_iter", type=int, default=50)
-
-parser.add_argument("--closest_rope_hack", action="store_true", default=False)
-parser.add_argument("--closest_rope_hack_thresh", type=float, default=0.01)
-parser.add_argument("--cloud_downsample", type=float, default=.01)
-parser.add_argument("--state_save_dir", type=str, default='test_env_states')
-
-
-
-args = parser.parse_args()
-
-
-"""
 Workflow:
 1. Fake data + animation only
 --fake_data_segment=xxx --execution=0
@@ -95,27 +33,18 @@ If you're using fake data, don't update it.
 
 import os, numpy as np, h5py, time, os.path as osp
 import cPickle
-import numpy as np
 import importlib
 from numpy.linalg import norm
 
 
 import cloudprocpy, trajoptpy, openravepy
 
-if args.execution:
-    try:
-        from hd_rapprentice import pr2_trajectories, PR2
-        import rospy
-        from hd_utils import ros_utils as ru
-        from hd_extract.extract_data import get_ar_marker_poses
-    except ImportError:
-        print "Couldn't import ros stuff"
-
 
 from hd_rapprentice import registration, animate_traj, ros2rave, \
      plotting_openrave, task_execution, \
      planning, tps, resampling, \
      ropesim, rope_initialization
+
 from hd_utils import yes_or_no, func_utils, clouds, math_utils as mu, cloud_proc_funcs
 from hd_utils.pr2_utils import get_kinect_transform
 from hd_utils.colorize import *
@@ -125,9 +54,6 @@ from hd_utils.defaults import demo_files_dir, hd_data_dir, asus_xtion_pro_f, \
         tfm_head_dof, tfm_bf_head, tfm_gtf_ee, cad_files_dir
 
 
-cloud_proc_mod = importlib.import_module(args.cloud_proc_mod)
-cloud_proc_func = getattr(cloud_proc_mod, args.cloud_proc_func)
-hitch_proc_func = getattr(cloud_proc_mod, "extract_hitch")
 
 
 class Globals:
@@ -137,8 +63,6 @@ class Globals:
     sim = None
     viewer = None
 
-
-DS_SIZE = .025
 
 def get_env_state():
     state =  [Globals.robot.GetTransform(), Globals.robot.GetDOFValues(), Globals.sim.rope.GetNodes()]
@@ -205,12 +129,9 @@ def split_trajectory_by_gripper(seg_info, pot_angle_threshold, ms_thresh=2):
             lr_open['l'].append(lval)
             rval = True if rgrip[seg_starts[i]] >= thresh else False
             lr_open['r'].append(rval)
-            
-     
-#     import IPython
-#     IPython.embed()
- 
+   
     return new_seg_starts, new_seg_ends, lr_open
+
 
 def binarize_gripper(angle, pot_angle_threshold):
     open_angle = .08
@@ -257,8 +178,8 @@ def set_gripper_maybesim(lr, is_open, prev_is_open):
             else:
                 blueprint("Grab succeeded")
         
-        
     return True
+
 
 
 def unwrap_arm_traj_in_place(traj):
@@ -266,6 +187,7 @@ def unwrap_arm_traj_in_place(traj):
     for i in [2,4,6]:
         traj[:,i] = np.unwrap(traj[:,i])
     return traj
+
 
 def unwrap_in_place(t):
     # TODO: do something smarter than just checking shape[1]
@@ -277,10 +199,11 @@ def unwrap_in_place(t):
     else:
         raise NotImplementedError
 
+
 def exec_traj_maybesim(bodypart2traj):
     def sim_callback(i):
         Globals.sim.step()
-    
+
     if args.animation or args.simulation:
         dof_inds = []
         trajs = []
@@ -326,7 +249,7 @@ def exec_traj_maybesim(bodypart2traj):
         animate_traj.animate_traj(full_traj, base_hmats, Globals.robot, restore=False, pause=args.interactive,
                                   callback=sim_callback if args.simulation else None, step_viewer=args.animation)
         
-        
+
     if args.execution:
         if not args.prompt or yes_or_no("execute?"):
             pr2_trajectories.follow_body_traj(Globals.pr2, bodypart2traj)
@@ -724,13 +647,12 @@ L_POSTURES = dict(
     side = [  1.832,  -0.332,   1.011,  -1.437,   1.1  ,  -2.106,  3.074]
 )   
 
-use_diff_length = args.use_diff_length
+
 
 def main():
-    global use_diff_length
-    
+    use_diff_length = args.use_diff_length
+
     init_state_h5file = h5py.File(args.init_state_h5+".h5", "r")
-    print args.init_state_h5+".h5"
 
     if use_diff_length:
         from glob import glob
@@ -991,7 +913,6 @@ def main():
             cv2.imwrite(osp.join(LOG_DIR,"rgb%05i.png"%LOG_COUNT), rgb)
             cv2.imwrite(osp.join(LOG_DIR,"depth%05i.png"%LOG_COUNT), depth)
             np.save(osp.join(LOG_DIR,"xyz%i.npy"%LOG_COUNT), new_xyz)
-            
             
             
         '''
@@ -1334,20 +1255,12 @@ def main():
                     print 'time: %f'%(t2-t1)
                     
 
-
                     prev_vals[lr] = new_joint_traj[-1]
-                    #handles.append(Globals.env.drawlinestrip(new_ee_traj[:,:3,3], 2, (0,1,0,1))
                     
                     
                     part_name = {"l":"larm", "r":"rarm"}[lr]
                     bodypart2traj[part_name] = new_joint_traj
-                
-                    
- 
-            
-            
-                
-                       
+
             if args.execution: Globals.pr2.update_rave()
 
             redprint("Executing joint trajectory for demo %s segment %s, part %i using arms '%s'"%(demo_name, seg_name, i_miniseg, bodypart2traj.keys()))
@@ -1364,21 +1277,9 @@ def main():
 
             seg_state.append(get_env_state())            
             # if not success: break
-            is_final_seg = False
             if len(bodypart2traj['larm']) > 0:
-                if is_final_seg and miniseg_ends[i_miniseg] < portion * segment_len:
-                    success &= exec_traj_maybesim(bodypart2traj)
-                elif is_final_seg:
-                    if miniseg_starts[i_miniseg] > portion * segment_len:
-                        pass
-                    else:
-                        sub_bodypart2traj = {}
-                        for lr in bodypart2traj:
-                            sub_bodypart2traj[lr] = bodypart2traj[lr][: int(portion * len(bodypart2traj[lr]))]
-                        success &= exec_traj_maybesim(sub_bodypart2traj)
-                else:
-                    success &= exec_traj_maybesim(bodypart2traj)
-                    
+                success &= exec_traj_maybesim(bodypart2traj)
+
                 '''
                 Maybe for robot execution
                 '''
@@ -1386,8 +1287,6 @@ def main():
                     time.sleep(5)
             
         seg_env_state.append(seg_state) 
-
-            #if not success: break
 
         if args.simulation:
             Globals.sim.settle(animate=args.animation)
@@ -1407,16 +1306,73 @@ def main():
         demofile.close()
         if args.select == "clusters":
             clusterfile.close()
-    
-    state_file_dir = osp.join(demo_files_dir, args.demo_type, args.state_save_dir)
-    if not osp.exists(state_file_dir):
-        os.mkdir(state_file_dir)
-    state_file_name  = osp.join(state_file_dir, args.demo_name+"_"+args.perturb_name+".cp")
-    with open(state_file_name, "w") as f:
-        data = {"demo_name": args.demo_name, "perturb_name": args.perturb_name, "seg_info": seg_env_state}
-        cPickle.dump(data, f)
 
+    
+    return_dat = {"demo_name": args.demo_name,
+                  "perturb_name": args.perturb_name,
+                  "seg_info": seg_env_state,
+                  "state_save_fname": args.state_save_fname}
+
+    return return_dat
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(usage=usage)
 
+    parser.add_argument("--init_state_h5", type=str)
+    parser.add_argument("--demo_name", type=str)
+    parser.add_argument("--perturb_name", type=str)
+    
+    parser.add_argument("--demo_type", type=str)
+    parser.add_argument("--use_diff_length", action="store_true", default=False)
+    parser.add_argument("--cloud_proc_func", default="extract_red")
+    parser.add_argument("--cloud_proc_mod", default="hd_utils.cloud_proc_funcs")
+        
+    parser.add_argument("--execution", type=int, default=0)
+    parser.add_argument("--animation", type=int, default=0)
+    parser.add_argument("--simulation", type=int, default=0)
+    parser.add_argument("--parallel", type=int, default=1)
+    parser.add_argument("--cloud", type=int, default=0)
+    parser.add_argument("--downsample", help="downsample traj.", type=int, default=1)
+    
+    parser.add_argument("--prompt", action="store_true")
+    parser.add_argument("--show_neighbors", action="store_true")
+    parser.add_argument("--select", default="manual")
+    parser.add_argument("--log", action="store_true")
+    
+    
+    parser.add_argument("--fake_data_transform", type=float, nargs=6, metavar=("tx","ty","tz","rx","ry","rz"),
+        default=[0,0,0,0,0,0], help="translation=(tx,ty,tz), axis-angle rotation=(rx,ry,rz)")
+
+    parser.add_argument("--trajopt_init",type=str,default="openrave_ik")
+    parser.add_argument("--pot_threshold",type=float, default=15)
+    
+    parser.add_argument("--use_ar_init", action="store_true", default=False)
+    parser.add_argument("--ar_demo_file",type=str, default="")
+    parser.add_argument("--ar_run_file",type=str, default="")
+    parser.add_argument("--use_base", action="store_true", default=False)
+    parser.add_argument("--not_allow_base", help="dont allow base movement when use_base", action="store_true", default=False)
+    parser.add_argument("--early_stop_portion", help="stop early in the final segment to avoid bullet simulation problem", type=float, default=0.5)
+    parser.add_argument("--no_traj_resample", action="store_true", default=False)
+    
+    parser.add_argument("--interactive",action="store_true")
+    parser.add_argument("--remove_table", action="store_true")
+    
+    parser.add_argument("--friction", help="friction value in bullet", type=float, default=1.0)
+    
+    parser.add_argument("--max_steps_before_failure", type=int, default=-1)
+    parser.add_argument("--tps_bend_cost_init", type=float, default=10)
+    parser.add_argument("--tps_bend_cost_final", type=float, default=.1)
+    parser.add_argument("--tps_n_iter", type=int, default=50)
+    
+    parser.add_argument("--closest_rope_hack", action="store_true", default=False)
+    parser.add_argument("--closest_rope_hack_thresh", type=float, default=0.01)
+    parser.add_argument("--cloud_downsample", type=float, default=.01)
+    parser.add_argument("--state_save_fname", type=str)
+
+    args = parser.parse_args()
+    
+    cloud_proc_mod  = importlib.import_module(args.cloud_proc_mod)
+    cloud_proc_func = getattr(cloud_proc_mod, args.cloud_proc_func)
+    hitch_proc_func = getattr(cloud_proc_mod, "extract_hitch")
+
+    main()
