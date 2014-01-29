@@ -11,7 +11,7 @@ import os, os.path as osp
 import h5py
 from hd_utils.colorize import colorize
 
-from hd_utils.defaults import data_dir, demo_files_dir, hd_data_dir, cad_files_dir
+from hd_utils.defaults import data_dir, demo_files_dir, testing_commands_dir
 
 
 init_perturbation_map = {'overhand_noik'  : 'overhand_noik',
@@ -126,7 +126,7 @@ def generate_test_cmdline_params(demo_type, generate_h5s=False):
         generate_testing_h5_files(demo_type, subsets[0], subsets[1], rope_lengths)
 
     cmdline_params = []
-    cmdline_dir = osp.join(data_dir, "testing_commands")
+    cmdline_dir = testing_commands_dir
     if not osp.exists(cmdline_dir):
         os.mkdir(cmdline_dir)
     
