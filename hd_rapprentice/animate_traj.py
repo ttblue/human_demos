@@ -12,4 +12,4 @@ def animate_traj(traj, base_hmats, robot, pause=True, step_viewer=True, restore=
         if base_hmats != None:
             robot.SetTransform(base_hmats[i])
         if pause: viewer.Idle()
-        elif step_viewer: viewer.Step()
+        elif step_viewer and i%50 == 0: viewer.Step()
