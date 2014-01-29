@@ -1,7 +1,5 @@
 ## script to call hd_playback/run_test.py : for use on pycloud
-
-from hd_playback import run_test
-
+from hd_playback import run_test_cloud
 
 class SimArgs:
     use_diff_length = True
@@ -37,9 +35,9 @@ class SimArgs:
     select = "clusters"
     friction = 30.0   
     max_steps_before_failure = 5
-    tps_bend_cost_init  = 10
-    tps_bend_cost_final = 0.1
-    tps_n_inter         = 50
+    tps_bend_cost_init  = 0.1
+    tps_bend_cost_final = 0.001
+    tps_n_iter          = 50
     cloud_downsample    = 0.02
     
     ndemos              = -1
@@ -53,6 +51,14 @@ class SimArgs:
     state_save_fname  = ''
 
 
+max_steps_map = {'overhand'    : 5,
+                 'square_knot' : 9,
+                 'figure_eight': 6,
+                 'cow_hitch'   : 6,
+                 'clove_hitch' : 6,
+                 'pile_hitch'  : 7,
+                 'double_overhand':8,
+                 'slip_hand'   : 5}
 
 def run_sim_test(cmdline_params):
     SimArgs.ndemos              = cmdline_params[0]
@@ -63,8 +69,11 @@ def run_sim_test(cmdline_params):
     SimArgs.init_perturb_name   = cmdline_params[5]
     SimArgs.rope_scaling_factor = cmdline_params[6]
     SimArgs.state_save_fname    = cmdline_params[7]
-    
+
+    SimArgs.max_steps_before_failure = max_steps_map[SimArgs.demo_type]
+
     if SimArgs.ndemos==12:
         SimArgs.select="auto"
+        
 
-    return run_test.main(SimArgs)
+    return run_test_cloud.main(SimArgs)
