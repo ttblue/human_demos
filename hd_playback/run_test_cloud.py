@@ -45,7 +45,7 @@ from hd_rapprentice import registration, animate_traj, ros2rave, \
      planning, tps, resampling, \
      ropesim, rope_initialization
 
-from hd_utils import yes_or_no, func_utils, clouds, math_utils as mu, cloud_proc_funcs
+from hd_utils import yes_or_no, func_utils, clouds, math_utils as mu, cloud_proc_funcs, clouds_utils as cu
 from hd_utils.pr2_utils import get_kinect_transform
 from hd_utils.colorize import *
 from hd_utils.utils import avg_transform
@@ -658,8 +658,7 @@ def main():
         from glob import glob
         demotype_dirs = glob(osp.join(demo_files_dir, args.demo_type+'[0-9]*'))
         demo_types    = [osp.basename(demotype_dir) for demotype_dir in demotype_dirs]
-        demo_h5files  = [osp.join(demotype_dir, demo_type+".h5") for demo_type in demo_types]
-        print demo_h5files
+        demo_h5files  = [osp.join(demotype_dir, demo_type+".h5") for demotype_dir, demo_type in zip(demotype_dirs,demo_types)]
         demofiles = [h5py.File(demofile, 'r') for demofile in demo_h5files]
         if len(demofiles) == 1: 
             demofile = demofiles
@@ -672,7 +671,7 @@ def main():
     
     if args.select == "clusters":
         if use_diff_length:
-            c_h5files = [osp.join(demotype_dir, demo_type+"_clusters.h5") for demo_type in demo_types]
+            c_h5files = [osp.join(demotype_dir, demo_type+"_clusters.h5") for demotype_dir, demo_type in zip(demotype_dirs,demo_types)]
             clusterfiles = [h5py.File(c_h5file, 'r') for c_h5file in c_h5files]
         else:
             c_h5file = osp.join(demotype_dir, args.demo_type+"_clusters.h5")
@@ -856,6 +855,8 @@ def main():
                 # if the first step in rope simulation
                 if args.simulation: # curr_step == 1
                     rope_nodes = rope_initialization.find_path_through_point_cloud(new_xyz)
+                    if args.rope_scale_factor != 1.0:
+                        rope_nodes =  cu.scale_rope(rope_nodes, args.rope_scale_factor, center=True)
                     Globals.sim.create(rope_nodes)
                     new_xyz = Globals.sim.observe_cloud(3)
                     new_xyz = clouds.downsample(new_xyz, args.cloud_downsample)
@@ -904,7 +905,7 @@ def main():
                 hitch_cloud, hitch_pos = hitch_proc_func(rgb, depth, T_w_k, hitch_normal)
                 hitch_cloud = clouds.downsample(hitch_cloud, args.cloud_downsample)
                 new_xyz = np.r_[new_xyz, hitch_cloud]
-                
+            
             
         
         if args.log:
@@ -921,11 +922,11 @@ def main():
         redprint("Finding closest demonstration")
         if use_diff_length:
             if args.select=="manual":
-                dnum, (demo_name, seg_name), is_final_seg = find_closest_manual(demofiles, new_xyz)
+                (dnum, demo_name, seg_name), is_final_seg = find_closest_manual(demofiles, new_xyz)
             elif args.select=="auto":
-                dnum, (demo_name, seg_name), is_final_seg = find_closest_auto(demofiles, new_xyz, init_tfm, DS_LEAF_SIZE = args.cloud_downsample)
+                (dnum, demo_name, seg_name), is_final_seg = find_closest_auto(demofiles, new_xyz, init_tfm, DS_LEAF_SIZE = args.cloud_downsample)
             else:
-                dnum, (demo_name, seg_name), is_final_seg = find_closest_clusters(demofiles, clusterfiles, new_xyz, curr_step-1, init_tfm=init_tfm, DS_LEAF_SIZE = args.cloud_downsample)
+                (dnum, demo_name, seg_name), is_final_seg = find_closest_clusters(demofiles, clusterfiles, new_xyz, curr_step-1, init_tfm=init_tfm, DS_LEAF_SIZE = args.cloud_downsample)
 
             seg_info = demofiles[dnum][demo_name][seg_name]
             redprint("closest demo: %i, %s, %s"%(dnum, demo_name, seg_name))
@@ -1333,6 +1334,7 @@ if __name__ == "__main__":
     parser.add_argument("--parallel", type=int, default=1)
     parser.add_argument("--cloud", type=int, default=0)
     parser.add_argument("--downsample", help="downsample traj.", type=int, default=1)
+    parser.add_argument("--rope_scale_factor", help="scale rope.", type=float, default=1.0)
     
     parser.add_argument("--prompt", action="store_true")
     parser.add_argument("--show_neighbors", action="store_true")
