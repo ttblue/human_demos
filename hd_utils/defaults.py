@@ -128,8 +128,8 @@ Stuff for testing on cloud:
 """
 testing_h5s_dir        =  osp.join(data_dir, 'testing_h5s')
 init_state_pertubs_dir = osp.join(data_dir, 'init_state_perturbs')
-
-
+testing_results_dir    = osp.join(data_dir, 'testing_results')
+testing_commands_dir   = osp.join(data_dir, 'testing_commands')
 
 ## CAD model numbers:
 #  77.83mm
