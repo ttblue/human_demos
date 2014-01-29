@@ -5,7 +5,7 @@ from hd_utils.defaults import testing_commands_dir, testing_results_dir
 import argparse
 import cPickle as cp
 import numpy as np
-import os.path as osp
+import os.path as osp, os
 from hd_utils.colorize import colorize
 import math
 from hd_evaluate.call_run_test import run_sim_test
@@ -14,6 +14,12 @@ from hd_evaluate.call_run_test import run_sim_test
 def save_results(results):
     for res in results:
         save_path = osp.join(testing_results_dir, res['state_save_fname'])
+
+        ## make directories to save results in:
+        save_dir = osp.dirname(save_path)
+        if not osp.exists(save_dir):
+            os.makedirs(save_dir)
+
         with open(save_path, 'w') as f:
             cp.dump(res, f)
 
