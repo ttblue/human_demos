@@ -1420,7 +1420,10 @@ def main():
         if args.select == "clusters":
             clusterfile.close()
     
-    state_file_name = osp.join(demo_files_dir, args.demo_type, args.state_save_dir, args.demo_name+"_"+args.perturb_name+".cp")
+    state_file_dir = osp.join(demo_files_dir, args.demo_type, args.state_save_dir)
+    if not osp.exists(state_file_dir):
+        os.mkdir(state_file_dir)
+    state_file_name  = osp.join(state_file_dir, args.demo_name+"_"+args.perturb_name+".cp")
     with open(state_file_name, "w") as f:
         data = {"demo_name": args.demo_name, "perturb_name": args.perturb_name, "seg_info": seg_env_state}
         cPickle.dump(data, f)
