@@ -202,7 +202,7 @@ def main(demo_type, num_segs=None):
     iden = ''
     if num_segs is not None:
         iden = str(num_segs)
-    cost_file = osp.join(similarity_costs_dir, demo_type)+iden+'.costs'
+    cost_file = osp.join(demo_files_dir, demo_type)+demo_type+iden+'.costs'
     
     keys, segs = extract_segs(demofile, num_segs)
     save_costs_symmetric(segs, keys, cost_file, num_segs)

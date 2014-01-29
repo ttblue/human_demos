@@ -198,7 +198,8 @@ if not args.no_clouds:
                 fig.clf()
                 ax = fig.gca(projection='3d')
                 ax.set_autoscale_on(False)
-                ax.plot(xyz[:,0], xyz[:,1], xyz[:,2], 'o')
+                xyzm = np.mean(xyz, axis=0)
+                ax.plot(xyz[:,0]-xyzm[0], xyz[:,1]-xyzm[1], xyz[:,2]-xyzm[2], 'o')
                 fig.show()
                 print demo_name, seg_name
                 q = raw_input("Hit c to change the pc. q to exit")
@@ -222,7 +223,9 @@ if not args.no_clouds:
                 fig.clf()
                 ax = fig.gca(projection='3d')
                 ax.set_autoscale_on(False)
-                ax.plot(xyz2[:,0], xyz2[:,1], xyz2[:,2], 'o')
+                xyzm2 = np.mean(xyz2, axis=0)
+                ax.plot(xyz2[:,0]-xyzm2[0], xyz2[:,1]-xyzm2[1], xyz2[:,2]-xyzm2[2], 'o')
+                #ax.plot(xyz2[:,0], xyz2[:,1], xyz2[:,2], 'o')
                 fig.show()
                 print demo_name, seg_name
                 print "Before", xyz.shape

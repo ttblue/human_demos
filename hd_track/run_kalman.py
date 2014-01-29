@@ -121,8 +121,10 @@ def get_first_state(tf_streams, freq, start_time):
         for i in xrange(n_streams):
             tfs, ts = tf_streams[i].get_data()
             for ti, t in enumerate(ts):
-                if t <= 3*dt + start_time:
+                if t <= 4*dt + start_time:
                     tfs0.append(tfs[ti])
+        import IPython
+        IPython.embed()
 
                 
     I3 = np.eye(3)
