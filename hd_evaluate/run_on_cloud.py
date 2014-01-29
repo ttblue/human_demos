@@ -35,6 +35,8 @@ def call_on_cloud(cmd_params, core_type, num_batches, start_batch_num, end_batch
         print colorize("got results for batch %d/%d "%(i, len(batch_edges)))
         save_results(res)
 
+#### maybe make this a shell command and save to a file and use cloud.files...
+
 
 if __name__=='__main__':
     parser = argparse.ArgumentParser(description="P/NP App")
