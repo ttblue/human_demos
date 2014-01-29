@@ -55,7 +55,7 @@ for env_state_file in env_state_files:
             scipy.misc.imsave(env_img_fname, env_img)
             snapshots.append(env_img)
     
-    bigimg = cpu.tile_images(snapshots, int(math.ceil(len(snapshots)/10.0)), 10, max_width=2000)
+    bigimg = cpu.tile_images(snapshots, int(math.ceil(len(snapshots)/4.0)), 4, max_width=2500)
     bigimg_fname = osp.join(snapshot_dir, 'composite.jpg')
     scipy.misc.imsave(bigimg_fname, bigimg)
 

@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>2092</width>
-    <height>1310</height>
+    <width>2568</width>
+    <height>1475</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -17,8 +17,8 @@
    <widget class="QPushButton" name="failButton">
     <property name="geometry">
      <rect>
-      <x>860</x>
-      <y>1070</y>
+      <x>1130</x>
+      <y>1360</y>
       <width>151</width>
       <height>71</height>
      </rect>
@@ -46,8 +46,8 @@
    <widget class="QPushButton" name="passButton">
     <property name="geometry">
      <rect>
-      <x>1190</x>
-      <y>1070</y>
+      <x>1460</x>
+      <y>1360</y>
       <width>151</width>
       <height>71</height>
      </rect>
@@ -73,8 +73,8 @@
    <widget class="QPushButton" name="pnpButton">
     <property name="geometry">
      <rect>
-      <x>1030</x>
-      <y>1070</y>
+      <x>1300</x>
+      <y>1360</y>
       <width>141</width>
       <height>71</height>
      </rect>
@@ -99,10 +99,10 @@
    <widget class="QLabel" name="imgLabel">
     <property name="geometry">
      <rect>
-      <x>40</x>
-      <y>20</y>
-      <width>2000</width>
-      <height>1000</height>
+      <x>30</x>
+      <y>30</y>
+      <width>2500</width>
+      <height>1300</height>
      </rect>
     </property>
     <property name="frameShape">
@@ -115,8 +115,8 @@
    <widget class="QLabel" name="runLabel">
     <property name="geometry">
      <rect>
-      <x>640</x>
-      <y>1080</y>
+      <x>910</x>
+      <y>1370</y>
       <width>151</width>
       <height>61</height>
      </rect>

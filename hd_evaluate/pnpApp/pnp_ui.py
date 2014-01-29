@@ -2,7 +2,7 @@
 
 # Form implementation generated from reading ui file 'pnp.ui'
 #
-# Created: Tue Jan 28 16:27:16 2014
+# Created: Tue Jan 28 17:14:10 2014
 #      by: PyQt4 UI code generator 4.9.1
 #
 # WARNING! All changes made in this file will be lost!
@@ -17,11 +17,11 @@ except AttributeError:
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
         MainWindow.setObjectName(_fromUtf8("MainWindow"))
-        MainWindow.resize(2092, 1310)
+        MainWindow.resize(2568, 1475)
         self.centralwidget = QtGui.QWidget(MainWindow)
         self.centralwidget.setObjectName(_fromUtf8("centralwidget"))
         self.failButton = QtGui.QPushButton(self.centralwidget)
-        self.failButton.setGeometry(QtCore.QRect(860, 1070, 151, 71))
+        self.failButton.setGeometry(QtCore.QRect(1130, 1360, 151, 71))
         font = QtGui.QFont()
         font.setPointSize(18)
         self.failButton.setFont(font)
@@ -32,7 +32,7 @@ class Ui_MainWindow(object):
 ""))
         self.failButton.setObjectName(_fromUtf8("failButton"))
         self.passButton = QtGui.QPushButton(self.centralwidget)
-        self.passButton.setGeometry(QtCore.QRect(1190, 1070, 151, 71))
+        self.passButton.setGeometry(QtCore.QRect(1460, 1360, 151, 71))
         font = QtGui.QFont()
         font.setPointSize(18)
         self.passButton.setFont(font)
@@ -43,7 +43,7 @@ class Ui_MainWindow(object):
 ""))
         self.passButton.setObjectName(_fromUtf8("passButton"))
         self.pnpButton = QtGui.QPushButton(self.centralwidget)
-        self.pnpButton.setGeometry(QtCore.QRect(1030, 1070, 141, 71))
+        self.pnpButton.setGeometry(QtCore.QRect(1300, 1360, 141, 71))
         font = QtGui.QFont()
         font.setPointSize(18)
         self.pnpButton.setFont(font)
@@ -53,12 +53,12 @@ class Ui_MainWindow(object):
 ""))
         self.pnpButton.setObjectName(_fromUtf8("pnpButton"))
         self.imgLabel = QtGui.QLabel(self.centralwidget)
-        self.imgLabel.setGeometry(QtCore.QRect(40, 20, 2000, 1000))
+        self.imgLabel.setGeometry(QtCore.QRect(30, 30, 2500, 1300))
         self.imgLabel.setFrameShape(QtGui.QFrame.Box)
         self.imgLabel.setText(_fromUtf8(""))
         self.imgLabel.setObjectName(_fromUtf8("imgLabel"))
         self.runLabel = QtGui.QLabel(self.centralwidget)
-        self.runLabel.setGeometry(QtCore.QRect(640, 1080, 151, 61))
+        self.runLabel.setGeometry(QtCore.QRect(910, 1370, 151, 61))
         self.runLabel.setText(_fromUtf8(""))
         self.runLabel.setAlignment(QtCore.Qt.AlignRight|QtCore.Qt.AlignTrailing|QtCore.Qt.AlignVCenter)
         self.runLabel.setObjectName(_fromUtf8("runLabel"))
