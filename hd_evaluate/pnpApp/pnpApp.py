@@ -92,9 +92,9 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="P/NP App")
     parser.add_argument("--demo_type", type=str)
     args = parser.parse_args()
-    
+
     env_state_dir   = osp.join(demo_files_dir, args.demo_type, 'test_env_states')
-    
+
     app  = QtGui.QApplication(sys.argv)
     form = pnpApp(env_state_dir)
     form.show()

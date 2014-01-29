@@ -125,9 +125,6 @@ from hd_utils.defaults import demo_files_dir, hd_data_dir, asus_xtion_pro_f, \
         tfm_head_dof, tfm_bf_head, tfm_gtf_ee, cad_files_dir
 
 
-
-
-
 cloud_proc_mod = importlib.import_module(args.cloud_proc_mod)
 cloud_proc_func = getattr(cloud_proc_mod, args.cloud_proc_func)
 hitch_proc_func = getattr(cloud_proc_mod, "extract_hitch")

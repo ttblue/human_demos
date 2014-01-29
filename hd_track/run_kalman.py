@@ -126,6 +126,8 @@ def get_first_state(tf_streams, freq, start_time):
         import IPython
         IPython.embed()
 
+#     import IPython
+#     IPython.embed()
                 
     I3 = np.eye(3)
     S0 = scl.block_diag(1e-3*I3, 1e-2*I3, 1e-3*I3, 1e-3*I3)

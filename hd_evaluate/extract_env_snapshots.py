@@ -41,7 +41,7 @@ for env_state_file in env_state_files:
     for i in xrange(num_segs):
         num_mini_segs = len(state_dat['seg_info'][i])
         for j in xrange(num_mini_segs):
-            
+
             robot_tfm, robot_dofs, rope_nodes = state_dat['seg_info'][i][j]
             rope_pr2_viz.set_robot_pose(robot_dofs, robot_tfm)
 
@@ -54,9 +54,7 @@ for env_state_file in env_state_files:
             env_img_fname = osp.join(snapshot_dir, '%d_%d.jpg'%(i,j))
             scipy.misc.imsave(env_img_fname, env_img)
             snapshots.append(env_img)
-    
+
     bigimg = cpu.tile_images(snapshots, int(math.ceil(len(snapshots)/4.0)), 4, max_width=2500)
     bigimg_fname = osp.join(snapshot_dir, 'composite.jpg')
     scipy.misc.imsave(bigimg_fname, bigimg)
-
-            
