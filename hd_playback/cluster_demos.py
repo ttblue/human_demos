@@ -279,7 +279,7 @@ def main(demo_type, n_clusters, num_seg=None):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--demo_type",help="Demo type.", type=str)
-    parser.add_argument("--num_clusters", type=int)
+    parser.add_argument("--num_clusters",default=30, type=int)
     parser.add_argument("--num_segs", type=int, default=-1)
     parser.add_argument("--save", action="store_true", default=False)
     parser.add_argument("--visualize", action="store_true", default=False)
