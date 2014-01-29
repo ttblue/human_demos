@@ -663,9 +663,9 @@ def main(pargs):
 
     init_state_h5file = h5py.File(args.init_state_h5+".h5", "r")
 
-    if use_diff_length:        
+    if use_diff_length:
         demo_data_dir  = osp.join(testing_h5s_dir, args.demo_type)
-        demo_h5files   = [osp.join(demo_data_dir, "%s%d"%(args.demo_type, l),  "%s%d.h5"%(args.demo_type,l)) for l in get_rope_lengths(args.demo_type)]
+        demo_h5files   = [osp.join(demo_data_dir, "%s_len%d.h5"%(args.demo_data_h5_prefix,l)) for l in get_rope_lengths(args.demo_type)]
         demofiles      = [h5py.File(demofile, 'r') for demofile in demo_h5files]
         if len(demofiles) == 1: 
             demofile = demofiles
@@ -678,7 +678,7 @@ def main(pargs):
 
     if args.select == "clusters":
         if use_diff_length:
-            c_h5files = [osp.join(demotype_dir, demo_type+"_clusters.h5") for demotype_dir, demo_type in zip(demotype_dirs,demo_types)]
+            c_h5files = [osp.join(demo_data_dir, "%s_len%d_clusters.h5"%(args.demo_data_h5_prefix,l)) for l in get_rope_lengths(args.demo_type)]
             clusterfiles = [h5py.File(c_h5file, 'r') for c_h5file in c_h5files]
         else:
             c_h5file = osp.join(demotype_dir, args.demo_type+"_clusters.h5")

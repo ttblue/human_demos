@@ -78,7 +78,6 @@ new_pert_file = 'new_perturb.cp'
 cad_files_dir = osp.join(hd_data_dir, 'cad_models')
 
 
-
 similarity_costs_dir = osp.join(hd_data_dir,'sim_costs')
 matrix_file = '%s_matrix.cp'
 

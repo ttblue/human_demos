@@ -117,15 +117,10 @@ def cluster_and_rank_demos(sm, n_clusters, eigen_solver='arpack', assign_labels=
     # Maybe re-cluster large demos
     return rank_demos_in_cluster(clusters, sm)
 
-def gen_h5_clusters (demo_type, cluster_data, keys, file_path=None):
+def gen_h5_clusters (hdf, cluster_data, keys):
     """
     Save .h5 file.
     """
-    if file_path is not None:
-        hdf = h5py.File(file_path,'w')
-    else:
-        cluster_path = osp.join(demo_files_dir, demo_type, demo_type+'_clusters.h5')
-        hdf = h5py.File(cluster_path,'w')
     
     cgroup = hdf.create_group('clusters')
     for cluster in cluster_data:
@@ -135,16 +130,8 @@ def gen_h5_clusters (demo_type, cluster_data, keys, file_path=None):
     for key in keys:
         kgroup[str(key)] = keys[key] 
 
-def cluster_demos (demo_type, n_clusters, save_to_file=False, visualize=False, file_path=None):
-    """
-    Clusters and ranks demos.
-    """
-    demofile = h5py.File(osp.join(demo_files_dir, demo_type, demo_type+'.h5'), 'r')
-    print "Loaded demo."
-    cost_file = osp.join(demo_files_dir, demo_type, demo_type)+'.costs'
-    costs = get_costs(cost_file)
-    print "Loaded costs."
  
+def cluster_demos (demofile, costs, n_clusters, visualize=False):
     seg_num = 0
     keys = {}
     for demo_name in demofile:
@@ -198,12 +185,53 @@ def cluster_demos (demo_type, n_clusters, save_to_file=False, visualize=False, f
             elif kb == 1048689 or kb == 113:
                 break
     
+    return cdata, keys
+
+
+def cluster_demos_type (demo_type, n_clusters, save_to_file=False, visualize=False, file_path=None):
+    """
+    Clusters and ranks demos.
+    """
+    demofile = h5py.File(osp.join(demo_files_dir, demo_type, demo_type+'.h5'), 'r')
+    print "Loaded demo."
+    cost_file = osp.join(demo_files_dir, demo_type, demo_type)+'.costs'
+    costs = get_costs(cost_file)
+    print "Loaded costs."
+    
+    cdata, keys = cluster_demos(demofile, costs, n_clusters, visualize=False)
     
     if save_to_file:
-        gen_h5_clusters(demo_type, cdata, keys, file_path)
+        if file_path is not None:
+            hdf = h5py.File(file_path,'w')
+        else:
+            cluster_path = osp.join(demo_files_dir, demo_type, demo_type+'_clusters.h5')
+            hdf = h5py.File(cluster_path,'w')
+        gen_h5_clusters(hdf, cdata, keys, file_path)
+        hdf.close()
+    else:
+        return cdata
+
+def cluster_demos_from_file (demo_file_path, cost_file, n_clusters, visualize=False, save_file_path=None, save_to_file=False):
+    """
+    Clusters and ranks demos.
+    """
+    demofile = h5py.File(demo_file_path, 'r')
+    print "Loaded demo."
+    cost_file = cost_file
+    costs = get_costs(cost_file)
+    print "Loaded costs."
+    
+    cdata, keys = cluster_demos(demofile, costs, n_clusters, visualize=False)
+    
+    if save_to_file:
+        if save_file_path is None:
+            save_file_path = demo_file_path[:-3] + '_clusters.h5'
+        hdf = h5py.File(save_file_path,'w')
+        gen_h5_clusters(hdf, cdata, keys)
     else:
         return cdata
     
+  
 def main(demo_type, n_clusters, num_seg=None):
     demofile = h5py.File(osp.join(demo_files_dir, demo_type, demo_type+'.h5'), 'r')
     print "Loaded file."
@@ -284,12 +312,22 @@ if __name__ == "__main__":
     parser.add_argument("--demo_type",help="Demo type.", type=str)
     parser.add_argument("--num_clusters",default=30, type=int)
     parser.add_argument("--num_segs", type=int, default=-1)
+    
+    parser.add_argument("--demo_file", help="path to demo.h5 file.", type=str, default="")
+    parser.add_argument("--cost_file", help="path to cost file.", type=str, default="")
+    parser.add_argument("--save_file", help="path to save to.", type=str, default="")
+    
     parser.add_argument("--save", action="store_true", default=False)
     parser.add_argument("--visualize", action="store_true", default=False)
     args = parser.parse_args()
 
     if args.save:
-        cluster_demos (args.demo_type, args.num_clusters, save_to_file=True, visualize=args.visualize)
+        if args.demo_file == "" or args.cost_file == "":
+            cluster_demos_type (args.demo_type, args.num_clusters, save_to_file=True, visualize=args.visualize)
+        else:
+            sfp = args.save_file if args.save_file != "" else None
+            cluster_demos_from_file (args.demo_file, args.cost_file, args.num_clusters, visualize=args.visualize, save_file_path=sfp, save_to_file=True)
+
     else:    
         if args.num_segs < 0:
             ns = None
