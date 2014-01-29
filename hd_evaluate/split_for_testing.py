@@ -143,7 +143,7 @@ def generate_test_cmdline_params(demo_type, generate_h5s=False):
                         demo_data_h5_prefix = "size%d_set%d"%(ndemos, demo_set+1)
                         init_state_h5       = init_perturbation_map[demo_type]
                         rope_scaling_factor = sample_rope_scaling(rope_lengths)
-                        results_fname       = osp.join(demo_type, "%d_demos"%ndemos, "initset%d_demoset%d"%(init_set+1, demo_set+1), "perturb_%s_%s.cp"%(init_demo_name, init_seg_name))
+                        results_fname       = osp.join(demo_type, "%d_demos"%ndemos, "initset%d_demoset%d"%(init_set+1, demo_set+1), "perturb_%s_%s.cp"%(init_demo_name, init_perturb_name))
                         cmdline_params.append([ndemos,
                                                demo_type,
                                                demo_data_h5_prefix,
