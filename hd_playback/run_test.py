@@ -68,7 +68,7 @@ parser.add_argument("--tps_n_iter", type=int, default=50)
 parser.add_argument("--closest_rope_hack", action="store_true", default=False)
 parser.add_argument("--closest_rope_hack_thresh", type=float, default=0.01)
 parser.add_argument("--cloud_downsample", type=float, default=.01)
-parser.add_argument("--state_saver_dir", type=str)
+parser.add_argument("--state_save_dir", type=str, default='test_env_states')
 
 
 
@@ -1400,8 +1400,7 @@ def main():
         seg_env_state.append(seg_state) 
 
             #if not success: break
-            
-            
+
         if args.simulation:
             Globals.sim.settle(animate=args.animation)
 
@@ -1411,6 +1410,7 @@ def main():
         redprint("Demo %s Segment %s result: %s"%(demo_name, seg_name, success))
 
     init_state_h5file.close()
+
     if use_diff_length:
         for demofile in demofiles: demofile.close()
         if args.select == "clusters":
@@ -1420,14 +1420,11 @@ def main():
         if args.select == "clusters":
             clusterfile.close()
     
-    import cPickle as cp
-    state_file_name = osp.join(demo_files_dir, args.demo_type, osp.splitext(osp.basename(args.init_state_h5))[0], args.demo_name+"_"+args.perturb_name+".cp")
-    print state_file_name
+    state_file_name = osp.join(demo_files_dir, args.demo_type, args.state_save_dir, args.demo_name+"_"+args.perturb_name+".cp")
     with open(state_file_name, "w") as f:
-        data= {"demo_name": args.demo_name, "perturb_name": args.perturb_name, "seg_info": seg_env_state}
-        cp.dump(data, f)
-    
-        
+        data = {"demo_name": args.demo_name, "perturb_name": args.perturb_name, "seg_info": seg_env_state}
+        cPickle.dump(data, f)
+
 
 if __name__ == "__main__":
     main()
