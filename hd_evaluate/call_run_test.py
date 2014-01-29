@@ -35,9 +35,9 @@ class SimArgs:
     select = "clusters"
     friction = 30.0   
     max_steps_before_failure = 5
-    tps_bend_cost_init  = 10
-    tps_bend_cost_final = 0.1
-    tps_n_inter         = 50
+    tps_bend_cost_init  = 0.1
+    tps_bend_cost_final = 0.001
+    tps_n_iter          = 50
     cloud_downsample    = 0.02
     
     ndemos              = -1

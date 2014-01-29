@@ -53,8 +53,8 @@ from hd_utils.defaults import demo_files_dir, hd_data_dir, asus_xtion_pro_f, \
         ar_init_dir, ar_init_demo_name, ar_init_playback_name, \
         tfm_head_dof, tfm_bf_head, tfm_gtf_ee, cad_files_dir
         
-from hd_utils.defaults import testing_h5_dir, init_state_perturbs_dir
-from hd_evalulate.split_for_testing import get_rope_lengths
+from hd_utils.defaults import testing_h5s_dir, init_state_pertubs_dir
+from hd_evaluate.split_for_testing import get_rope_lengths
 
 class Globals:
     robot  = None
@@ -661,7 +661,10 @@ def main(pargs):
     
     use_diff_length = args.use_diff_length
 
-    init_state_h5file = h5py.File(args.init_state_h5+".h5", "r")
+
+    init_state_h5file = osp.join(init_state_pertubs_dir, args.init_state_h5+"_perturb.h5") 
+    print init_state_h5file
+    init_state_h5file = h5py.File(init_state_h5file, "r")
 
     if use_diff_length:
         demo_data_dir  = osp.join(testing_h5s_dir, args.demo_type)
