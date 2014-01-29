@@ -1397,7 +1397,7 @@ def main():
                 if args.execution:
                     time.sleep(5)
             
-            seg_env_state.append(seg_state) 
+        seg_env_state.append(seg_state) 
 
             #if not success: break
             
