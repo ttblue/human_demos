@@ -141,7 +141,7 @@ def cluster_demos (demo_type, n_clusters, save_to_file=False, visualize=False, f
     """
     demofile = h5py.File(osp.join(demo_files_dir, demo_type, demo_type+'.h5'), 'r')
     print "Loaded demo."
-    cost_file = osp.join(similarity_costs_dir, demo_type)+'.costs'
+    cost_file = osp.join(demo_files_dir, demo_type, demo_type)+'.costs'
     costs = get_costs(cost_file)
     print "Loaded costs."
  
