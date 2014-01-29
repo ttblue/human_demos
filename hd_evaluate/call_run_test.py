@@ -64,4 +64,7 @@ def run_sim_test(cmdline_params):
     SimArgs.rope_scaling_factor = cmdline_params[6]
     SimArgs.state_save_fname    = cmdline_params[7]
     
+    if SimArgs.ndemos==12:
+        SimArgs.select="auto"
+
     return run_test.main(SimArgs)
