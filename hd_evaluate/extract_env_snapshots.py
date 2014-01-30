@@ -3,10 +3,6 @@
 Script to visualize the rope and robot state in openrave viewer.
 """
 import argparse
-usage="Script to generate snapshots of the environment state\n\tpython save_env_snapshots --demo_type_dir=dir"
-parser = argparse.ArgumentParser(usage=usage)
-parser.add_argument("--demo_type", type=str)
-args = parser.parse_args()
 
 import os, numpy as np, h5py, time, os.path as osp
 import cPickle as cp
@@ -59,13 +55,13 @@ def save_snapshots_from_cloud(cloud_results):
         
         if not osp.exists(save_dir):
             os.makedirs(save_dir)
-        
+
         scipy.misc.imsave(osp.join(save_dir, 'composite.jpg'), composite_mat)
         for snapshot_fname, snapshot_mat in snapshots.items():
             scipy.misc.imsave(osp.join(save_dir, snapshot_fname), snapshot_mat)  
 
 
-def extract_snapshots_on_cloud(demo_type, core_type='c2'):
+def extract_snapshots_on_cloud(demo_type, core_type):
     """
     runs snapshot extraction on the cloud and saves the result on local machine. 
     """
@@ -73,15 +69,16 @@ def extract_snapshots_on_cloud(demo_type, core_type='c2'):
     env_state_files  = find_recursive(demo_testing_dir, '*.cp')
     
     state_infos = []
-    for env_state_file in env_state_files:
-        seg_info = cp.load(open(env_state_file,"r"))['seg_info']
-        save_dir = osp.join(osp.dirname(env_state_file),  'snapshots', osp.splitext(osp.basename(env_state_file))[0])
-
+    for env_state_file in env_state_files[0:2]:
+        with open(env_state_file,"r") as fh:
+            seg_info = cp.load(fh)['seg_info']
+    
         if seg_info == None:
             continue
 
+        save_dir = osp.join(osp.dirname(env_state_file),  'snapshots', osp.splitext(osp.basename(env_state_file))[0])        
         state_infos.append((seg_info, save_dir))
-        
+
     print colorize("calling on cloud..", "yellow", True)
     jids = cloud.map(get_state_snapshots, state_infos, _env='RSS3', _type=core_type)
     res  = cloud.result(jids)
@@ -91,10 +88,10 @@ def extract_snapshots_on_cloud(demo_type, core_type='c2'):
             
 if __name__=='__main__':
     parser = argparse.ArgumentParser(description="Snapshots on Cloud")
+    parser.add_argument("--core_type", type=str)
     parser.add_argument("--demo_type", type=str)
-    parser.add_argument("--instance_type", type=str, default='c2')
     args = parser.parse_args()
 
-    extract_snapshots_on_cloud(args.demo_type, args.instance_type)
+    extract_snapshots_on_cloud(args.demo_type, args.core_type)
 
     

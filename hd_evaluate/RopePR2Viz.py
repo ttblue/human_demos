@@ -20,6 +20,8 @@ class RopePR2Viz(object):
         self.env.Load(osp.join(cad_files_dir, 'table_sim.xml'))
         self.env.Load("robots/pr2-beta-static.zae")
         self.env.SetViewer('qtcoin', False)
+        print self.env.GetViewer()
+
         self.robot = self.env.GetRobots()[0]
         
         self.cam_tfm = openravepy.matrixFromAxisAngle(np.pi*np.array([-0.7,0.7,0]))
