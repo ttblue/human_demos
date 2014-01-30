@@ -43,6 +43,7 @@ def find_path_through_point_cloud(xyzs, plotting=False, perturb_peak_dist=None, 
         if node%2 == 0: total_path.extend(segs[node//2])
         else: total_path.extend(segs[node//2][::-1])
 
+    print np.array([S.node[i]["xyz"] for i in total_path])
     total_path_3d = remove_duplicate_rows(np.array([S.node[i]["xyz"] for i in total_path]))
 
     # perturb the path, if requested
