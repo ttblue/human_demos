@@ -716,13 +716,12 @@ def main(pargs):
     # As found from measuring
     if not args.remove_table:
         a= osp.join(cad_files_dir, 'table.xml')
-        print a
         if args.execution:
             Globals.env.Load(osp.join(cad_files_dir, 'table.xml'))
         else:
             Globals.env.Load(osp.join(cad_files_dir, 'table_sim.xml'))
         body = Globals.env.GetKinBody('table')
-        
+
         if Globals.viewer:
             Globals.viewer.SetTransparency(body,0.4)
 
@@ -859,8 +858,7 @@ def main(pargs):
                 hmat[:3,3] = args.fake_data_transform[0:3]
                 if args.use_ar_init: hmat = init_tfm.dot(hmat)
                 #Hack to get it above the table
-                if hmat[2,3] < 0.1: hmat[2,3] = 0.1 
-        
+       
                 # if not rope simulation
                 new_xyz = new_xyz.dot(hmat[:3,:3].T) + hmat[:3,3][None,:]
                 

@@ -28,7 +28,7 @@ class RopePR2Viz(object):
         self.cam_tfm[:3,3] = np.array([0.5,0.0, 2])
         
         self.rope  = None
-        self.hide_links()
+        #self.hide_links()
         
 
     def hide_links(self):
