@@ -308,6 +308,13 @@ def registration_cost(xyz0, xyz1):
     return cost
 
 
+def append_to_dict_list(dic, key, item):
+    if key in dic.keys():
+        dic[key].append(item)
+    else:
+        dic[key] = [item]
+
+
 def find_closest_auto(demofiles, new_xyz, sim_seg_num, init_tfm=None, n_jobs=3, seg_proximity=2, DS_LEAF_SIZE=0.02):
     """
     sim_seg_num   : is the index of the segment being executed in the simulation: used to find 
@@ -350,7 +357,7 @@ def find_closest_auto(demofiles, new_xyz, sim_seg_num, init_tfm=None, n_jobs=3, 
                     demo_xyz = clouds.downsample(np.asarray(demofile[demo_name][seg_name]["cloud_xyz"]),DS_LEAF_SIZE)
                     if init_tfm is not None:
                         demo_xyz = demo_xyz.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
-                    print demo_xyz.shape
+                    #print demo_xyz.shape
                     avg += demo_xyz.shape[0]
                     demo_clouds.append(demo_xyz)
         demotype_num +=1
@@ -393,14 +400,7 @@ def find_closest_auto(demofiles, new_xyz, sim_seg_num, init_tfm=None, n_jobs=3, 
 
 """
 Might need to debug this.
-"""
-
-def append_to_dict_list(dic, key, item):
-    if key in dic.keys():
-        dic[key].append(item)
-    else:
-        dic[key] = [item]
-          
+"""       
 def find_closest_clusters(demofiles, clusterfiles, new_xyz, sim_seg_num, seg_proximity=2, init_tfm=None, check_n=3, n_jobs=3, DS_LEAF_SIZE=0.02):
     if args.parallel:
         from joblib import Parallel, delayed
@@ -858,6 +858,8 @@ def main(pargs):
                 hmat = openravepy.matrixFromAxisAngle(args.fake_data_transform[3:6])
                 hmat[:3,3] = args.fake_data_transform[0:3]
                 if args.use_ar_init: hmat = init_tfm.dot(hmat)
+                #Hack to get it above the table
+                if hmat[2,3] < 0.1: hmat[2,3] = 0.1 
         
                 # if not rope simulation
                 new_xyz = new_xyz.dot(hmat[:3,:3].T) + hmat[:3,3][None,:]

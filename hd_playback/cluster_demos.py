@@ -20,8 +20,8 @@ Clusters based on costs in file.
 # Weights for different costs
 weights = {}
 weights['tps'] = 1.0
-weights['traj'] = 0.6
-weights['traj_f'] = 0.6
+weights['traj'] = 0.3
+weights['traj_f'] = 0.3
 
 
 

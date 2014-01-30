@@ -6,7 +6,7 @@ class SimArgs:
     cloud_proc_func = "extract_red"
     cloud_proc_mod  = "hd_utils.cloud_proc_funcs"
     execution  = 0
-    animation  = 0
+    animation  = 1
     simulation = 1
     parallel   = 3
     downsample = 1
