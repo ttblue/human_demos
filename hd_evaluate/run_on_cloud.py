@@ -27,27 +27,28 @@ def save_results(results):
 def call_on_cloud(cmd_params, core_type, num_batches, start_batch_num, end_batch_num):
     ntests = len(cmd_params)
     batch_size = int(math.ceil(ntests/(num_batches+0.0)))
-    
+
     batch_edges = batch_size*np.array(xrange(num_batches))[start_batch_num : end_batch_num]
     
+    iter = 0
     for i in xrange(len(batch_edges)):
+        if iter == 1 : break
         if i==len(batch_edges)-1:
             cmds = cmd_params[batch_edges[i]:]
         else:
             cmds = cmd_params[batch_edges[i]:min(batch_edges[i+1], len(cmd_params))]
 
-        jids = cloud.map(run_sim_test, cmds, _env='RSS-10k', _type=core_type)
+        jids = cloud.map(run_sim_test, cmds[0:2], _vol='rss_dat', _env='RSS3', _type=core_type)
         res  = cloud.result(jids)
         print colorize("got results for batch %d/%d "%(i, len(batch_edges)))
         save_results(res)
+        iter += 1
 
 #### maybe make this a shell command and save to a file and use cloud.files...
-
-
 if __name__=='__main__':
     parser = argparse.ArgumentParser(description="P/NP App")
     parser.add_argument("--demo_type", type=str)
-    parser.add_argument("--num_batches", help="run NUM_BATCHES chunks of tests one-by-one",type=int, default=10)
+    parser.add_argument("--num_batches", help="run NUM_BATCHES chunks of tests one-by-one",type=int, default=100)
     parser.add_argument("--start_batch_num", type=int, default=1)
     parser.add_argument("--end_batch_num", type=int, default=100)
     parser.add_argument("--instance_type", type=str, default='f2')
