@@ -858,7 +858,6 @@ def main(pargs):
                 hmat[:3,3] = args.fake_data_transform[0:3]
                 if args.use_ar_init: hmat = init_tfm.dot(hmat)
                 #Hack to get it above the table
-       
                 # if not rope simulation
                 new_xyz = new_xyz.dot(hmat[:3,:3].T) + hmat[:3,3][None,:]
                 
@@ -867,6 +866,11 @@ def main(pargs):
                     rope_nodes = rope_initialization.find_path_through_point_cloud(new_xyz)
                     if args.rope_scaling_factor != 1.0:
                         rope_nodes =  cu.scale_rope(rope_nodes, args.rope_scaling_factor, center=True)
+                    print rope_nodes.mean(axis=0)
+                    d_move = 0.43 - rope_nodes.min(axis=0)[2]
+                    if d_move > 0.0:
+                        v_move = np.array([0,0,d_move])
+                        rope_nodes = rope_nodes + v_move
                     Globals.sim.create(rope_nodes)
                     new_xyz = Globals.sim.observe_cloud(3)
                     new_xyz = clouds.downsample(new_xyz, args.cloud_downsample)
