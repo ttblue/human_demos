@@ -863,6 +863,7 @@ def main(pargs):
                 
                 # if the first step in rope simulation
                 if args.simulation: # curr_step == 1
+                    print new_xyz.shape
                     rope_nodes = rope_initialization.find_path_through_point_cloud(new_xyz)
                     if args.rope_scaling_factor != 1.0:
                         rope_nodes =  cu.scale_rope(rope_nodes, args.rope_scaling_factor, center=True)
