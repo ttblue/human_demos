@@ -25,7 +25,9 @@ init_perturbation_map = {'overhand_noik'  : 'overhand_noik',
                          'pile_hitch'     : 'pile_hitch160'}
 
 def get_rope_lengths(demo_type):
-    if 'hitch' in demo_type or demo_type in ['double_overhand', 'square_knot']:
+    if 'noik' in demo_type or 'training' in demo_type:
+        return [140]
+    elif 'hitch' in demo_type or demo_type in ['double_overhand', 'square_knot']:
         return [140, 160, 180]
     else:
         return [120,140,160]
@@ -111,8 +113,59 @@ def generate_testing_h5_files(demo_type, subset1, subset2, rope_lengths=[120,140
     for h5file in demo_h5_files.values():
         h5file.close()
 
+def generate_testing_h5_file_ik(demo_type, subset1, subset2):
+    """
+    demo_type : the type of the knot : {overhand, square-knot, ...}
+    subset1, subset2 : the splitting indices as returned by split_perturbations_into_two above
+    """
+    def copy_to_subset(parent_h5, child_h5, subset):
+        for idx in subset:
+            if idx >= len(parent_h5.keys()):
+                continue
+            pkey = parent_h5.keys()[idx]
+            parent_h5.copy(pkey, child_h5)
 
-def generate_test_cmdline_params(demo_type, generate_h5s=False):
+    rope_lengths = [140]
+    demo_h5_fnames = {l : osp.join(demo_files_dir, "%s"%(demo_type),  "%s.h5"%(demo_type)) for l in [140]}
+    demo_h5_files  = {}
+
+    for h5_fname in demo_h5_fnames.values():
+        if not osp.exists(h5_fname):
+            print colorize(" %s : does not exist. Exiting..."%h5_fname, "red", True)
+            sys.exit(-1)
+
+    for l in rope_lengths:
+        demo_h5_files[l] = h5py.File(demo_h5_fnames[l], 'r')
+
+    out_dir = osp.join(data_dir, "testing_h5s", demo_type)
+    if not osp.exists(out_dir):
+        os.mkdir(out_dir)
+    
+    num_lengths  = len(rope_lengths)
+    subset_sizes = np.array([np.sort(np.array(subset1.keys()))[2]])
+
+    cumm_subset_sizes = num_lengths * subset_sizes.astype(int)
+    for i,cumm_size in enumerate(cumm_subset_sizes):
+        for l in rope_lengths:
+            subset1_h5_name, subset2_h5_name = [osp.join(out_dir, "size%d_set%d.h5"%(cumm_size, x)) for x in [1,2]]
+            
+            subset1_h5_file = h5py.File(subset1_h5_name, 'w')
+            subset2_h5_file = h5py.File(subset2_h5_name, 'w')
+
+            copy_to_subset(demo_h5_files[l], subset1_h5_file, subset1[np.sort(subset1.keys())[i]])            
+            copy_to_subset(demo_h5_files[l], subset2_h5_file, subset2[np.sort(subset2.keys())[i]])
+
+            subset1_h5_file.close()
+            subset2_h5_file.close()
+            print colorize("saved : %s"%subset1_h5_name, "green", True)            
+            print colorize("saved : %s"%subset2_h5_name, "green", True)
+
+    for h5file in demo_h5_files.values():
+        h5file.close()
+
+
+
+def generate_test_cmdline_params(demo_type, generate_h5s=False, sizes = [50, 25, 4], use_ik=False):
     """
     saves ~6000 sets of command line arguments.
     """
@@ -120,10 +173,13 @@ def generate_test_cmdline_params(demo_type, generate_h5s=False):
     perturb_fname    = init_perturbation_map[demo_type] + '_perturb.h5'
     perturb_fname    = osp.join(perturbations_dir, perturb_fname)
     perturb_file     = h5py.File(perturb_fname, "r") 
-    subsets = split_pertubations_into_two(perturb_fname)
+    subsets = split_pertubations_into_two(perturb_fname, sizes)
 
     if generate_h5s:
-        generate_testing_h5_files(demo_type, subsets[0], subsets[1], rope_lengths)
+        if use_ik:
+            generate_testing_h5_file_ik(demo_type, subsets[0], subsets[1])
+        else:
+            generate_testing_h5_files(demo_type, subsets[0], subsets[1], rope_lengths)
 
     cmdline_params = []
     cmdline_dir = testing_commands_dir
