@@ -36,10 +36,13 @@ def call_on_cloud(cmd_params, core_type, num_batches, start_batch_num, end_batch
         else:
             cmds = cmd_params[batch_edges[i]:min(batch_edges[i+1], len(cmd_params))]
         print colorize("calling on cloud..", "yellow", True)
-        jids = cloud.map(run_sim_test, cmds, _vol='rss_dat', _env='RSS3', _type=core_type)
-        res  = cloud.result(jids)
-        print colorize("got results for batch %d/%d "%(i, len(batch_edges)), "green", True)
-        save_results(res)
+        try:
+            jids = cloud.map(run_sim_test, cmds, _vol='rss_dat', _env='RSS3', _type=core_type)
+            res  = cloud.result(jids)
+            print colorize("got results for batch %d/%d "%(i, len(batch_edges)), "green", True)
+            save_results(res)
+        except Exception as e:
+            print "Found exception %s. Not saving data for this demo."%e
 
 #### maybe make this a shell command and save to a file and use cloud.files...
 if __name__=='__main__':
