@@ -38,7 +38,9 @@ def call_on_cloud(cmd_params, core_type, num_batches, start_batch_num, end_batch
         else:
             cmds = cmd_params[batch_edges[i]:min(batch_edges[i+1], len(cmd_params))]
 
+        print colorize("calling on cloud..", "yellow", True)
         jids = cloud.map(run_sim_test, cmds[0:2], _vol='rss_dat', _env='RSS3', _type=core_type)
+        print jids
         res  = cloud.result(jids)
         print colorize("got results for batch %d/%d "%(i, len(batch_edges)))
         save_results(res)
