@@ -65,7 +65,7 @@ demo_files_dir  =  osp.join(data_dir, 'demos')
 Default names for files inside each demo directory and others.
 '''
 #ar_init_dir = osp.join(hd_data_dir,'ar_init')
-ar_init_dir = osp.join('/home/picloud/sources/human_demos/hd_data','ar_init')
+ar_init_dir = osp.join(hd_data_dir,'ar_init')
 ar_init_demo_name = 'demo.cp'
 ar_init_playback_name = 'playback.cp'
 
