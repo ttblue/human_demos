@@ -7,6 +7,8 @@ import argparse
 import os, numpy as np, h5py, time, os.path as osp
 import cPickle as cp
 import numpy as np
+import matplotlib.pyplot as plt
+
 from numpy.linalg import norm
 from RopePR2Viz import RopePR2Viz
 import scipy, math
@@ -85,6 +87,101 @@ def extract_snapshots_on_cloud(demo_type, core_type):
     print colorize("got snapshots from cloud for : %s. Saving..."%demo_type, "green", True)
     save_snapshots_from_cloud(res)
 
+
+
+def fig2data ( fig ):
+    """
+    @brief Convert a Matplotlib figure to a 4D numpy array with RGBA channels and return it
+    @param fig a matplotlib figure
+    @return a numpy 3D array of RGBA values
+    # draw the renderer
+    fig.canvas.draw ( ) 
+    w,h = fig.canvas.get_width_height()
+    buf = np.fromstring ( fig.canvas.tostring_argb(), dtype=np.uint8 )
+    buf.shape = ( w, h,4 )
+    buf = np.roll ( buf, 3, axis = 2 )
+    return buf
+    """
+    fig.canvas.draw()
+
+    # Now we can save it to a numpy array.
+    data = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8, sep='')
+    data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+    return data
+
+
+def get_image(rope_cloud, left, right):
+    plt.clf()
+    plt.subplots_adjust(left=0, right=1, top=1, bottom=0)
+    mid = np.mean(rope_cloud, axis=0)
+    rope_cloud -= mid[None,:]
+    left -= mid
+    right -= mid
+    plt.scatter([left[0], right[0]], [left[1], right[1]], color='r', s=100)
+    plt.hold(True)
+    plt.plot(rope_cloud[:,0], rope_cloud[:,1])
+    
+    #plt.scatter([left[0], right[0]], [left[1], right[1]], 'r')
+    #plt.hold(False)
+    plt.axis('equal')
+    return plt.gcf()
+    
+
+def render_local(state_info):
+    import openravepy as rave
+    env = rave.Environment()
+    
+    env.Load('robots/pr2-beta-static.zae')
+    pr2 = env.GetRobots()[0]
+    
+    
+    seg_info, save_dir = state_info
+    num_segs           = len(seg_info)
+
+    snapshots = {}
+    svals = []
+    composite = None
+    for i in xrange(num_segs):
+        num_mini_segs = len(seg_info[i])
+        for j in xrange(num_mini_segs):
+            robot_tfm, dofs, rope_nodes = seg_info[i][j]
+            pr2.SetDOFValues(dofs, range(len(dofs)))
+            ltf = pr2.GetManipulator('leftarm').GetEndEffectorTransform()[:3,3]
+            rtf = pr2.GetManipulator('rightarm').GetEndEffectorTransform()[:3,3]
+    
+            env_img = fig2data(get_image(rope_nodes, ltf, rtf))
+            snapshots['%d_%d.jpg'%(i,j)] = env_img
+            svals.append(env_img)
+            
+    
+    composite = cpu.tile_images(svals, int(math.ceil(len(snapshots)/4.0)), 4, max_width=2500)
+    return (composite, snapshots, save_dir)
+
+    
+def extract_snapshots_matplotlib_cloud(demo_type, core_type):
+    """
+    runs snapshot extraction on the cloud and saves the result on local machine. 
+    """
+    demo_testing_dir = osp.join(testing_results_dir, demo_type)
+    env_state_files  = find_recursive(demo_testing_dir, '*.cp')
+    
+    state_infos = []
+    for env_state_file in env_state_files:
+        with open(env_state_file,"r") as fh:
+            seg_info = cp.load(fh)['seg_info']
+    
+        if seg_info == None:
+            continue
+
+        save_dir = osp.join(osp.dirname(env_state_file),  'snapshots', osp.splitext(osp.basename(env_state_file))[0])        
+        state_infos.append((seg_info, save_dir))
+
+    print colorize("calling on cloud..", "yellow", True)
+    jids = cloud.map(render_local, state_infos, _env='RSS3', _type=core_type)
+    res  = cloud.result(jids)
+    print colorize("got snapshots from cloud for : %s. Saving..."%demo_type, "green", True)
+    save_snapshots_from_cloud(res)
+
             
 if __name__=='__main__':
     parser = argparse.ArgumentParser(description="Snapshots on Cloud")
@@ -92,6 +189,5 @@ if __name__=='__main__':
     parser.add_argument("--demo_type", type=str)
     args = parser.parse_args()
 
-    extract_snapshots_on_cloud(args.demo_type, args.core_type)
-
-    
+    #extract_snapshots_on_cloud(args.demo_type, args.core_type)
+    extract_snapshots_matplotlib_cloud(args.demo_type, args.core_type)

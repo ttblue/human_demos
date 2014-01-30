@@ -52,6 +52,12 @@ class SimArgs:
 
 
 max_steps_map = {'overhand'    : 5,
+		 'overhand_noik'  : 5,
+                 'overhand_training': 5,
+                 'overhand_post_training': 5,
+                 'figure_eight_noik':6,
+                 'figure_eight_training':6,
+                 'figure_eight_post_training':6,
                  'square_knot' : 9,
                  'figure_eight': 6,
                  'cow_hitch'   : 6,

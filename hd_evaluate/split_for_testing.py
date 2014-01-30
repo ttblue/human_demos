@@ -15,6 +15,11 @@ from hd_utils.defaults import data_dir, demo_files_dir, testing_commands_dir
 
 
 init_perturbation_map = {'overhand_noik'  : 'overhand_noik',
+			 'overhand_training': 'overhand_noik',
+			 'overhand_post_training': 'overhand_noik',
+			 'figure_eight_noik':'overhand_noik',
+			 'figure_eight_training':'overhand_noik',
+			 'figure_eight_post_training':'overhand_noik',
                          'square_knot'    : 'overhand_noik',
                          'overhand'       : 'overhand140',
                          'figure_eight'   : 'overhand140',
@@ -142,7 +147,7 @@ def generate_testing_h5_file_ik(demo_type, subset1, subset2):
         os.mkdir(out_dir)
     
     num_lengths  = len(rope_lengths)
-    subset_sizes = np.array([np.sort(np.array(subset1.keys()))[2]])
+    subset_sizes = np.array([np.sort(np.array(subset1.keys()))])
 
     cumm_subset_sizes = num_lengths * subset_sizes.astype(int)
     for i,cumm_size in enumerate(cumm_subset_sizes):
@@ -201,7 +206,10 @@ def generate_test_cmdline_params(demo_type, generate_h5s=False, sizes = [50, 25,
                     for init_perturb_name in init_config_data.keys()[0:num_perts]:                 ## x10
                         demo_data_h5_prefix = "size%d_set%d"%(ndemos, demo_set+1)
                         init_state_h5       = init_perturbation_map[demo_type]
-                        rope_scaling_factor = sample_rope_scaling(rope_lengths)
+			if len(rope_lengths) > 1: 
+	                        rope_scaling_factor = sample_rope_scaling(rope_lengths)
+			else:
+				rope_scaling_factor = 1.0
                         results_fname       = osp.join(demo_type, "%d_demos"%ndemos, "initset%d_demoset%d"%(init_set+1, demo_set+1), "perturb_%s_%s.cp"%(init_demo_name, init_perturb_name))
                         cmdline_params.append([ndemos,
                                                demo_type,

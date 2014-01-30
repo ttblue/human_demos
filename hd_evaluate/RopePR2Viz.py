@@ -19,7 +19,7 @@ class RopePR2Viz(object):
         self.env.StopSimulation()
         self.env.Load(osp.join(cad_files_dir, 'table_sim.xml'))
         self.env.Load("robots/pr2-beta-static.zae")
-        self.env.SetViewer('qtcoin', False)
+        self.env.SetViewer('qtcoin')
         print self.env.GetViewer()
 
         self.robot = self.env.GetRobots()[0]
