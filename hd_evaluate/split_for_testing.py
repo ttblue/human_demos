@@ -132,6 +132,8 @@ def generate_test_cmdline_params(demo_type, generate_h5s=False):
     
     num_demos = len(rope_lengths) * np.sort(np.array(subsets[0].keys()).astype(int))
     
+    num_perts = 5
+    
     for idx_ndemos, ndemos in enumerate(num_demos): ## x3
         for demo_set in [0,1]: ## x2
             for init_set in [0,1]: ## x2
@@ -139,7 +141,7 @@ def generate_test_cmdline_params(demo_type, generate_h5s=False):
                 for init_demo_idx in init_subset[np.max(init_subset.keys())]:      ## x50
                     init_config_data = perturb_file[perturb_file.keys()[init_demo_idx]]
                     init_demo_name   = perturb_file.keys()[init_demo_idx]
-                    for init_perturb_name in init_config_data.keys():                 ## x10
+                    for init_perturb_name in init_config_data.keys()[0:num_perts]:                 ## x10
                         demo_data_h5_prefix = "size%d_set%d"%(ndemos, demo_set+1)
                         init_state_h5       = init_perturbation_map[demo_type]
                         rope_scaling_factor = sample_rope_scaling(rope_lengths)

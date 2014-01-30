@@ -15,12 +15,12 @@ def save_results(results):
         save_path = osp.join(testing_results_dir, res['state_save_fname'])
 
         ## make directories to save results in:
-        #save_dir = osp.dirname(save_path)
-        #if not osp.exists(save_dir):
-        #    os.makedirs(save_dir)
+        save_dir = osp.dirname(save_path)
+        if not osp.exists(save_dir):
+            os.makedirs(save_dir)
 
-        #with open(osp.join(save_path, 'w')) as f:
-        with open(osp.join('/home/ankush', osp.basename(save_path)), 'w') as f:
+        with open(save_path, 'w') as f:
+        #with open(osp.join('/home/ankush', osp.basename(save_path)), 'w') as f:
             cp.dump(res, f)
 
 
@@ -30,20 +30,17 @@ def call_on_cloud(cmd_params, core_type, num_batches, start_batch_num, end_batch
 
     batch_edges = batch_size*np.array(xrange(num_batches))[start_batch_num : end_batch_num]
 
-    iter = 0    
     for i in xrange(len(batch_edges)):
-        if iter==1: break
         if i==len(batch_edges)-1:
             cmds = cmd_params[batch_edges[i]:]
         else:
             cmds = cmd_params[batch_edges[i]:min(batch_edges[i+1], len(cmd_params))]
         
         print colorize("calling on cloud..", "yellow", True)
-        jids = cloud.map(run_sim_test, cmds[0:1], _vol='rss_dat', _env='RSS3', _type=core_type)
+        jids = cloud.map(run_sim_test, cmds, _vol='rss_dat', _env='RSS3', _type=core_type)
         res  = cloud.result(jids)
         print colorize("got results for batch %d/%d "%(i, len(batch_edges)), "green", True)
         save_results(res)
-        iter += 1
 
 
 #### maybe make this a shell command and save to a file and use cloud.files...
