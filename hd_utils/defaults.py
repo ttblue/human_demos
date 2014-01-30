@@ -55,15 +55,17 @@ focal length of asus kinect
 '''
 asus_xtion_pro_f = 544.260779961
 
-hd_path = os.getenv('HD_DIR')
-data_dir = os.getenv('HD_DEMO_DATA_DIR')
+hd_path     = os.getenv('HD_DIR')
+data_dir    = os.getenv('HD_DEMO_DATA_DIR')
 hd_data_dir = os.getenv('HD_DATA_DIR')
+
 calib_files_dir = osp.join(hd_data_dir, 'calib')
 demo_files_dir  =  osp.join(data_dir, 'demos')
 
 '''
 Default names for files inside each demo directory and others.
 '''
+#ar_init_dir = osp.join(hd_data_dir,'ar_init')
 ar_init_dir = osp.join(hd_data_dir,'ar_init')
 ar_init_demo_name = 'demo.cp'
 ar_init_playback_name = 'playback.cp'
@@ -76,7 +78,6 @@ perturbation_file = 'old_perturb.cp'
 new_pert_file = 'new_perturb.cp'
 
 cad_files_dir = osp.join(hd_data_dir, 'cad_models')
-
 
 
 similarity_costs_dir = osp.join(hd_data_dir,'sim_costs')
@@ -123,10 +124,13 @@ tfm_head_kinect = np.array(
                             )
 
 
-
-
-
-
+"""
+Stuff for testing on cloud:
+"""
+testing_h5s_dir        =  osp.join(data_dir, 'testing_h5s')
+init_state_pertubs_dir = osp.join(data_dir, 'init_state_perturbs')
+testing_results_dir    = osp.join(data_dir, 'testing_results')
+testing_commands_dir   = osp.join(data_dir, 'testing_commands')
 
 ## CAD model numbers:
 #  77.83mm

@@ -383,9 +383,7 @@ def registration_cost(xyz0, xyz1):
     return cost
 
 
-DS_LEAF_SIZE = args.cloud_downsample
-
-def find_closest_auto(demofiles, new_xyz, sim_seg_num, init_tfm=None, n_jobs=3, seg_proximity=2):
+def find_closest_auto(demofiles, new_xyz, sim_seg_num, init_tfm=None, n_jobs=3, seg_proximity=2, DS_LEAF_SIZE=0.02):
     """
     sim_seg_num   : is the index of the segment being executed in the simulation: used to find 
     seg_proximity : only segments with numbers in +- seg_proximity of sim_seg_num are selected. 
@@ -478,7 +476,7 @@ def append_to_dict_list(dic, key, item):
     else:
         dic[key] = [item]
           
-def find_closest_clusters(demofiles, clusterfiles, new_xyz, sim_seg_num, seg_proximity=2, init_tfm=None, check_n=3, n_jobs=3):
+def find_closest_clusters(demofiles, clusterfiles, new_xyz, sim_seg_num, seg_proximity=2, init_tfm=None, check_n=3, n_jobs=3, DS_LEAF_SIZE=0.02):
     if args.parallel:
         from joblib import Parallel, delayed
     
@@ -733,12 +731,12 @@ def main():
     
     init_state_h5file = h5py.File(args.init_state_h5+".h5", "r")
     print args.init_state_h5+".h5"
-    
+
     if use_diff_length:
         from glob import glob
         demotype_dirs = glob(osp.join(demo_files_dir, args.demo_type+'[0-9]*'))
-        demo_types = [osp.basename(demotype_dir) for demotype_dir in demotype_dirs]
-        demo_h5files = [osp.join(demotype_dir, demo_type+".h5") for demo_type in demo_types]
+        demo_types    = [osp.basename(demotype_dir) for demotype_dir in demotype_dirs]
+        demo_h5files  = [osp.join(demotype_dir, demo_type+".h5") for demo_type in demo_types]
         print demo_h5files
         demofiles = [h5py.File(demofile, 'r') for demofile in demo_h5files]
         if len(demofiles) == 1: 
@@ -1004,12 +1002,10 @@ def main():
             if args.select=="manual":
                 dnum, (demo_name, seg_name), is_final_seg = find_closest_manual(demofiles, new_xyz)
             elif args.select=="auto":
-                dnum, (demo_name, seg_name), is_final_seg = find_closest_auto(demofiles, new_xyz, init_tfm)
+                dnum, (demo_name, seg_name), is_final_seg = find_closest_auto(demofiles, new_xyz, init_tfm, DS_LEAF_SIZE = args.cloud_downsample)
             else:
-                dnum, (demo_name, seg_name), is_final_seg = find_closest_clusters(demofiles, clusterfiles, new_xyz, curr_step-1, init_tfm=init_tfm)
-                
-            
-                
+                dnum, (demo_name, seg_name), is_final_seg = find_closest_clusters(demofiles, clusterfiles, new_xyz, curr_step-1, init_tfm=init_tfm, DS_LEAF_SIZE = args.cloud_downsample)
+
             seg_info = demofiles[dnum][demo_name][seg_name]
             redprint("closest demo: %i, %s, %s"%(dnum, demo_name, seg_name))
         else:
@@ -1026,13 +1022,8 @@ def main():
             redprint("DONE!")
             break
     
-    
         if args.log:
             with open(osp.join(LOG_DIR,"neighbor%i.txt"%LOG_COUNT),"w") as fh: fh.write(seg_name)
-
-        # import matplotlib.pylab as plt
-        # plt.plot(np.np.asarray(demofile[demo_name][seg_name]['r']['pot_angles'])[:,0])
-        # plt.show()
 
         '''
         Generating end-effector trajectory

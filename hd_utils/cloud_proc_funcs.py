@@ -70,13 +70,13 @@ def extract_color(rgb, depth, mask, T_w_k, xyz_mask=None, use_outlier_removal=Fa
     if use_outlier_removal:
         #good_xyz = clouds.remove_outliers(good_xyz, outlier_thresh, outlier_k)
         #good_xyz = remove_outlier_connected_component(good_xyz)
-        good_xyz = clouds.cluster_filter(good_xyz, 0.03, int(0.1 * len(good_xyz)))
+        good_xyz = clouds.cluster_filter(good_xyz, 0.03, int(0.4 * len(good_xyz)))
 
     return good_xyz
 
 
 def extract_red(rgb, depth, T_w_k):
-    red_mask = [lambda(x): (x<15)|(x>145), lambda(x): x>30, lambda(x): x>100]
+    red_mask = [lambda(x): (x<15)|(x>125), lambda(x): x>80, lambda(x): x>100]
     xyz_mask = (lambda(xyz): xyz[:, :, 2] > 0.95)
     return extract_color(rgb, depth, red_mask, T_w_k, xyz_mask, True)
 

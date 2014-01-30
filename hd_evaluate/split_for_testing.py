@@ -11,7 +11,7 @@ import os, os.path as osp
 import h5py
 from hd_utils.colorize import colorize
 
-from hd_utils.defaults import data_dir, demo_files_dir, hd_data_dir, cad_files_dir
+from hd_utils.defaults import data_dir, demo_files_dir, testing_commands_dir
 
 
 init_perturbation_map = {'overhand_noik'  : 'overhand_noik',
@@ -25,7 +25,7 @@ init_perturbation_map = {'overhand_noik'  : 'overhand_noik',
                          'pile_hitch'     : 'pile_hitch160'}
 
 def get_rope_lengths(demo_type):
-    if 'hitch' in demo_type or demo_type=='double_overhand':
+    if 'hitch' in demo_type or demo_type in ['double_overhand', 'square_knot']:
         return [140, 160, 180]
     else:
         return [120,140,160]
@@ -37,8 +37,8 @@ def sample_rope_scaling(rope_lengths):
 perturbations_dir = osp.join(data_dir, 'init_state_perturbations') 
 perturbations_dir = "/home/ankush/sandbox444/human_demos/hd_evaluate/init_state_perturbations"
 
-demo_files_dir    = "/home/ankush/sandbox444/human_demos/hd_evaluate/sample_dat"
-data_dir          = "/home/ankush/sandbox444/human_demos/hd_evaluate/sample_dat"
+#demo_files_dir    = "/home/ankush/sandbox444/human_demos/hd_evaluate/sample_dat"
+#data_dir          = "/home/ankush/sandbox444/human_demos/hd_evaluate/sample_dat"
 
 
 def split_pertubations_into_two(perturb_fname, sizes = [50, 25, 4]):
@@ -126,11 +126,14 @@ def generate_test_cmdline_params(demo_type, generate_h5s=False):
         generate_testing_h5_files(demo_type, subsets[0], subsets[1], rope_lengths)
 
     cmdline_params = []
-    cmdline_dir = osp.join(data_dir, "testing_commands")
+    cmdline_dir = testing_commands_dir
     if not osp.exists(cmdline_dir):
         os.mkdir(cmdline_dir)
     
     num_demos = len(rope_lengths) * np.sort(np.array(subsets[0].keys()).astype(int))
+    
+    num_perts = 5
+    print num_perts
     
     for idx_ndemos, ndemos in enumerate(num_demos): ## x3
         for demo_set in [0,1]: ## x2
@@ -139,16 +142,17 @@ def generate_test_cmdline_params(demo_type, generate_h5s=False):
                 for init_demo_idx in init_subset[np.max(init_subset.keys())]:      ## x50
                     init_config_data = perturb_file[perturb_file.keys()[init_demo_idx]]
                     init_demo_name   = perturb_file.keys()[init_demo_idx]
-                    for init_seg_name in init_config_data.keys():                 ## x10
+                    for init_perturb_name in init_config_data.keys()[0:num_perts]:                 ## x10
                         demo_data_h5_prefix = "size%d_set%d"%(ndemos, demo_set+1)
                         init_state_h5       = init_perturbation_map[demo_type]
                         rope_scaling_factor = sample_rope_scaling(rope_lengths)
-                        results_fname       = osp.join(demo_type, "%d_demos"%ndemos, "initset%d_demoset%d"%(init_set+1, demo_set+1), "perturb_%s_%s.cp"%(init_demo_name, init_seg_name))
+                        results_fname       = osp.join(demo_type, "%d_demos"%ndemos, "initset%d_demoset%d"%(init_set+1, demo_set+1), "perturb_%s_%s.cp"%(init_demo_name, init_perturb_name))
                         cmdline_params.append([ndemos,
+                                               demo_type,
                                                demo_data_h5_prefix,
                                                init_state_h5,
                                                str(init_demo_name),
-                                               str(init_seg_name),
+                                               str(init_perturb_name),
                                                rope_scaling_factor,
                                                str(results_fname)])
 

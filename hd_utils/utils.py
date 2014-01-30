@@ -4,7 +4,9 @@ import numpy as np, numpy.linalg as nla
 import conversions
 from colorize import redprint
 import transformations as tfms
-
+import fnmatch
+    
+    
 def display_all_keys(d, depth=0, limit=-1):
     """
     Displays all the keys hierarchically in a dictionary. 
@@ -104,3 +106,10 @@ def terminate_process_and_children(p):
     for pid_str in ps_output.split("\n")[:-1]:
             os.kill(int(pid_str), signal.SIGINT)
     p.terminate()
+    
+def find_recursive(src_dir, pattern):
+    matches = []
+    for root, dirnames, filenames in os.walk(src_dir):
+        for filename in fnmatch.filter(filenames, pattern):
+            matches.append(os.path.join(root, filename))
+    return matches

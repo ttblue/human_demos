@@ -120,7 +120,7 @@ def generate_traj(robot, env, costs, constraints, n_steps, init_traj, collisionf
                           "name": "col",
                           "params": {
                                      "continuous": False,
-                                     "coeffs": [20],
+                                     "coeffs": [30],
                                      "dist_pen": [0.02]
                                      }
                           }]
