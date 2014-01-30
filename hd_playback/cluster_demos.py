@@ -6,7 +6,7 @@ from sklearn.cluster import spectral_clustering
 import cPickle as pickle
 import argparse
 import cv2, hd_rapprentice.cv_plot_utils as cpu
-import os.path as osp
+import os, os.path as osp
 import time
 
 from hd_utils.defaults import demo_files_dir, similarity_costs_dir
@@ -135,7 +135,7 @@ def gen_h5_clusters (demo_type, cluster_data, keys, file_path=None):
     for key in keys:
         kgroup[str(key)] = keys[key] 
 
-def cluster_demos (demo_type, n_clusters, save_to_file=False, visualize=False, file_path=None):
+def cluster_demos (demo_type, n_clusters, save_to_file=False, visualize=False, file_path=None, save_images=False):
     """
     Clusters and ranks demos.
     """
@@ -198,6 +198,36 @@ def cluster_demos (demo_type, n_clusters, save_to_file=False, visualize=False, f
             elif kb == 1048689 or kb == 113:
                 break
     
+    if save_images:
+        cluster_img_dir = '/home/sibi/cluster_image_dir'
+        if not osp.exists(cluster_img_dir):
+            os.mkdir(cluster_img_dir)
+            
+        idx = 1
+        for i in range(n_clusters):
+            if len(images[i]) == 0:                
+                continue
+
+            print "Label %i"%(i+1)
+            print names[i]
+            ncols = 7
+            nrows = int(math.ceil(1.0*len(images[i])/ncols))
+            row = cpu.tile_images(images[i], nrows, ncols)
+            rows.append(np.asarray(row))
+            cv2.imwrite(osp.join(cluster_img_dir,'image%02i'%idx), row)
+            idx += 1
+            #cv2.imshow("clustering result", row)
+#             kb = cv2.waitKey()
+#             if kb == 1113939 or kb == 65363:
+#                 i = min(i+1,args.num_clusters-1)
+#                 inc = True
+#             elif kb == 1113937 or kb == 65361:
+#                 i = max(i-1,0)
+#                 inc = False
+#             elif kb == 1048689 or kb == 113:
+#                 break
+
+        
     
     if save_to_file:
         gen_h5_clusters(demo_type, cdata, keys, file_path)
@@ -285,11 +315,12 @@ if __name__ == "__main__":
     parser.add_argument("--num_clusters",default=30, type=int)
     parser.add_argument("--num_segs", type=int, default=-1)
     parser.add_argument("--save", action="store_true", default=False)
+    parser.add_argument("--save_images", action="store_true", default=False)
     parser.add_argument("--visualize", action="store_true", default=False)
     args = parser.parse_args()
 
     if args.save:
-        cluster_demos (args.demo_type, args.num_clusters, save_to_file=True, visualize=args.visualize)
+        cluster_demos (args.demo_type, args.num_clusters, save_to_file=True, visualize=args.visualize, save_images=args.save_images)
     else:    
         if args.num_segs < 0:
             ns = None
