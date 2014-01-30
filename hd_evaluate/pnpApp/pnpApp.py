@@ -95,6 +95,7 @@ class pnpApp(QtGui.QMainWindow, pnp_ui.Ui_MainWindow):
 
 
 
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="P/NP App")
     parser.add_argument("--snapshot_path", type=str)
