@@ -19,6 +19,9 @@ from hd_utils.defaults import demo_files_dir, hd_data_dir, cad_files_dir
 import time
 import  hd_rapprentice.cv_plot_utils as cpu
 
+from hd_utils.defaults import testing_results_dir
+
+
 
 class pnpApp(QtGui.QMainWindow, pnp_ui.Ui_MainWindow):
 
@@ -27,14 +30,16 @@ class pnpApp(QtGui.QMainWindow, pnp_ui.Ui_MainWindow):
         self.closeAll()
 
 
-    def __init__(self, env_state_dir):
+    def __init__(self, snapshot_path, save_path):
         super(pnpApp, self).__init__(None)
         self.setupUi(self)
                 
-        self.env_state_dir = env_state_dir
-        self.env_state_files = glob.glob(osp.join(env_state_dir, "*.cp"))
+                
+        self.env_state_dir =  snapshot_path
+        
+        self.env_state_files = glob.glob(osp.join(self.env_state_dir,"*.jpg"))
         self.num_tests       = len(self.env_state_files)
-        self.results_file    = osp.join(env_state_dir, 'results.cpkl')
+        self.results_file    = save_path
         
         self.done = False
         self.runnum = 0
@@ -58,17 +63,18 @@ class pnpApp(QtGui.QMainWindow, pnp_ui.Ui_MainWindow):
     def update_runnums(self, res):
         self.results[self.get_demo_name()] = res
 
-        if self.runnum+1 == self.num_tests:
+        if self.runnum+1 == self.num_tests or self.runnum >=2:
             self.done = True
             self.runLabel.setText('%d/%d'%(self.runnum+1, self.num_tests))
             cPickle.dump(self.results, open(self.results_file,'w'))
+            sys.exit(0)
         else:
             self.runnum +=1
             self.runLabel.setText('%d/%d'%(self.runnum, self.num_tests))
             self.load_image()
 
     def load_image(self):
-        img_fname = osp.join(self.env_state_dir, self.get_demo_name(), 'composite.jpg')
+        img_fname = self.env_state_files[self.runnum]
         pixmap    = QtGui.QPixmap(img_fname)
         if pixmap.isNull():
             print "File not found : %s"%img_fname
@@ -86,16 +92,18 @@ class pnpApp(QtGui.QMainWindow, pnp_ui.Ui_MainWindow):
     def clicked_passButton(self):
         if not self.done:
             self.update_runnums(1)
-        
+
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="P/NP App")
-    parser.add_argument("--demo_type", type=str)
+    parser.add_argument("--snapshot_path", type=str)
+    parser.add_argument("--save_path", type=str)
+    
     args = parser.parse_args()
 
-    env_state_dir   = osp.join(demo_files_dir, args.demo_type, 'test_env_states')
-
+    
     app  = QtGui.QApplication(sys.argv)
-    form = pnpApp(env_state_dir)
+    form = pnpApp(args.snapshot_path, args.save_path)
     form.show()
     sys.exit(app.exec_())

@@ -48,10 +48,10 @@ def call_on_cloud(cmd_params, core_type, num_batches, start_batch_num, end_batch
 if __name__=='__main__':
     parser = argparse.ArgumentParser(description="P/NP App")
     parser.add_argument("--demo_type", type=str)
-    parser.add_argument("--num_batches", help="run NUM_BATCHES chunks of tests one-by-one",type=int, default=2)
+    parser.add_argument("--num_batches", help="run NUM_BATCHES chunks of tests one-by-one",type=int, default=3)
     parser.add_argument("--start_batch_num", type=int, default=1)
-    parser.add_argument("--end_batch_num", type=int, default=2)
-    parser.add_argument("--instance_type", type=str, default='c2')
+    parser.add_argument("--end_batch_num", type=int, default=3)
+    parser.add_argument("--instance_type", type=str, default='f2')
     args = parser.parse_args()
 
     cmd_params_file = osp.join(testing_commands_dir, "%s_cmds.cp"%args.demo_type)

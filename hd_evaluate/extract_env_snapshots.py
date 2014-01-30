@@ -22,8 +22,15 @@ import  hd_rapprentice.cv_plot_utils as cpu
 
 import cloud
 from hd_utils.utils import find_recursive
+import multiprocessing
 
 
+import openravepy as rave
+env = rave.Environment()   
+env.Load('robots/pr2-beta-static.zae')
+pr2 = env.GetRobots()[0]
+
+    
 
 def get_state_snapshots(state_info):
     rope_pr2_viz       = RopePR2Viz()
@@ -54,11 +61,13 @@ def get_state_snapshots(state_info):
 def save_snapshots_from_cloud(cloud_results):
     for res in cloud_results:
         composite_mat, snapshots, save_dir = res
-        
+
         if not osp.exists(save_dir):
             os.makedirs(save_dir)
 
-        scipy.misc.imsave(osp.join(save_dir, 'composite.jpg'), composite_mat)
+        fname = osp.join(save_dir, 'composite.jpg')
+        print "saving at  :", fname
+        scipy.misc.imsave(fname, composite_mat)
         for snapshot_fname, snapshot_mat in snapshots.items():
             scipy.misc.imsave(osp.join(save_dir, snapshot_fname), snapshot_mat)  
 
@@ -126,16 +135,26 @@ def get_image(rope_cloud, left, right):
     plt.axis('equal')
     return plt.gcf()
     
+    
+def do_plot(info):
+    plt.axis('off')
+    rope_cloud, left, right = info
+    mid = np.mean(rope_cloud, axis=0)
+    rope_cloud -= mid[None,:]
+    left -= mid
+    right -= mid
+    plt.scatter([left[0], right[0]], [left[1], right[1]], color='r', s=50)
+    plt.hold(True)
+    plt.plot(rope_cloud[:,0], rope_cloud[:,1])
+    plt.axis('equal')
 
+ii = 0
 def render_local(state_info):
-    import openravepy as rave
-    env = rave.Environment()
-    
-    env.Load('robots/pr2-beta-static.zae')
-    pr2 = env.GetRobots()[0]
-    
-    
-    seg_info, save_dir = state_info
+    global pr2, ii
+    print ii
+    ii += 1
+
+    seg_info, save_dir, fname = state_info
     num_segs           = len(seg_info)
 
     snapshots = {}
@@ -149,13 +168,28 @@ def render_local(state_info):
             ltf = pr2.GetManipulator('leftarm').GetEndEffectorTransform()[:3,3]
             rtf = pr2.GetManipulator('rightarm').GetEndEffectorTransform()[:3,3]
     
-            env_img = fig2data(get_image(rope_nodes, ltf, rtf))
-            snapshots['%d_%d.jpg'%(i,j)] = env_img
-            svals.append(env_img)
+            #env_img = fig2data(get_image(rope_nodes, ltf, rtf))
             
+            #snapshots['%d_%d.jpg'%(i,j)] = env_img
+            svals.append((rope_nodes, ltf, rtf))
+            
+    num_rows = int(math.ceil(len(svals)/(4+0.0)))
+    n =1
+    plt.clf()
+    plt.gcf().set_size_inches(25,12)
+    plt.subplots_adjust(left=0, right=1, top=1, bottom=0)
+    for i in xrange(len(svals)):
+        plt.subplot(num_rows, 4, n)
+        do_plot(svals[i])
+        n +=1
+
+    if not osp.exists(save_dir):
+        os.makedirs(save_dir)
+
+    comp_fname = osp.join(save_dir, fname)
+    print "saving at  :", comp_fname
     
-    composite = cpu.tile_images(svals, int(math.ceil(len(snapshots)/4.0)), 4, max_width=2500)
-    return (composite, snapshots, save_dir)
+    plt.savefig(comp_fname)
 
     
 def extract_snapshots_matplotlib_cloud(demo_type, core_type):
@@ -173,15 +207,12 @@ def extract_snapshots_matplotlib_cloud(demo_type, core_type):
         if seg_info == None:
             continue
 
-        save_dir = osp.join(osp.dirname(env_state_file),  'snapshots', osp.splitext(osp.basename(env_state_file))[0])        
-        state_infos.append((seg_info, save_dir))
+        save_dir = osp.join(osp.dirname(env_state_file),  'snapshots')        
+        state_infos.append((seg_info, save_dir, osp.splitext(osp.basename(env_state_file))[0]+'.jpg'))
 
-    print colorize("calling on cloud..", "yellow", True)
-    jids = cloud.map(render_local, state_infos, _env='RSS3', _type=core_type)
-    res  = cloud.result(jids)
-    print colorize("got snapshots from cloud for : %s. Saving..."%demo_type, "green", True)
-    save_snapshots_from_cloud(res)
-
+    p = multiprocessing.Pool(8)
+    p.map(render_local, state_infos)
+    
             
 if __name__=='__main__':
     parser = argparse.ArgumentParser(description="Snapshots on Cloud")
