@@ -869,7 +869,7 @@ def main(pargs):
                     if args.rope_scaling_factor != 1.0:
                         rope_nodes =  cu.scale_rope(rope_nodes, args.rope_scaling_factor, center=True)
                     print rope_nodes.mean(axis=0)
-                    d_move = 0.43 - rope_nodes.mean(axis=0)[2]
+                    d_move = 0.43 - rope_nodes.min(axis=0)[2]
                     if d_move > 0.0:
                         v_move = np.array([0,0,d_move])
                         rope_nodes = rope_nodes + v_move
