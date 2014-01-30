@@ -868,6 +868,11 @@ def main(pargs):
                     rope_nodes = rope_initialization.find_path_through_point_cloud(new_xyz)
                     if args.rope_scaling_factor != 1.0:
                         rope_nodes =  cu.scale_rope(rope_nodes, args.rope_scaling_factor, center=True)
+                    print rope_nodes.mean(axis=0)
+                    d_move = 0.43 - rope_nodes.mean(axis=0)[2]
+                    if d_move > 0.0:
+                        v_move = np.array([0,0,d_move])
+                        rope_nodes = rope_nodes + v_move
                     Globals.sim.create(rope_nodes)
                     new_xyz = Globals.sim.observe_cloud(3)
                     new_xyz = clouds.downsample(new_xyz, args.cloud_downsample)
