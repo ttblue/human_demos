@@ -133,6 +133,7 @@ def generate_test_cmdline_params(demo_type, generate_h5s=False):
     num_demos = len(rope_lengths) * np.sort(np.array(subsets[0].keys()).astype(int))
     
     num_perts = 5
+    print num_perts
     
     for idx_ndemos, ndemos in enumerate(num_demos): ## x3
         for demo_set in [0,1]: ## x2
