@@ -158,7 +158,6 @@ def cluster_demos (demofile, costs, n_clusters, visualize=False, save_images=Fal
             names[i] = [get_name(keys[j]) for j in cdata[i]]
             images[i] = [np.asarray(demofile[keys[j][0]][keys[j][1]]["rgb"]) for j in cdata[i]]
 
-        rows = []
         i = 0
         inc = True
         print "Press q to exit, left/right arrow keys to navigate"
@@ -176,7 +175,6 @@ def cluster_demos (demofile, costs, n_clusters, visualize=False, save_images=Fal
             ncols = 7
             nrows = int(math.ceil(1.0*len(images[i])/ncols))
             row = cpu.tile_images(images[i], nrows, ncols)
-            rows.append(np.asarray(row))
             cv2.imshow("clustering result", row)
             kb = cv2.waitKey()
             if kb == 1113939 or kb == 65363:
@@ -203,7 +201,6 @@ def cluster_demos (demofile, costs, n_clusters, visualize=False, save_images=Fal
             ncols = 7
             nrows = int(math.ceil(1.0*len(images[i])/ncols))
             row = cpu.tile_images(images[i], nrows, ncols)
-            rows.append(np.asarray(row))
             cv2.imwrite(osp.join(cluster_img_dir,'image%02i'%idx), row)
             idx += 1
 

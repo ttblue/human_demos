@@ -270,6 +270,7 @@ def view_tracking_on_rviz(demo_type, demo_name, tps_model_fname, freq=30.0, spee
     @main: which sensor to display the marker for
     @prompt: does the user hit enter after each time step?
     """
+    
     demo_dir = osp.join(demo_files_dir, demo_type, demo_name)
     bag_file = osp.join(demo_dir, demo_names.bag_name)
     traj_file = osp.join(demo_dir, demo_names.traj_name)
@@ -368,6 +369,8 @@ def view_tracking_on_rviz(demo_type, demo_name, tps_model_fname, freq=30.0, spee
             ang_vals  = []
     
             for lr in grippers:
+		if lr == 'r':
+		    continue
                 tfm = dat_snext[lr]['traj']()
                 
                 ang_val = dat_snext[lr]['pot']()
@@ -386,7 +389,7 @@ def view_tracking_on_rviz(demo_type, demo_name, tps_model_fname, freq=30.0, spee
                 ang_vals.append(rad_angle(ang_val))
     
     
-            handles = draw_trajectory(cam_frames[cam], tfms, color=(1,1,0,1), open_fracs=ang_vals)
+            handles = draw_trajectory(cam_frames[cam], tfms, color=(1,0,0,1), open_fracs=ang_vals)
             
             time.sleep(1.0/freq)
             

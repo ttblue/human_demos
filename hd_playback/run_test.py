@@ -1,4 +1,14 @@
 #!/usr/bin/env python
+"""
+For Sibi:
+Things to fix -
+1. If the gripper is not going to move much, don't move it at all.
+2. Self collisions seem to be a problem.
+3. Fix the hitch problems.
+4. The robot seems to leave the rope too early.
+"""
+
+
 
 import argparse
 usage="""
@@ -729,7 +739,7 @@ use_diff_length = args.use_diff_length
 def main():
     global use_diff_length
     
-    init_state_h5file = h5py.File(args.init_state_h5+".h5", "r")
+    init_state_h5file = h5py.File(args.init_state_h5, "r")
     print args.init_state_h5+".h5"
 
     if use_diff_length:
