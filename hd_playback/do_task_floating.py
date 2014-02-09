@@ -1,14 +1,4 @@
 #!/usr/bin/env python
-"""
-For Sibi:
-Things to fix -
-1. If the gripper is not going to move much, don't move it at all.
-2. Self collisions seem to be a problem.
-3. Fix the hitch problems.
-4. The robot seems to leave the rope too early.
-"""
-
-
 
 import argparse
 usage="""
@@ -28,17 +18,9 @@ Actually run on the robot without pausing or animating
 parser = argparse.ArgumentParser(usage=usage)
 
 
-parser.add_argument("--init_state_h5", type=str)
-parser.add_argument("--demo_name", type=str)
-parser.add_argument("--perturb_name", type=str)
-
 parser.add_argument("--demo_type", type=str)
 parser.add_argument("--use_diff_length", action="store_true", default=False)
-parser.add_argument("--cloud_proc_func", default="extract_red")
-parser.add_argument("--cloud_proc_mod", default="hd_utils.cloud_proc_funcs")
     
-parser.add_argument("--execution", type=int, default=0)
-parser.add_argument("--animation", type=int, default=0)
 parser.add_argument("--simulation", type=int, default=0)
 parser.add_argument("--parallel", type=int, default=1)
 parser.add_argument("--downsample", help="downsample traj.", type=int, default=1)
@@ -48,12 +30,12 @@ parser.add_argument("--show_neighbors", action="store_true")
 parser.add_argument("--select", default="manual")
 parser.add_argument("--log", action="store_true")
 
-
+parser.add_argument("--fake_data_demo", type=str)
+parser.add_argument("--fake_data_segment",type=str)
 parser.add_argument("--fake_data_transform", type=float, nargs=6, metavar=("tx","ty","tz","rx","ry","rz"),
     default=[0,0,0,0,0,0], help="translation=(tx,ty,tz), axis-angle rotation=(rx,ry,rz)")
 
 
-parser.add_argument("--trajopt_init",type=str,default="openrave_ik")
 parser.add_argument("--pot_threshold",type=float, default=15)
 
 parser.add_argument("--use_ar_init", action="store_true", default=False)
@@ -64,24 +46,25 @@ parser.add_argument("--not_allow_base", help="dont allow base movement when use_
 parser.add_argument("--early_stop_portion", help="stop early in the final segment to avoid bullet simulation problem", type=float, default=0.5)
 parser.add_argument("--no_traj_resample", action="store_true", default=False)
 
-parser.add_argument("--interactive",action="store_true")
+parser.add_argument("--interactive",action="store_true", default=False)
 parser.add_argument("--remove_table", action="store_true")
 
 parser.add_argument("--friction", help="friction value in bullet", type=float, default=1.0)
 
 parser.add_argument("--max_steps_before_failure", type=int, default=-1)
-parser.add_argument("--tps_bend_cost_init", type=float, default=10)
-parser.add_argument("--tps_bend_cost_final", type=float, default=.1)
+parser.add_argument("--tps_bend_cost_init", type=float, default=1)
+parser.add_argument("--tps_bend_cost_final", type=float, default=.00001)
 parser.add_argument("--tps_n_iter", type=int, default=50)
 
 parser.add_argument("--closest_rope_hack", action="store_true", default=False)
 parser.add_argument("--closest_rope_hack_thresh", type=float, default=0.01)
 parser.add_argument("--cloud_downsample", type=float, default=.01)
-parser.add_argument("--state_save_dir", type=str, default='test_env_states')
 
 
 
 args = parser.parse_args()
+
+if args.fake_data_segment is None: assert args.execution==1
 
 
 """
@@ -102,30 +85,18 @@ If you're using fake data, don't update it.
 
 """
 
-import os, numpy as np, h5py, time, os.path as osp
+import os, h5py, time, os.path as osp
 import cPickle
 import numpy as np
-import importlib
 from numpy.linalg import norm
 
-
-import cloudprocpy, trajoptpy, openravepy
-
-if args.execution:
-    try:
-        from hd_rapprentice import pr2_trajectories, PR2
-        import rospy
-        from hd_utils import ros_utils as ru
-        from hd_extract.extract_data import get_ar_marker_poses
-    except ImportError:
-        print "Couldn't import ros stuff"
-
-
-from hd_rapprentice import registration, animate_traj, ros2rave, \
+import openravepy
+ 
+from hd_rapprentice import registration, animate_traj, \
      plotting_openrave, task_execution, \
-     planning, tps, resampling, \
-     ropesim, rope_initialization
-from hd_utils import yes_or_no, func_utils, clouds, math_utils as mu, cloud_proc_funcs
+     planning, resampling, \
+     ropesim_floating, rope_initialization
+from hd_utils import yes_or_no, clouds, math_utils as mu, cloud_proc_funcs
 from hd_utils.pr2_utils import get_kinect_transform
 from hd_utils.colorize import *
 from hd_utils.utils import avg_transform
@@ -134,28 +105,29 @@ from hd_utils.defaults import demo_files_dir, hd_data_dir, asus_xtion_pro_f, \
         tfm_head_dof, tfm_bf_head, tfm_gtf_ee, cad_files_dir
 
 
-cloud_proc_mod = importlib.import_module(args.cloud_proc_mod)
-cloud_proc_func = getattr(cloud_proc_mod, args.cloud_proc_func)
-hitch_proc_func = getattr(cloud_proc_mod, "extract_hitch")
+
+L_POSTURES = {'side': np.array([[-0.98108876, -0.1846131 ,  0.0581623 ,  0.10118172],
+                                [-0.19076337,  0.97311662, -0.12904799,  0.68224057],
+                                [-0.03277475, -0.13770277, -0.98993119,  0.91652485],
+                                [ 0.        ,  0.        ,  0.        ,  1.        ]]) }
+
+R_POSTURES = {'side' : np.array([[-0.98108876,  0.1846131 ,  0.0581623 ,  0.10118172],
+                                 [ 0.19076337,  0.97311662,  0.12904799, -0.68224057],
+                                 [-0.03277475,  0.13770277, -0.98993119,  0.91652485],
+                                 [ 0.        ,  0.        ,  0.        ,  1.        ]]) }
 
 
 class Globals:
-    robot = None
     env = None
-    pr2 = None
     sim = None
     viewer = None
 
+def move_sim_arms_to_side():
+    """Moves the simulated arms to the side."""
+    Globals.sim.grippers['r'].set_toolframe_transform(R_POSTURES['side'])
+    Globals.sim.grippers['l'].set_toolframe_transform(L_POSTURES['side'])
 
 DS_SIZE = .025
-
-def get_env_state():
-    state =  [Globals.robot.GetTransform(), Globals.robot.GetDOFValues(), Globals.sim.rope.GetNodes()]
-    hitch = Globals.env.GetKinBody('hitch')
-    if hitch != None:
-        state.append(hitch.GetTransform())
-    return state
-    
 
 def smaller_ang(x):
     return (x + np.pi)%(2*np.pi) - np.pi
@@ -203,7 +175,6 @@ def split_trajectory_by_gripper(seg_info, pot_angle_threshold, ms_thresh=2):
     seg_ends = np.unique(np.r_[before_transitions, n_steps-1])
     
     lr_open = {lr:[] for lr in 'lr'}
-    #return seg_starts, seg_ends
     new_seg_starts = []
     new_seg_ends = []
     for i in range(len(seg_starts)):
@@ -221,6 +192,34 @@ def split_trajectory_by_gripper(seg_info, pot_angle_threshold, ms_thresh=2):
  
     return new_seg_starts, new_seg_ends, lr_open
 
+"""
+Not sure if these are required.
+"""
+def rotate_about_median(xyz, theta):
+    """                                                                                                                                             
+    rotates xyz by theta around the median along the x, y dimensions                                                                                
+    """
+    median = np.median(xyz, axis=0)
+    centered_xyz = xyz - median
+    r_mat = np.eye(3)
+    r_mat[0:2, 0:2] = np.array([[np.cos(theta), -np.sin(theta)],[np.sin(theta), np.cos(theta)]])
+    rotated_xyz = centered_xyz.dot(r_mat)
+    new_xyz = rotated_xyz + median    
+    return new_xyz
+
+FEASIBLE_REGION = [[.3, -.5], [.8, .5]]# bounds on region robot can hope to tie rope in
+
+def place_in_feasible_region(xyz):
+    max_xyz = np.max(xyz, axis=0)
+    min_xyz = np.min(xyz, axis=0)
+    offset = np.zeros(3)
+    for i in range(2):
+        if min_xyz[i] < FEASIBLE_REGION[0][i]:
+            offset[i] = FEASIBLE_REGION[0][i] - min_xyz[i]
+        elif max_xyz[i] > FEASIBLE_REGION[1][i]:
+            offset[i] = FEASIBLE_REGION[1][i] - max_xyz[i]
+    return xyz + offset
+
 def binarize_gripper(angle, pot_angle_threshold):
     open_angle = .08
     closed_angle = 0
@@ -228,45 +227,29 @@ def binarize_gripper(angle, pot_angle_threshold):
     else: return closed_angle
     
     
-def set_gripper_maybesim(lr, is_open, prev_is_open):
-    mult = 1 if args.execution else 5
+def set_gripper_sim(lr, is_open, prev_is_open):
+    mult = 5
     open_angle = .08 * mult
     closed_angle = (0 if not args.simulation else .02) * mult
     
     target_val = open_angle if is_open else closed_angle
 
-    if args.execution:
-        gripper = {"l":Globals.pr2.lgrip, "r":Globals.pr2.rgrip}[lr]
-        gripper.set_angle(target_val)
-        Globals.pr2.join_all()
-        
-    elif not args.simulation:
-        Globals.robot.SetDOFValues([target_val], [Globals.robot.GetJoint("%s_gripper_l_finger_joint"%lr).GetDOFIndex()])
-        
-    elif args.simulation:
-        # release constraints if necessary
-        if is_open and not prev_is_open:
-            Globals.sim.release_rope(lr)
+    if is_open and not prev_is_open:
+        Globals.sim.release_rope(lr)
 
-        # execute gripper open/close trajectory
-        joint_ind = Globals.robot.GetJoint("%s_gripper_l_finger_joint"%lr).GetDOFIndex()
-        start_val = Globals.robot.GetDOFValues([joint_ind])[0]
-        joint_traj = np.linspace(start_val, target_val, np.ceil(abs(target_val - start_val) / .02))
-        for val in joint_traj:
-            Globals.robot.SetDOFValues([val], [joint_ind])
-            Globals.sim.step()
-            if args.animation:
-                Globals.viewer.Step()
-                if args.interactive: Globals.viewer.Idle()
-        # add constraints if necessary
-        if not is_open and prev_is_open:
-            if not Globals.sim.grab_rope(lr):
-                redprint("Grab failed")
-                return False
-            else:
-                blueprint("Grab succeeded")
-        
-        
+    # execute gripper open/close trajectory
+    start_val = Globals.sim.grippers[lr].get_gripper_joint_value()
+    joint_traj = np.linspace(start_val, target_val, np.ceil(abs(target_val - start_val) / .02))
+    for val in joint_traj:
+        Globals.sim.grippers[lr].set_gripper_joint_value(val)
+        Globals.sim.step()
+        if args.animation:
+            Globals.viewer.Step()
+            if args.interactive: Globals.viewer.Idle()
+    # add constraints if necessary
+    if not is_open and prev_is_open:
+        if not Globals.sim.grab_rope(lr):
+            return False
     return True
 
 
@@ -286,62 +269,23 @@ def unwrap_in_place(t):
     else:
         raise NotImplementedError
 
-def exec_traj_maybesim(bodypart2traj):
+def exec_traj_sim(lr_traj, animate):
     def sim_callback(i):
         Globals.sim.step()
-    
-    if args.animation or args.simulation:
-        dof_inds = []
-        trajs = []
-        base_hmats = None
-        for (part_name, traj) in bodypart2traj.items():
-            if part_name == "base":
-                base_hmats = [planning.base_pose_to_mat(base_dofs) for base_dofs in traj]
-                continue
-            manip_name = {"larm":"leftarm","rarm":"rightarm"}[part_name]
-            dof_inds.extend(Globals.robot.GetManipulator(manip_name).GetArmIndices())
-            trajs.append(traj)
-        full_traj = np.concatenate(trajs, axis=1)
-        Globals.robot.SetActiveDOFs(dof_inds)
-        
-        if args.simulation:
-            # make the trajectory slow enough for the simulation
-            full_traj, base_hmats = ropesim.retime_traj(Globals.robot, dof_inds, full_traj, base_hmats)
-            
-            # in simulation mode, we must make sure to gradually move to the new starting position
-            curr_vals       = Globals.robot.GetActiveDOFValues()
-            transition_traj = np.r_[[curr_vals], [full_traj[0]]]
 
-            if base_hmats != None:
-                transition_base_hmats = [Globals.robot.GetTransform()] + [base_hmats[0]]
-            else:
-                transition_base_hmats = None
-            
-            unwrap_in_place(transition_traj)
-            
-            transition_traj, transition_base_hmats = ropesim.retime_traj(Globals.robot, dof_inds, transition_traj, transition_base_hmats, max_cart_vel=.01)
-            animate_traj.animate_traj(transition_traj, transition_base_hmats, Globals.robot, restore=False, pause=args.interactive,
-                callback=sim_callback if args.simulation else None, step_viewer=args.animation)
-            
-            full_traj[0] = transition_traj[-1]
-          
-            
-            if base_hmats != None:
-                base_hmats[0] = transition_base_hmats[-1]
-            
-            
-            unwrap_in_place(full_traj)
-        
-        animate_traj.animate_traj(full_traj, base_hmats, Globals.robot, restore=False, pause=args.interactive,
-                                  callback=sim_callback if args.simulation else None, step_viewer=args.animation)
-        
-        
-    if args.execution:
-        if not args.prompt or yes_or_no("execute?"):
-            pr2_trajectories.follow_body_traj(Globals.pr2, bodypart2traj)
-        else:
-            return False
+    lhmats_up, rhmats_up = ropesim_floating.retime_hmats(lr_traj['l'], lr_traj['r'])
 
+    # in simulation mode, we must make sure to gradually move to the new starting position
+    curr_rtf  = Globals.sim.grippers['r'].get_toolframe_transform()
+    curr_ltf  = Globals.sim.grippers['l'].get_toolframe_transform()
+   
+    l_transition_hmats, r_transition_hmats = ropesim_floating.retime_hmats([curr_ltf, lhmats_up[0]], [curr_rtf, rhmats_up[0]])
+
+    animate_traj.animate_floating_traj(l_transition_hmats, r_transition_hmats,
+                                       Globals.sim, pause=False,
+                                       callback=sim_callback, step_viewer=animate)
+    animate_traj.animate_floating_traj(lhmats_up, rhmats_up, Globals.sim, pause=False,
+                                       callback=sim_callback, step_viewer=animate)
     return True
 
 def find_closest_manual(demofiles, _new_xyz):
@@ -474,10 +418,6 @@ def find_closest_auto(demofiles, new_xyz, sim_seg_num, init_tfm=None, n_jobs=3, 
         return keys[choice_ind], is_finalsegs[choice_ind]
 
 
-
-"""
-Might need to debug this.
-"""
 
 def append_to_dict_list(dic, key, item):
     if key in dic.keys():
@@ -630,9 +570,12 @@ def tpsrpm_plot_cb(x_nd, y_md, targ_Nd, corr_nm, wt_n, f):
     if Globals.viewer:
         Globals.viewer.Step()
     
-def arm_moved(joint_traj):
-    if len(joint_traj) < 2: return False
-    return ((joint_traj[1:] - joint_traj[:-1]).ptp(axis=0) > .01).any()
+def arm_moved(hmat_traj):
+    return True
+    if len(hmat_traj) < 2:
+        return False
+    tts = hmat_traj[:,:3,3]
+    return ((tts[1:] - tts[:-1]).ptp(axis=0) > .01).any()
     
 def unif_resample(traj, max_diff, wt = None):
     """
@@ -699,6 +642,9 @@ def close_traj(traj):
         curr_angs = new_angs
         
     return new_traj
+
+
+
     
 
 def downsample_objects(objs, factor):
@@ -718,8 +664,8 @@ def has_hitch(h5data, demo_name=None, seg_name=None):
         first_demo = h5data[h5data.keys()[0]]
         first_seg = first_demo[first_demo.keys()[0]]
         return "hitch_pos" in first_seg
-    
-    
+
+
 #ros stuffs
 def mirror_arm_joints(x):
     "mirror image of joints (r->l or l->r)"
@@ -733,14 +679,13 @@ L_POSTURES = dict(
     side = [  1.832,  -0.332,   1.011,  -1.437,   1.1  ,  -2.106,  3.074]
 )   
 
+
 use_diff_length = args.use_diff_length
+
 
 def main():
     global use_diff_length
     
-    init_state_h5file = h5py.File(args.init_state_h5, "r")
-    print args.init_state_h5+".h5"
-
     if use_diff_length:
         from glob import glob
         demotype_dirs = glob(osp.join(demo_files_dir, args.demo_type+'[0-9]*'))
@@ -756,6 +701,7 @@ def main():
         demo_h5file = osp.join(demotype_dir, args.demo_type+".h5")
         print demo_h5file
         demofile = h5py.File(demo_h5file, 'r')
+    
     
     if args.select == "clusters":
         if use_diff_length:
@@ -806,7 +752,8 @@ def main():
 
 
     # get rgbd from pr2?
-    if args.execution:
+    if not args.fake_data_segment or not args.fake_data_demo:
+        import cloudprocpy
         grabber = cloudprocpy.CloudGrabber()
         grabber.startRGBD()
 
@@ -831,7 +778,7 @@ def main():
             try:
                 rgb, depth = grabber.getRGBD()
                 xyz = clouds.depth_to_xyz(depth, asus_xtion_pro_f)
-                pc = ru.xyzrgb2pc(xyz, rgb)
+                pc = xyzrgb2pc(xyz, rgb)
                 
                 ar_tfms = get_ar_marker_poses(pc, ar_markers=[ar_marker])
                 if ar_tfms:
@@ -862,18 +809,18 @@ def main():
         # transform to move the demo points approximately into PR2's frame
         # Basically a rough transform from head kinect to demo_camera, given the tables are the same.
         init_tfm = ar_run_tfm.dot(np.linalg.inv(ar_demo_tfm))
-        if args.simulation:
+        if args.fake_data_segment and args.fake_data_demo:
             init_tfm = tfm_bf_head.dot(tfm_head_dof).dot(init_tfm)
         else:
             #T_w_k here should be different from rapprentice
             T_w_k = get_kinect_transform(Globals.robot)
             init_tfm = T_w_k.dot(init_tfm)
 
-    if args.simulation:
+    if args.fake_data_demo and args.fake_data_segment:
 
-        if has_hitch(init_state_h5file, args.demo_name, args.perturb_name):
+        if has_hitch(demofile, args.fake_data_demo, args.fake_data_segment):
             Globals.env.Load(osp.join(cad_files_dir, 'hitch.xml'))
-            hitch_pos = init_state_h5file[args.demo_name][args.perturb_name]['hitch_pos']
+            hitch_pos = demofile[args.fake_data_demo][args.fake_data_segment]['hitch_pos']
             hitch_body = Globals.env.GetKinBody('hitch')
             table_body = Globals.env.GetKinBody('table')
             if init_tfm != None:
@@ -888,15 +835,12 @@ def main():
 
     curr_step = 0
 
-    seg_env_state = []
-
     while True:
-        seg_state = []
-
-        if args.max_steps_before_failure != -1 and curr_step+1 >= args.max_steps_before_failure:
-            seg_state.append(get_env_state()) 
+        
+        if args.max_steps_before_failure != -1 and curr_step > args.max_steps_before_failure:
             redprint("Number of steps %d exceeded maximum %d" % (curr_step, args.max_steps_before_failure))
             break
+
 
         curr_step += 1
         '''
@@ -908,7 +852,6 @@ def main():
         rope_cloud = None     
                    
         if args.simulation:
-            
             #Set home position in sim
             l_vals = L_POSTURES['side']
             Globals.robot.SetDOFValues(l_vals, Globals.robot.GetManipulator('leftarm').GetArmIndices())
@@ -926,12 +869,12 @@ def main():
                     hitch_height = hitch_body.GetLinks()[0].GetGeometries()[0].GetCylinderHeight()
                     pos[2] = pos[2] - hitch_height/2
                     hitch_cloud = cloud_proc_funcs.generate_hitch_points(pos)
-                    hitch_cloud = clouds.downsample(hitch_cloud, args.cloud_downsample)
+                    hitch_cloud = clouds.downsample(hitch_cloud, args.cloud_downsample*2)
                     new_xyz = np.r_[new_xyz, hitch_cloud]
                 
             else:          
-                init_seg = init_state_h5file[args.demo_name][args.perturb_name]
-                new_xyz = np.squeeze(init_seg["cloud_xyz"])
+                fake_seg = demofile[args.fake_data_demo][args.fake_data_segment]
+                new_xyz = np.squeeze(fake_seg["cloud_xyz"])
         
                 hmat = openravepy.matrixFromAxisAngle(args.fake_data_transform[3:6])
                 hmat[:3,3] = args.fake_data_transform[0:3]
@@ -939,32 +882,34 @@ def main():
         
                 # if not rope simulation
                 new_xyz = new_xyz.dot(hmat[:3,:3].T) + hmat[:3,3][None,:]
-                
                 # if the first step in rope simulation
                 if args.simulation: # curr_step == 1
                     rope_nodes = rope_initialization.find_path_through_point_cloud(new_xyz)
                     Globals.sim.create(rope_nodes)
                     new_xyz = Globals.sim.observe_cloud(3)
                     new_xyz = clouds.downsample(new_xyz, args.cloud_downsample)
-                    
+#                     print new_xyz.shape
+#                     raw_input()
+
+
                     hitch = Globals.env.GetKinBody('hitch')
                     if hitch != None:
                         pos = hitch.GetTransform()[:3,3]
                         hitch_height = hitch_body.GetLinks()[0].GetGeometries()[0].GetCylinderHeight()
                         pos[2] = pos[2] - hitch_height/2
                         hitch_cloud = cloud_proc_funcs.generate_hitch_points(pos)
-                        hitch_cloud = clouds.downsample(hitch_cloud, args.cloud_downsample)
+                        hitch_cloud = clouds.downsample(hitch_cloud, args.cloud_downsample*2)
                         new_xyz = np.r_[new_xyz, hitch_cloud]
-            
+                    
             if args.closest_rope_hack:
                 if args.simulation:
                     rope_cloud = Globals.sim.observe_cloud(3)
                     rope_cloud = clouds.downsample(rope_cloud, args.cloud_downsample)
                 else:
-                    if has_hitch(init_state_h5file, args.demo_name, args.perturb_name):
-                        rope_cloud = init_state_h5file[args.demo_name][args.perturb_name]['object']
+                    if has_hitch(demofile, args.fake_data_demo, args.fake_data_segment):
+                        rope_cloud = demofile[args.fake_data_demo][args.fake_data_segment]['object']
                     else:
-                        rope_cloud = init_state_h5file[args.demo_name][args.perturb_name]['cloud_xyz']
+                        rope_cloud = demofile[args.fake_data_demo][args.fake_data_segment]['cloud_xyz']
 
 
         else:
@@ -972,6 +917,7 @@ def main():
             Globals.pr2.rarm.goto_posture('side')
             Globals.pr2.larm.goto_posture('side')
             Globals.pr2.join_all()
+            if args.execution: time.sleep(3.5)
         
             Globals.pr2.update_rave()
             
@@ -983,12 +929,11 @@ def main():
             if args.closest_rope_hack:
                 rope_cloud = np.array(new_xyz)
             
-            if use_diff_length: demofile = demofiles[0]
             if has_hitch(demofile):
                 hitch_normal = clouds.clouds_plane(new_xyz)
                 
                 hitch_cloud, hitch_pos = hitch_proc_func(rgb, depth, T_w_k, hitch_normal)
-                hitch_cloud = clouds.downsample(hitch_cloud, args.cloud_downsample)
+                hitch_cloud = clouds.downsample(hitch_cloud, args.cloud_downsample*2)
                 new_xyz = np.r_[new_xyz, hitch_cloud]
                 
             
@@ -1029,20 +974,30 @@ def main():
         if "done" == seg_name:
             redprint("DONE!")
             break
+
     
         if args.log:
             with open(osp.join(LOG_DIR,"neighbor%i.txt"%LOG_COUNT),"w") as fh: fh.write(seg_name)
+
+        # import matplotlib.pylab as plt
+        # plt.plot(np.np.asarray(demofile[demo_name][seg_name]['r']['pot_angles'])[:,0])
+        # plt.show()
 
         '''
         Generating end-effector trajectory
         '''
         redprint("Generating end-effector trajectory")
 
+
         handles = []
         old_xyz = np.squeeze(seg_info["cloud_xyz"])
         if args.use_ar_init:
             # Transform the old clouds approximately into PR2's frame
             old_xyz = old_xyz.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]    
+
+        
+        #print old_xyz.shape
+        #print new_xyz.shape
     
         color_old = [(1,0,0,1) for _ in range(len(old_xyz))]
         color_new = [(0,0,1,1) for _ in range(len(new_xyz))]
@@ -1096,6 +1051,7 @@ def main():
         portion = max(args.early_stop_portion, miniseg_ends[0] / float(segment_len))
         
         prev_vals = {lr:None for lr in 'lr'}
+        #l_vals = PR2.Arm.L_POSTURES['side']
         l_vals = L_POSTURES['side']
         for (i_miniseg, (i_start, i_end)) in enumerate(zip(miniseg_starts, miniseg_ends)):
             
@@ -1361,19 +1317,17 @@ def main():
             redprint("Executing joint trajectory for demo %s segment %s, part %i using arms '%s'"%(demo_name, seg_name, i_miniseg, bodypart2traj.keys()))
             
             for lr in 'lr':
-                #gripper_open = binarize_gripper(seg_info[lr]["pot_angles"][i_start], args.pot_threshold)
-                #prev_gripper_open = binarize_gripper(seg_info[lr]["pot_angles"][i_start-1], args.pot_threshold) if i_start != 0 else False
                 gripper_open = lr_open[lr][i_miniseg]
                 prev_gripper_open = lr_open[lr][i_miniseg-1] if i_miniseg != 0 else False
                 if not set_gripper_maybesim(lr, gripper_open, prev_gripper_open):
                     redprint("Grab %s failed"%lr)
                     success = False
-                # Doesn't actually check if grab occurred, unfortunately
 
-            seg_state.append(get_env_state())            
-            # if not success: break
-            is_final_seg = False
+                        
             if len(bodypart2traj['larm']) > 0:
+                """HACK
+                """
+                is_final_seg = False
                 if is_final_seg and miniseg_ends[i_miniseg] < portion * segment_len:
                     success &= exec_traj_maybesim(bodypart2traj)
                 elif is_final_seg:
@@ -1390,22 +1344,23 @@ def main():
                 '''
                 Maybe for robot execution
                 '''
+                if args.execution: time.sleep(5)
+                
                 if args.execution:
                     time.sleep(5)
-            
-        seg_env_state.append(seg_state) 
+ 
 
             #if not success: break
-
+           
         if args.simulation:
             Globals.sim.settle(animate=args.animation)
-
+        
         if Globals.viewer and args.interactive:
             Globals.viewer.Idle()
             
         redprint("Demo %s Segment %s result: %s"%(demo_name, seg_name, success))
-
-    init_state_h5file.close()
+        
+        if args.fake_data_demo and args.fake_data_segment and not args.simulation: break
 
     if use_diff_length:
         for demofile in demofiles: demofile.close()
@@ -1415,16 +1370,6 @@ def main():
         demofile.close()
         if args.select == "clusters":
             clusterfile.close()
-    
-    state_file_dir = osp.join(demo_files_dir, args.demo_type, args.state_save_dir)
-    if not osp.exists(state_file_dir):
-        os.mkdir(state_file_dir)
-    state_file_name  = osp.join(state_file_dir, args.demo_name+"_"+args.perturb_name+".cp")
-    with open(state_file_name, "w") as f:
-        data = {"demo_name": args.demo_name, "perturb_name": args.perturb_name, "seg_info": seg_env_state}
-        cPickle.dump(data, f)
-
 
 if __name__ == "__main__":
     main()
-

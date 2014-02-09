@@ -19,6 +19,7 @@ parser = argparse.ArgumentParser(usage=usage)
 
 
 parser.add_argument("--demo_type", type=str)
+parser.add_argument("--use_diff_length", action="store_true", default=False)
 parser.add_argument("--cloud_proc_func", default="extract_red")
 parser.add_argument("--cloud_proc_mod", default="hd_utils.cloud_proc_funcs")
     
@@ -26,7 +27,6 @@ parser.add_argument("--execution", type=int, default=0)
 parser.add_argument("--animation", type=int, default=0)
 parser.add_argument("--simulation", type=int, default=0)
 parser.add_argument("--parallel", type=int, default=1)
-parser.add_argument("--cloud", type=int, default=0)
 parser.add_argument("--downsample", help="downsample traj.", type=int, default=1)
 
 parser.add_argument("--prompt", action="store_true")
@@ -137,16 +137,8 @@ class Globals:
     sim = None
     viewer = None
 
-
 DS_SIZE = .025
 
-def get_env_state():
-    state =  [Globals.robot.GetTransform(), Globals.robot.GetDOFValues(), Globals.sim.rope.GetNodes()]
-    hitch = Globals.env.GetKinBody('hitch')
-    if hitch != None:
-        state.append(hitch.GetTransform())
-    return state
-    
 
 def smaller_ang(x):
     return (x + np.pi)%(2*np.pi) - np.pi
@@ -170,7 +162,7 @@ def closer_angs(x_array,a_array,dr=0):
     return [closer_ang(x, a, dr) for (x, a) in zip(x_array, a_array)]
 
 
-def split_trajectory_by_gripper(seg_info, pot_angle_threshold, thresh=5):
+def split_trajectory_by_gripper(seg_info, pot_angle_threshold, ms_thresh=2):
     lgrip = np.asarray(seg_info["l"]["pot_angles"])
     rgrip = np.asarray(seg_info["r"]["pot_angles"])
     
@@ -193,17 +185,23 @@ def split_trajectory_by_gripper(seg_info, pot_angle_threshold, thresh=5):
     seg_starts = np.unique(np.r_[0, after_transitions])
     seg_ends = np.unique(np.r_[before_transitions, n_steps-1])
     
+    lr_open = {lr:[] for lr in 'lr'}
     new_seg_starts = []
     new_seg_ends = []
     for i in range(len(seg_starts)):
-        if seg_ends[i]- seg_starts[i] >= thresh:
+        if seg_ends[i]- seg_starts[i] >= ms_thresh:
             new_seg_starts.append(seg_starts[i])
             new_seg_ends.append(seg_ends[i])
-    
+            lval = True if lgrip[seg_starts[i]] >= thresh else False
+            lr_open['l'].append(lval)
+            rval = True if rgrip[seg_starts[i]] >= thresh else False
+            lr_open['r'].append(rval)
+            
+     
 #     import IPython
 #     IPython.embed()
-
-    return new_seg_starts, new_seg_ends
+ 
+    return new_seg_starts, new_seg_ends, lr_open
 
 def binarize_gripper(angle, pot_angle_threshold):
     open_angle = .08
@@ -329,36 +327,44 @@ def exec_traj_maybesim(bodypart2traj):
 
     return True
 
-def find_closest_manual(demofile, _new_xyz):
+def find_closest_manual(demofiles, _new_xyz):
     """for now, just prompt the user"""
     
+    if not isinstance(demofiles, list):
+        demofiles = [demofiles]
 
     print "choose from the following options (type an integer)"
     seg_num = 0
+    demotype_num = 0
     keys = {}
     is_finalsegs = {}
-    for demo_name in demofile:
-        if demo_name != "ar_demo":
-            if 'done' in demofile[demo_name].keys():
-                final_seg_id = len(demofile[demo_name].keys()) - 2
-            else:
-                final_seg_id = len(demofile[demo_name].keys()) - 1
-                
-            
-            for seg_name in demofile[demo_name]:
-                if seg_name != 'done':
-                    keys[seg_num] = (demo_name, seg_name)
-                    print "%i: %s, %s"%(seg_num, demo_name, seg_name)
+    for demofile in demofiles:
+        print "Type %i: "%(demotype_num + 1)
+        for demo_name in demofile:
+            if demo_name != "ar_demo":
+                if 'done' in demofile[demo_name].keys():
+                    final_seg_id = len(demofile[demo_name].keys()) - 2
+                else:
+                    final_seg_id = len(demofile[demo_name].keys()) - 1
                     
-                    if seg_name == "seg%02d"%(final_seg_id):
-                        is_finalsegs[seg_num] = True
-                    else:
-                        is_finalsegs[seg_num] = False
-
-                    seg_num += 1
-
+                
+                for seg_name in demofile[demo_name]:
+                    if seg_name != 'done':
+                        keys[seg_num] = (demotype_num, demo_name, seg_name)
+                        print "%i: %i, %s, %s"%(seg_num, demotype_num+1, demo_name, seg_name)
+                        
+                        if seg_name == "seg%02d"%(final_seg_id):
+                            is_finalsegs[seg_num] = True
+                        else:
+                            is_finalsegs[seg_num] = False
+    
+                        seg_num += 1
+        demotype_num +=1
     choice_ind = task_execution.request_int_in_range(seg_num)
-    return keys[choice_ind], is_finalsegs[choice_ind]
+    if demotype_num == 1:
+        return (keys[choice_ind][1],keys[choice_ind][2]) , is_finalsegs[choice_ind]
+    else:
+        return keys[choice_ind], is_finalsegs[choice_ind]
 
 
 def registration_cost(xyz0, xyz1):
@@ -369,44 +375,52 @@ def registration_cost(xyz0, xyz1):
     return cost
 
 
-def find_closest_auto(demofile, new_xyz, init_tfm=None, n_jobs=3):
+def find_closest_auto(demofiles, new_xyz, sim_seg_num, init_tfm=None, n_jobs=3, seg_proximity=2, DS_LEAF_SIZE=0.02):
+    """
+    sim_seg_num   : is the index of the segment being executed in the simulation: used to find 
+    seg_proximity : only segments with numbers in +- seg_proximity of sim_seg_num are selected. 
+    """
     if args.parallel:
         from joblib import Parallel, delayed
+
+    if not isinstance(demofiles, list):
+        demofiles = [demofiles]
         
     demo_clouds = []
     
-    DS_LEAF_SIZE = 0.045
+    
     new_xyz = clouds.downsample(new_xyz,DS_LEAF_SIZE)
     
     avg = 0.0
-    
+
     keys = {}
     is_finalsegs = {}
-
-    seg_num = 0
-    for demo_name in demofile:
-        if demo_name != "ar_demo":
-            if 'done' in demofile[demo_name].keys():
-                final_seg_id = len(demofile[demo_name].keys()) - 2
-            else:
-                final_seg_id = len(demofile[demo_name].keys()) - 1
-
-            for seg_name in demofile[demo_name]:
-                keys[seg_num] = (demo_name, seg_name)
-                
-                if seg_name == "seg%02d"%(final_seg_id):
-                    is_finalsegs[seg_num] = True
+    demotype_num = 0
+    seg_num = 0      ## this seg num is the index of all the segments in all the demos.
+    for demofile in demofiles:
+        for demo_name in demofile:
+            if demo_name != "ar_demo":
+                if 'done' in demofile[demo_name].keys():
+                    final_seg_id = len(demofile[demo_name].keys()) - 2
                 else:
-                    is_finalsegs[seg_num] = False
+                    final_seg_id = len(demofile[demo_name].keys()) - 1
 
-                
-                seg_num += 1
-                demo_xyz = clouds.downsample(np.asarray(demofile[demo_name][seg_name]["cloud_xyz"]),DS_LEAF_SIZE)
-                if init_tfm is not None:
-                    demo_xyz = demo_xyz.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
-                print demo_xyz.shape
-                avg += demo_xyz.shape[0]
-                demo_clouds.append(demo_xyz)
+                for seg_name in demofile[demo_name]:
+                    keys[seg_num] = (demotype_num, demo_name, seg_name)
+
+                    if seg_name == "seg%02d"%(final_seg_id):
+                        is_finalsegs[seg_num] = True
+                    else:
+                        is_finalsegs[seg_num] = False
+
+                    seg_num += 1
+                    demo_xyz = clouds.downsample(np.asarray(demofile[demo_name][seg_name]["cloud_xyz"]),DS_LEAF_SIZE)
+                    if init_tfm is not None:
+                        demo_xyz = demo_xyz.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
+                    print demo_xyz.shape
+                    avg += demo_xyz.shape[0]
+                    demo_clouds.append(demo_xyz)
+        demotype_num +=1
     
     # raw_input(avg/len(demo_clouds))
     if args.parallel:
@@ -435,32 +449,54 @@ def find_closest_auto(demofile, new_xyz, init_tfm=None, n_jobs=3):
         print "press any key to continue"
         cv2.waitKey()
     
-    ibest = np.argmin(costs)
-    return keys[ibest], is_finalsegs[ibest]
+    choice_ind = np.argmin(costs)
+    
+    if demotype_num == 1:
+        return (keys[choice_ind][1],keys[choice_ind][2]) , is_finalsegs[choice_ind]
+    else:
+        return keys[choice_ind], is_finalsegs[choice_ind]
 
 
-def find_closest_clusters(demofile, clusterfile, new_xyz, init_tfm=None, check_n=3, n_jobs=3):
+
+def append_to_dict_list(dic, key, item):
+    if key in dic.keys():
+        dic[key].append(item)
+    else:
+        dic[key] = [item]
+          
+def find_closest_clusters(demofiles, clusterfiles, new_xyz, sim_seg_num, seg_proximity=2, init_tfm=None, check_n=3, n_jobs=3, DS_LEAF_SIZE=0.02):
     if args.parallel:
         from joblib import Parallel, delayed
     
-    DS_LEAF_SIZE = 0.015
+    if not isinstance(demofiles, list): demofiles = [demofiles]
+    if not isinstance(clusterfiles, list): clusterfiles = [clusterfiles]
+
     new_xyz = clouds.downsample(new_xyz,DS_LEAF_SIZE)
         
     # Store all the best cluster clouds
+    clusters = {}
+    keys = {}
     cluster_clouds = []
-    keys = clusterfile['keys']
-    keys = {int(key):keys[key] for key in keys}
-    clusters = clusterfile['clusters']
-    clusters = {int(c):clusters[c] for c in clusters}
-    
-    for cluster in clusters:
-        best_seg = clusters[cluster][0]
-        dname, sname = keys[best_seg]
-        cloud = clouds.downsample(np.asarray(demofile[dname][sname]["cloud_xyz"]),DS_LEAF_SIZE)
-        if init_tfm is not None:
-            cloud = cloud.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
+    all_keys = {}
+    idx = 0
+    dnum = 0
+    for demofile,clusterfile in zip(demofiles, clusterfiles):        
+        keys[dnum] = clusterfile['keys']
+        keys[dnum] = {int(key):keys[dnum][key] for key in keys[dnum]}
+        clusters[dnum] = clusterfile['clusters']
+        clusters[dnum] = {int(c):clusters[dnum][c] for c in clusters[dnum]}
 
-        cluster_clouds.append(cloud)
+        for cluster in clusters[dnum]:
+            best_seg = clusters[dnum][cluster][0]
+            dname, sname = keys[dnum][best_seg]
+            cloud = clouds.downsample(np.asarray(demofile[dname][sname]["cloud_xyz"]),DS_LEAF_SIZE)
+            if init_tfm is not None:
+                cloud = cloud.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
+    
+            all_keys[idx] = (dnum, cluster)
+            cluster_clouds.append(cloud)
+            idx += 1
+        dnum += 1
 
     # Check the clusters with min costs
     if args.parallel:
@@ -478,14 +514,15 @@ def find_closest_clusters(demofile, clusterfile, new_xyz, init_tfm=None, check_n
     check_n = min(check_n, len(best_clusters))
     
     if args.show_neighbors:
-        nshow = min(check_n*3, len(clusters))
+        nshow = min(check_n*3, len(cluster_clouds))
         import cv2, hd_rapprentice.cv_plot_utils as cpu, math
         closeinds = best_clusters[:nshow]
         
         near_rgbs = []
         for i in closeinds:
-            (demo_name, seg_name) = keys[clusters[i][0]]
-            near_rgbs.append(np.asarray(demofile[demo_name][seg_name]["rgb"]))
+            dn, cluster = all_keys[i]
+            (demo_name, seg_name) = keys[dn][clusters[dn][cluster][0]]
+            near_rgbs.append(np.asarray(demofiles[dn][demo_name][seg_name]["rgb"]))
         
         rows = 6
         cols = int(math.ceil(nshow*1.0/rows))
@@ -495,30 +532,39 @@ def find_closest_clusters(demofile, clusterfile, new_xyz, init_tfm=None, check_n
         cv2.waitKey()
 
     #############################################################################
-    is_finalsegs = {}    
-    check_clouds = []
-    best_segs = []
+    demo_seg_clouds = {}
+    demo_seg_info   = {}
+
+
+    def is_final_seg(seg_info):
+        dn, dname, sname = seg_info
+        if 'done' in demofiles[dn][dname].keys():
+            final_seg_id = len(demofiles[dn][dname].keys()) - 2
+        else:
+            final_seg_id = len(demofiles[dn][dname].keys()) - 1
+        return sname == "seg%02d"%(final_seg_id)
+    
     for c in best_clusters[:check_n]:
-        cluster_segs = clusters[c]
+        dn, cluster = all_keys[c]
+        cluster_segs = clusters[dn][cluster]
+
         for seg in cluster_segs:
-            dname,sname = keys[seg]
-            best_segs.append(int(seg))
-            cloud = clouds.downsample(np.asarray(demofile[dname][sname]["cloud_xyz"]),DS_LEAF_SIZE)
+            dname,sname = keys[dn][seg]
+        
+            snum  = int(sname.split('seg')[1])
+            sdist = int(np.abs(sim_seg_num - snum)//seg_proximity)
+            
+            cloud = clouds.downsample(np.asarray(demofiles[dn][dname][sname]["cloud_xyz"]),DS_LEAF_SIZE)
             if init_tfm is not None:
                 cloud = cloud.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
-                
-            check_clouds.append(cloud)
+            
+            append_to_dict_list(demo_seg_clouds, sdist, cloud)
+            append_to_dict_list(demo_seg_info, sdist, (dn,dname,sname))
 
-            if 'done' in demofile[dname].keys():
-                final_seg_id = len(demofile[dname].keys()) - 2
-            else:
-                final_seg_id = len(demofile[dname].keys()) - 1
 
-            if sname == "seg%02d"%(final_seg_id):
-                is_finalsegs[seg] = True
-            else:
-                is_finalsegs[seg] = False
-
+    smallest_seg_dist = np.sort(demo_seg_clouds.keys())[0]
+    check_clouds = demo_seg_clouds[smallest_seg_dist]
+    cluster_keys = demo_seg_info[smallest_seg_dist]
     # Check the clusters with min costs
     if args.parallel:
         costs = Parallel(n_jobs=n_jobs,verbose=51)(delayed(registration_cost)(cloud, new_xyz) for cloud in check_clouds)
@@ -536,8 +582,8 @@ def find_closest_clusters(demofile, clusterfile, new_xyz, init_tfm=None, check_n
         
         near_rgbs = []
         for i in sortinds:
-            (demo_name, seg_name) = keys[best_segs[i]]
-            near_rgbs.append(np.asarray(demofile[demo_name][seg_name]["rgb"]))
+            (dn, demo_name, seg_name) = cluster_keys[i]
+            near_rgbs.append(np.asarray(demofiles[dn][demo_name][seg_name]["rgb"]))
         
         rows = 6
         cols = int(math.ceil(nshow*1.0/rows))
@@ -546,9 +592,12 @@ def find_closest_clusters(demofile, clusterfile, new_xyz, init_tfm=None, check_n
         print "press any key to continue"
         cv2.waitKey()
     
-    ibest = best_segs[np.argmin(costs)]
+    choice_ind = np.argmin(costs)
     
-    return keys[ibest], is_finalsegs[ibest]
+    if dnum == 1:
+        return (cluster_keys[choice_ind][1],cluster_keys[choice_ind][2]) , is_final_seg(cluster_keys[choice_ind])
+    else:
+        return cluster_keys[choice_ind], is_final_seg(cluster_keys[choice_ind])
 
 
 
@@ -667,19 +716,36 @@ L_POSTURES = dict(
 )   
 
 
+use_diff_length = args.use_diff_length
 
 
 def main():
-
+    global use_diff_length
     
-    demotype_dir = osp.join(demo_files_dir, args.demo_type)
-    h5file = osp.join(demotype_dir, args.demo_type+".h5")
-    print h5file
-    demofile = h5py.File(h5file, 'r')
+    if use_diff_length:
+        from glob import glob
+        demotype_dirs = glob(osp.join(demo_files_dir, args.demo_type+'[0-9]*'))
+        demo_types    = [osp.basename(demotype_dir) for demotype_dir in demotype_dirs]
+        demo_h5files  = [osp.join(demotype_dir, demo_type+".h5") for demo_type in demo_types]
+        print demo_h5files
+        demofiles = [h5py.File(demofile, 'r') for demofile in demo_h5files]
+        demofile = demofiles[0]
+        if len(demofiles) == 1: 
+            use_diff_length = False
+    else:
+        demotype_dir = osp.join(demo_files_dir, args.demo_type)
+        demo_h5file = osp.join(demotype_dir, args.demo_type+".h5")
+        print demo_h5file
+        demofile = h5py.File(demo_h5file, 'r')
+    
     
     if args.select == "clusters":
-        c_h5file = osp.join(demotype_dir, args.demo_type+"_clusters.h5")
-        clusterfile = h5py.File(c_h5file, 'r') 
+        if use_diff_length:
+            c_h5files = [osp.join(demotype_dir, demo_type+"_clusters.h5") for demo_type in demo_types]
+            clusterfiles = [h5py.File(c_h5file, 'r') for c_h5file in c_h5files]
+        else:
+            c_h5file = osp.join(demotype_dir, args.demo_type+"_clusters.h5")
+            clusterfile = h5py.File(c_h5file, 'r') 
     
     trajoptpy.SetInteractive(args.interactive)
     
@@ -805,15 +871,13 @@ def main():
 
     curr_step = 0
 
-    seg_env_state = []
-
     while True:
         
         if args.max_steps_before_failure != -1 and curr_step > args.max_steps_before_failure:
             redprint("Number of steps %d exceeded maximum %d" % (curr_step, args.max_steps_before_failure))
             break
 
-        seg_state = []
+
         curr_step += 1
         '''
         Acquire point cloud
@@ -823,14 +887,13 @@ def main():
         
         rope_cloud = None     
                    
-        if args.fake_data_segment and args.fake_data_demo:
+        if args.simulation:
             #Set home position in sim
-            #l_vals = PR2.Arm.L_POSTURES['side']
             l_vals = L_POSTURES['side']
             Globals.robot.SetDOFValues(l_vals, Globals.robot.GetManipulator('leftarm').GetArmIndices())
             Globals.robot.SetDOFValues(mirror_arm_joints(l_vals), Globals.robot.GetManipulator('rightarm').GetArmIndices())
 
-            if args.simulation and curr_step > 1:
+            if curr_step > 1:
                 # for following steps in rope simulation, using simulation result
                 new_xyz = Globals.sim.observe_cloud(3)
                 new_xyz = clouds.downsample(new_xyz, args.cloud_downsample)
@@ -924,20 +987,30 @@ def main():
         Finding closest demonstration
         '''
         redprint("Finding closest demonstration")
-        if args.select=="manual":
-            (demo_name, seg_name), is_final_seg = find_closest_manual(demofile, new_xyz)
-        elif args.select=="auto":
-            (demo_name, seg_name), is_final_seg = find_closest_auto(demofile, new_xyz, init_tfm)
-        else:
-            (demo_name, seg_name), is_final_seg = find_closest_clusters(demofile, clusterfile, new_xyz, init_tfm)
+        if use_diff_length:
+            if args.select=="manual":
+                dnum, (demo_name, seg_name), is_final_seg = find_closest_manual(demofiles, new_xyz)
+            elif args.select=="auto":
+                dnum, (demo_name, seg_name), is_final_seg = find_closest_auto(demofiles, new_xyz, init_tfm, DS_LEAF_SIZE = args.cloud_downsample)
+            else:
+                dnum, (demo_name, seg_name), is_final_seg = find_closest_clusters(demofiles, clusterfiles, new_xyz, curr_step-1, init_tfm=init_tfm, DS_LEAF_SIZE = args.cloud_downsample)
 
+            seg_info = demofiles[dnum][demo_name][seg_name]
+            redprint("closest demo: %i, %s, %s"%(dnum, demo_name, seg_name))
+        else:
+            if args.select=="manual":
+                (demo_name, seg_name), is_final_seg = find_closest_manual(demofile, new_xyz)
+            elif args.select=="auto":
+                (demo_name, seg_name), is_final_seg = find_closest_auto(demofile, new_xyz, init_tfm)
+            else:
+                (demo_name, seg_name), is_final_seg = find_closest_clusters(demofile, clusterfile, new_xyz, curr_step-1, init_tfm=init_tfm)
+            seg_info = demofile[demo_name][seg_name]
+            redprint("closest demo: %s, %s"%(demo_name, seg_name))
         
-        seg_info = demofile[demo_name][seg_name]
-        redprint("closest demo: %s, %s"%(demo_name, seg_name))
         if "done" == seg_name:
             redprint("DONE!")
             break
-    
+
     
         if args.log:
             with open(osp.join(LOG_DIR,"neighbor%i.txt"%LOG_COUNT),"w") as fh: fh.write(seg_name)
@@ -951,18 +1024,13 @@ def main():
         '''
         redprint("Generating end-effector trajectory")
 
-        OLD_DS_FACTOR = 1.5
+
         handles = []
-        if has_hitch(demofile):
-            obj = clouds.downsample(np.squeeze(seg_info["object"]), args.cloud_downsample*OLD_DS_FACTOR)
-            hitch = clouds.downsample(np.squeeze(seg_info["hitch"]),args.cloud_downsample*2)
-            #print obj.shape
-            old_xyz = np.r_[obj, hitch]
-        else:
-            old_xyz = clouds.downsample(np.squeeze(seg_info["cloud_xyz"]), args.cloud_downsample*OLD_DS_FACTOR)
+        old_xyz = np.squeeze(seg_info["cloud_xyz"])
         if args.use_ar_init:
             # Transform the old clouds approximately into PR2's frame
-            old_xyz = old_xyz.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
+            old_xyz = old_xyz.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]    
+
         
         #print old_xyz.shape
         #print new_xyz.shape
@@ -1011,7 +1079,7 @@ def main():
         '''
         Generating mini-trajectory
         '''
-        miniseg_starts, miniseg_ends = split_trajectory_by_gripper(seg_info, args.pot_threshold)
+        miniseg_starts, miniseg_ends, lr_open = split_trajectory_by_gripper(seg_info, args.pot_threshold)
         success = True
         redprint("mini segments: %s %s"%(miniseg_starts, miniseg_ends))
         
@@ -1285,16 +1353,13 @@ def main():
             redprint("Executing joint trajectory for demo %s segment %s, part %i using arms '%s'"%(demo_name, seg_name, i_miniseg, bodypart2traj.keys()))
             
             for lr in 'lr':
-                gripper_open = binarize_gripper(seg_info[lr]["pot_angles"][i_start], args.pot_threshold)
-                prev_gripper_open = binarize_gripper(seg_info[lr]["pot_angles"][i_start-1], args.pot_threshold) if i_start != 0 else False
+                gripper_open = lr_open[lr][i_miniseg]
+                prev_gripper_open = lr_open[lr][i_miniseg-1] if i_miniseg != 0 else False
                 if not set_gripper_maybesim(lr, gripper_open, prev_gripper_open):
                     redprint("Grab %s failed"%lr)
                     success = False
-                # Doesn't actually check if grab occurred, unfortunately
 
-            seg_state.append(get_env_state())            
-            # if not success: break
-            
+                        
             if len(bodypart2traj['larm']) > 0:
                 """HACK
                 """
@@ -1319,8 +1384,7 @@ def main():
                 
                 if args.execution:
                     time.sleep(5)
-            
-            seg_env_state.append(seg_state) 
+ 
 
             #if not success: break
            
@@ -1334,9 +1398,14 @@ def main():
         
         if args.fake_data_demo and args.fake_data_segment and not args.simulation: break
 
-    demofile.close()
-    if args.select == "clusters":
-        clusterfile.close()
+    if use_diff_length:
+        for demofile in demofiles: demofile.close()
+        if args.select == "clusters":
+            for clusterfile in clusterfiles: clusterfile.close()
+    else:
+        demofile.close()
+        if args.select == "clusters":
+            clusterfile.close()
 
 if __name__ == "__main__":
     main()
