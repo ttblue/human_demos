@@ -331,7 +331,7 @@ def record_demo (demo_name, use_voice):
         return False
 
 
-def record_pipeline ( calib_file, num_cameras, num_demos, use_voice, use_init=True):
+def record_pipeline ( calib_file, num_cameras, num_demos, use_voice, use_init=True, redo):
     """
     Either records n demos or until person says he is done.
     @calib_file: file to load calibration from. "", -- default -- means using the one in the master file
@@ -369,7 +369,11 @@ def record_pipeline ( calib_file, num_cameras, num_demos, use_voice, use_init=Tr
         time.sleep(1.2)
         
         if use_init:
-            init_config = load_init_config(demo_num-1)
+            if redo is None:
+                init_config = load_init_config(demo_num-1)
+            else:
+                ind = demo_num-100-1
+                init_config = load_init_config(redo[ind]-1)
             if init_config is None:
                 greenprint("No init config. Provide random init config.")
                 subprocess.call("espeak -v en 'Provide random init config.'", stdout=devnull, stderr=devnull, shell=True)
@@ -596,6 +600,8 @@ if __name__ == '__main__':
     parser.add_argument("--use_voice", help="Use voice for recording.", default=1, type=int)
     parser.add_argument("--use_init", help="Use your own initial configs.", action="store_false", default=True)
     parser.add_argument("--use_new_pert", help="Use initial configs.", action="store_true", default=False)
+    parser.add_argument("--redo", help="Display these initial configs, but demo num keeps going", type=int, nargs='+', default=None)
+
     
     parser.add_argument("--single_demo", help="Single or multiple demos?", action="store_true", default=False)
     parser.add_argument("--config_num", help="Index of random config.", default=-1, type=int)
@@ -617,4 +623,4 @@ if __name__ == '__main__':
                             num_cameras = args.num_cameras, use_voice = use_voice, config_num=config_num)
     else:
         record_pipeline (calib_file = args.calib_file, num_cameras = args.num_cameras, 
-                         num_demos = args.num_demos,use_voice = use_voice, use_init=args.use_init)
+                         num_demos = args.num_demos,use_voice = use_voice, use_init=args.use_init, redo=args.redo)
