@@ -2,7 +2,7 @@ import numpy as np
 import cv2, argparse, h5py
 import os.path as osp
 
-#from hd_utils.defaults import demo_files_dir
+from hd_utils.defaults import demo_files_dir
 
 usage = """
 To view and label all demos of a certain task type:
@@ -57,7 +57,7 @@ The parameter verify indicates whether to check that every segment in
 the h5 file was labeled.
 """
 def label_crossings(demo_type, demo_name, verify=False):
-    h5filename = osp.join('/Users/George/Downloads', demo_type + '.h5')
+    h5filename = osp.join(demo_files_dir, demo_type + '.h5')
     hdf = h5py.File(h5filename, 'r+')
     if demo_name != None:
         for seg in hdf[demo].keys():
@@ -109,9 +109,7 @@ def label_single_demo(hdf, demo, seg):
     cv2.destroyAllWindows()
 
 if __name__ == "__main__":
-    #args = parser.parse_args()
-    #demo_type = args.demo_type
-    #demo_name = args.demo_name
-    demo_type = "overhand120"
-    demo_name = None
+    args = parser.parse_args()
+    demo_type = args.demo_type
+    demo_name = args.demo_name
     label_crossings(demo_type, demo_name, verify=True)
