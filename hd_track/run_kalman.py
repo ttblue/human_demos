@@ -123,8 +123,7 @@ def get_first_state(tf_streams, freq, start_time):
             for ti, t in enumerate(ts):
                 if t <= 6*dt + start_time:
                     tfs0.append(tfs[ti])
-        import IPython
-        IPython.embed()
+
 
 #     import IPython
 #     IPython.embed()

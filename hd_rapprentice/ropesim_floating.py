@@ -1,7 +1,8 @@
 import bulletsimpy
 import numpy as np
-from rapprentice import math_utils, retiming, resampling
-from defaults import models_dir
+from hd_utils import math_utils
+from hd_rapprentice import retiming, resampling
+from hd_utils.defaults import models_dir
 import os.path as osp
 
 def transform(hmat, p):
