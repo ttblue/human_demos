@@ -97,6 +97,8 @@ from hd_utils.utils import avg_transform
 from hd_utils.defaults import demo_files_dir, hd_data_dir,\
         ar_init_dir, ar_init_demo_name, ar_init_playback_name, \
         tfm_head_dof, tfm_bf_head, cad_files_dir
+from knot_classifier import calculateCrossings
+from hd_visualization.label_crossings import calculate_mdp
 
 
 
@@ -414,14 +416,13 @@ def find_closest_auto(demofiles, new_xyz, sim_seg_num, init_tfm=None, n_jobs=3, 
         return keys[choice_ind], is_finalsegs[choice_ind]
 
 
-def match_crossings(demofiles, keys, costs, new_xyz):
-    from knot_classifier import calculateCrossings
-    from hd_visualization.label_crossings import calculate_mdp
+def match_crossings(demofiles, keys, original_costs, new_xyz):
     sim_crossings = calculateCrossings(new_xyz)
-    equiv = calculate_mdp(demofiles[demotype_num])
+    costs = np.copy(original_costs)
     while True: #check best TPS fit against crossings match
         best_fit = np.argmin(costs)
         demotype_num, demo, seg = keys[best_fit]
+        #equiv = calculate_mdp(demofiles[demotype_num])
         hdf = demofiles[demotype_num]
         points = []
         for crossing in hdf[demo][seg]["crossings"]:
@@ -429,11 +430,14 @@ def match_crossings(demofiles, keys, costs, new_xyz):
                 points.append((crossing[0], crossing[1], -1))
             elif crossing[2] == 1:
                 points.append(crossing)
-        equivalent_states = equiv[points]
-        if sim_crossings in equivalent_states: #or reverse -- need to match based on TPS
+        #equivalent_states = equiv[points]
+        #if sim_crossings in equivalent_states: #or reverse -- need to match based on TPS
+        if sim_crossings == points:
             return best_fit
         else:
             del costs[best_fit]
+    return np.argmin(original_costs)
+
 
 
 def append_to_dict_list(dic, key, item):

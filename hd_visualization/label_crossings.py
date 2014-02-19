@@ -36,8 +36,8 @@ def mark_crossing(event,x,y,flags,param):
 """
 Mark the displayed image with a colored circle, and save the x,y coords
 and the type (right or left) of the click to the rope_ends array.
-A left-click signifies the "starting" end of the rope, while a right-click
-signifies the "finishing" end of the rope.
+A left-click signifies the "finishing" end of the rope, while a right-click
+signifies the "starting/beginning" end of the rope.
 Over- and under-crossings are defined in relation to the starting and
 finishing ends of the rope. An under-crossing is a crossing where a
 traversal of the rope from the starting end to the finishing end would
@@ -47,13 +47,13 @@ from the starting end to the finishing end would first encounter the
 crossing on the lower segment, followed by the upper segment.
 """
 def mark_end(event,x,y,flags,param):
-    print "end"
-    if event == cv2.EVENT_LBUTTONUP: #left-click, beginning end
+    print event
+    if event == cv2.EVENT_LBUTTONUP: #left-click, finishing end
         cv2.circle(param[0],(x,y),5,(0,200,200),-1)
         param[1].append([x,y,1])
-    elif event == cv2.EVENT_RBUTTONUP: #right-click, finshing end
+    elif event == cv2.EVENT_RBUTTONUP: #right-click, beginning end
         cv2.circle(param[0],(x,y),5,(200,170,50),-1)
-        param[1].append([x,y,0])
+        param[1].append([x,y,-1])
 
 """
 Iterate through the demos in the h5 file denoted by demo_type, and call
@@ -91,19 +91,31 @@ def label_crossings(hdf, demo_name):
 Unfinished - unneeded?
 """
 def label_ends(hdf, demo_name):
-    if demo_name != None:
-        for seg in hdf[demo].keys():
-            seg_group = hdf[demo][seg]
-            ret = label_single_demo(seg_group, demo+seg, mark_end, 'crossings')
+    if demo_name != "":
+        print "labeling single demo"
+        for seg in hdf[demo_name].keys():
+            seg_group = hdf[demo_name][seg]
+            if "ends" in seg_group.keys():
+                del seg_group["ends"]
+            ret = label_single_demo(seg_group, demo_name+seg, mark_end, "ends")
             while ret == "retry":
-                label_single_demo(seg_group, demo+seg, mark_end, 'crossings')
+                label_single_demo(seg_group, demo_name+seg, mark_end, "ends")
+            if ret == "quit":
+                return
     else:
         for demo in hdf.keys():
             for seg in hdf[demo].keys():
                 seg_group = hdf[demo][seg]
-                ret = label_single_demo(seg_group, demo+seg, mark_end, "crossings")
+                if "ends" in seg_group.keys():
+                    print "ends already labeled for", demo, seg
+                    continue
+                ret = label_single_demo(seg_group, demo+seg, mark_end, "ends")
                 while ret == "retry":
-                    ret = label_single_demo(seg_group, demo+seg, mark_end, "crossings")
+                    ret = label_single_demo(seg_group, demo+seg, mark_end, "ends")
+                if ret == "quit":
+                    return
+                elif ret == "restart":
+                    return "restart"
 
 """
 Set up a cv2 window displaying the image corresponding to demo and seg
@@ -125,6 +137,8 @@ def label_single_demo(seg_group, name, on_mouse, dataset):
             return "retry"
         elif k == ord(' '):
             break
+        elif k == ord('p'):
+            return "restart"
         elif k == 27:
             return "quit"
     print points
@@ -168,20 +182,14 @@ def verify_crossings(hdf):
                     return
 
 
-def remove_crossings(hdf, demo_name):
-    if demo_name != None:
-        for seg in hdf[demo_name].keys():
-            if "crossings" not in hdf[demo_name][seg].keys():
+def remove_data(hdf, dataset):
+    for demo in hdf.keys():
+        for seg in hdf[demo].keys():
+            if dataset not in hdf[demo][seg].keys():
                 break
             else:
-                del hdf[demo_name][seg]['crossings']
-    else:
-        for demo in hdf.keys():
-            for seg in hdf[demo].keys():
-                if "crossings" not in hdf[demo][seg].keys():
-                    break
-                else:
-                    del hdf[demo][seg]['crossings']
+                del hdf[demo][seg][dataset]
+
 
 def refactor(hdf):
     for demo in hdf.keys():
@@ -231,7 +239,7 @@ if __name__ == "__main__":
     print args
     demo_type = args.demo_type
     clear = args.clear
-    label_ends = args.label_ends
+    should_label_ends = args.label_ends
     demo_name = args.demo_name
     verify = args.verify
     h5filename = osp.join(demo_files_dir, demo_type + '.h5')
@@ -239,15 +247,21 @@ if __name__ == "__main__":
     #refactor(hdf)
 
     if clear:
-        confirm = raw_input("Really delete all crossings info for " + demo_type)
-        if confirm:
-            print "clearing crossings data for", demo_type
-            remove_crossings(hdf, demo_name)
+        if should_label_ends:
+            dataset = "ends"
+        else:
+            dataset = "crossings"
+        confirm = raw_input("Really delete all "+dataset+" info for "+demo_type+"? (y/n):")
+        if confirm == 'y':
+            print "clearing", dataset, "data for", demo_type
+            remove_data(hdf, dataset)
         else:
             print "Canceled."
-    elif label_ends:
+    elif should_label_ends:
         print "labeling ends"
-        label_ends(hdf, demo_name)
+        ret = label_ends(hdf, demo_name)
+        while ret == "restart":
+            ret = label_ends(hdf, demo_name)
     elif verify:
         print "verifying"
         verify_crossings(hdf)
