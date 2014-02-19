@@ -2,7 +2,8 @@ import numpy as np
 import cv2, argparse, h5py
 import os.path as osp
 
-from hd_utils.defaults import demo_files_dir
+#from hd_utils.defaults import demo_files_dir
+demo_files_dir = '/Users/George/Downloads'
 
 usage = """
 To view and label all demos of a certain task type:
@@ -13,6 +14,9 @@ parser = argparse.ArgumentParser(usage=usage)
 parser.add_argument("--demo_type", type=str)
 parser.add_argument("--single_demo", help="View and label a single demo", default=False, type=str)
 parser.add_argument("--demo_name", help="Name of demo if single demo.", default="", type=str)
+parser.add_argument("--clear", help="Remove crossings info for the given demo_type", default=False, type=bool)
+parser.add_argument("--label_ends", help="Label the ends of the rope as start and finish for traversal", default=False, type=bool)
+parser.add_argument("--verify", help="Check existence & content of crossings datasets for the given demo_type.", default=False, type=bool)
 
 """
 Mark the displayed image with a colored circle, and save the x,y coords
@@ -21,12 +25,13 @@ A left-click signifies an over-crossing, while a right-click signifies
 an under-crossing.
 """
 def mark_crossing(event,x,y,flags,param):
-    if event == 1: #left-click, overcrossing
+    print event
+    if event == cv2.EVENT_LBUTTONUP: #left-click, overcrossing
         cv2.circle(param[0],(x,y),5,(0,200,200),-1)
         param[1].append([x,y,1])
-    elif event == 2: #right-click, undercrossing
+    elif event == cv2.EVENT_RBUTTONUP: #right-click, undercrossing
         cv2.circle(param[0],(x,y),5,(200,170,50),-1)
-        param[1].append([x,y,0])
+        param[1].append([x,y,-1])
 
 """
 Mark the displayed image with a colored circle, and save the x,y coords
@@ -41,11 +46,12 @@ segment. An over-crossing is a crossing where a traversal of the rope
 from the starting end to the finishing end would first encounter the 
 crossing on the lower segment, followed by the upper segment.
 """
-def mark_ends(event,x,y,flags,param):
-    if event == 1: #left-click, beginning end
+def mark_end(event,x,y,flags,param):
+    print "end"
+    if event == cv2.EVENT_LBUTTONUP: #left-click, beginning end
         cv2.circle(param[0],(x,y),5,(0,200,200),-1)
         param[1].append([x,y,1])
-    elif event == 2: #right-click, finshing end
+    elif event == cv2.EVENT_RBUTTONUP: #right-click, finshing end
         cv2.circle(param[0],(x,y),5,(200,170,50),-1)
         param[1].append([x,y,0])
 
@@ -56,60 +62,195 @@ If demo_name is not null, iterate only over the segments of demo_name.
 The parameter verify indicates whether to check that every segment in
 the h5 file was labeled.
 """
-def label_crossings(demo_type, demo_name, verify=False):
-    h5filename = osp.join(demo_files_dir, demo_type + '.h5')
-    hdf = h5py.File(h5filename, 'r+')
-    if demo_name != None:
-        for seg in hdf[demo].keys():
-            label_single_demo(hdf, demo_name)
+def label_crossings(hdf, demo_name):
+    if demo_name != "":
+        print "labeling single demo"
+        for seg in hdf[demo_name].keys():
+            seg_group = hdf[demo_name][seg]
+            if "crossings" in seg_group.keys():
+                del seg_group["crossings"]
+            ret = label_single_demo(seg_group, demo_name+seg, mark_crossing, "crossings")
+            while ret == "retry":
+                ret = label_single_demo(seg_group, demo_name+seg, mark_crossing, "crossings")
+            if ret == "quit":
+                return
     else:
         for demo in hdf.keys():
             for seg in hdf[demo].keys():
-                label_single_demo(hdf, demo, seg)
-    if verify:
-        assert(verify_crossings(hdf))
+                seg_group = hdf[demo][seg]
+                if "crossings" in seg_group.keys():
+                    print "crossings already labeled for", demo, seg
+                    break
+                ret = label_single_demo(seg_group, demo+seg, mark_crossing, "crossings")
+                while ret == "retry":
+                    ret = label_single_demo(seg_group, demo+seg, mark_crossing, "crossings")
+                if ret == "quit":
+                    return
+
+"""
+Unfinished - unneeded?
+"""
+def label_ends(hdf, demo_name):
+    if demo_name != None:
+        for seg in hdf[demo].keys():
+            seg_group = hdf[demo][seg]
+            ret = label_single_demo(seg_group, demo+seg, mark_end, 'crossings')
+            while ret == "retry":
+                label_single_demo(seg_group, demo+seg, mark_end, 'crossings')
+    else:
+        for demo in hdf.keys():
+            for seg in hdf[demo].keys():
+                seg_group = hdf[demo][seg]
+                ret = label_single_demo(seg_group, demo+seg, mark_end, "crossings")
+                while ret == "retry":
+                    ret = label_single_demo(seg_group, demo+seg, mark_end, "crossings")
 
 """
 Set up a cv2 window displaying the image corresponding to demo and seg
 in the hdf file, and label the x,y coordinates and click type on click
-by calling mark_crossing.
+by calling mark_crossing or mark_ends.
 """
-def label_single_demo(hdf, demo, seg):
-    print "seg", seg
-    seg_group = hdf[demo][seg]
-    if "crossings" in seg_group.keys():
-        print "crossings already labeled for", demo, seg
-        print seg_group.keys()
-        return
-    crossings = []
+def label_single_demo(seg_group, name, on_mouse, dataset):
+    print name
+    points = []
     image = np.asarray(seg_group['rgb'])
     x = 0
-    windowName = demo+seg
+    windowName = dataset + " " + name
     cv2.namedWindow(windowName)
-    cv2.setMouseCallback(windowName, mark_crossing, (image, crossings))
+    cv2.setMouseCallback(windowName, on_mouse, (image, points))
     while(1):
         cv2.imshow(windowName, image)
         k = cv2.waitKey(20) & 0xFF
         if k == ord('r'):
-            cv2.destroyAllWindows()
-            image = np.asarray(seg_group['rgb'])
-            x+=1
-            windowName = demo+seg+" v"+str(x)
-            cv2.namedWindow(windowName)
-            cv2.setMouseCallback(windowName, mark_crossing, (image, crossings))
-        elif k == ord('m'):
+            return "retry"
+        elif k == ord(' '):
             break
         elif k == 27:
-            return 0
-    print crossings
-    crossings = np.asarray(crossings)
-    print crossings
-    seg_group.create_dataset("crossings", data=crossings)
-    print seg_group["crossings"]
+            return "quit"
+    print points
+    points = np.asarray(points)
+    print points
+    seg_group.create_dataset(dataset, data=points)
+    print seg_group[dataset]
     cv2.destroyAllWindows()
 
+def verify_crossings(hdf):
+    crossings_types = {}
+    pattern_locations = {}
+    max = 0
+    for demo in hdf.keys():
+        for seg in hdf[demo].keys():
+            print demo, seg
+            if "crossings" in hdf[demo][seg].keys():
+                pattern = []
+                for item in hdf[demo][seg]['crossings']:
+                    pattern.append(item[2])
+                pattern = tuple(pattern)
+                if pattern in crossings_types:
+                    crossings_types[pattern] += 1
+                else:
+                    crossings_types[pattern] = 1
+                pattern_locations[pattern] = (demo, seg)
+                max = (len(hdf[demo][seg]['crossings']), demo, seg)
+    print "max crossings vector length is", max
+    print crossings_types
+    for pattern in crossings_types:
+        if crossings_types[pattern] < 3:
+            redo = raw_input("Pattern " + str(pattern) + " is rare. Reexamine? (y/n): ")
+            if redo == 'y' or redo == 'Y' or redo == "yes" or redo == "Yes":
+                demo, seg = pattern_locations[pattern]
+                seg_group = hdf[demo][seg]
+                del seg_group['crossings']
+                ret = label_single_demo(seg_group, demo+seg, mark_crossing, 'crossings')
+                while ret == "retry":
+                    label_single_demo(seg_group, demo+seg, mark_crossing, 'crossings')
+                if ret == "quit":
+                    return
+
+
+def remove_crossings(hdf, demo_name):
+    if demo_name != None:
+        for seg in hdf[demo_name].keys():
+            if "crossings" not in hdf[demo_name][seg].keys():
+                break
+            else:
+                del hdf[demo_name][seg]['crossings']
+    else:
+        for demo in hdf.keys():
+            for seg in hdf[demo].keys():
+                if "crossings" not in hdf[demo][seg].keys():
+                    break
+                else:
+                    del hdf[demo][seg]['crossings']
+
+def refactor(hdf):
+    for demo in hdf.keys():
+        for seg in hdf[demo].keys():
+            points = []
+            for crossing in hdf[demo][seg]['crossings']:
+                if crossing[2] == 0:
+                    points.append((crossing[0], crossing[1], -1))
+                elif crossing[2] == 1:
+                    points.append(crossing)
+            del hdf[demo][seg]['crossings']
+            points = np.asarray(points)
+            hdf[demo][seg].create_dataset('crossings', data=points)
+
+"""
+Creates a dictionary of equivalent states.
+eqiv[cross_state] returns a list of all states equivalent to cross_state. Two
+states (crossings patterns) A and B are equivalent if a segment with A can
+transition into a state C that B can also transition into.
+"""
+def calculate_mdp(hdf):
+    stf = {}
+    equiv = {}
+    for demo in hdf.keys():
+        preceding = []
+        for seg in hdf[demo].keys():
+            points = []
+            for crossing in hdf[demo][seg]['crossings']:
+                if crossing[2] == 0:
+                    points.append((crossing[0], crossing[1], -1))
+                elif crossing[2] == 1:
+                    points.append(crossing)
+            if points in stf:
+                stf[points].append(preceding)
+            else:
+                stf.points = [preceding]
+            preceding = points
+    for state1 in stf.keys():
+        for state2 in stf[state1]:
+            equiv[state2] = stf[state1]
+    return equiv
+
+
 if __name__ == "__main__":
+
     args = parser.parse_args()
+    print args
     demo_type = args.demo_type
+    clear = args.clear
+    label_ends = args.label_ends
     demo_name = args.demo_name
-    label_crossings(demo_type, demo_name, verify=True)
+    verify = args.verify
+    h5filename = osp.join(demo_files_dir, demo_type + '.h5')
+    hdf = h5py.File(h5filename, 'r+')
+    #refactor(hdf)
+
+    if clear:
+        confirm = raw_input("Really delete all crossings info for " + demo_type)
+        if confirm:
+            print "clearing crossings data for", demo_type
+            remove_crossings(hdf, demo_name)
+        else:
+            print "Canceled."
+    elif label_ends:
+        print "labeling ends"
+        label_ends(hdf, demo_name)
+    elif verify:
+        print "verifying"
+        verify_crossings(hdf)
+    else:
+        print "labeling crossings"
+        label_crossings(hdf, demo_name)

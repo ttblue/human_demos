@@ -86,7 +86,7 @@ import cPickle
 import numpy as np
 
 import openravepy, trajoptpy
- 
+
 from hd_rapprentice import registration, animate_traj, \
      plotting_openrave, task_execution, resampling, \
      ropesim_floating, rope_initialization
@@ -127,11 +127,11 @@ def smaller_ang(x):
     return (x + np.pi)%(2*np.pi) - np.pi
 
 def closer_ang(x,a,dr=0):
-    """                                                
-    find angle y (==x mod 2*pi) that is close to a                             
-    dir == 0: minimize absolute value of difference                            
-    dir == 1: y > x                                                            
-    dir == 2: y < x                                                            
+    """
+    find angle y (==x mod 2*pi) that is close to a
+    dir == 0: minimize absolute value of difference
+    dir == 1: y > x
+    dir == 2: y < x
     """
     if dr == 0:
         return a + smaller_ang(x-a)
@@ -139,19 +139,19 @@ def closer_ang(x,a,dr=0):
         return a + (x-a)%(2*np.pi)
     elif dr == -1:
         return a + (x-a)%(2*np.pi) - 2*np.pi
-    
+
 def closer_angs(x_array,a_array,dr=0):
-    
+
     return [closer_ang(x, a, dr) for (x, a) in zip(x_array, a_array)]
 
 
 def split_trajectory_by_gripper(seg_info, pot_angle_threshold, ms_thresh=2):
     lgrip = np.asarray(seg_info["l"]["pot_angles"])
     rgrip = np.asarray(seg_info["r"]["pot_angles"])
-    
+
     print rgrip
     print lgrip
-    
+
     thresh = pot_angle_threshold # open/close threshold
 
     # TODO: Check this.
@@ -167,7 +167,7 @@ def split_trajectory_by_gripper(seg_info, pot_angle_threshold, ms_thresh=2):
     after_transitions = before_transitions+1
     seg_starts = np.unique(np.r_[0, after_transitions])
     seg_ends = np.unique(np.r_[before_transitions, n_steps-1])
-    
+
     lr_open = {lr:[] for lr in 'lr'}
     new_seg_starts = []
     new_seg_ends = []
@@ -179,26 +179,26 @@ def split_trajectory_by_gripper(seg_info, pot_angle_threshold, ms_thresh=2):
             lr_open['l'].append(lval)
             rval = True if rgrip[seg_starts[i]] >= thresh else False
             lr_open['r'].append(rval)
-            
-     
+
+
 #     import IPython
 #     IPython.embed()
- 
+
     return new_seg_starts, new_seg_ends, lr_open
 
 """
 Not sure if these are required.
 """
 def rotate_about_median(xyz, theta):
-    """                                                                                                                                             
-    rotates xyz by theta around the median along the x, y dimensions                                                                                
+    """
+    rotates xyz by theta around the median along the x, y dimensions
     """
     median = np.median(xyz, axis=0)
     centered_xyz = xyz - median
     r_mat = np.eye(3)
     r_mat[0:2, 0:2] = np.array([[np.cos(theta), -np.sin(theta)],[np.sin(theta), np.cos(theta)]])
     rotated_xyz = centered_xyz.dot(r_mat)
-    new_xyz = rotated_xyz + median    
+    new_xyz = rotated_xyz + median
     return new_xyz
 
 FEASIBLE_REGION = [[.3, -.5], [.8, .5]]# bounds on region robot can hope to tie rope in
@@ -219,13 +219,13 @@ def binarize_gripper(angle, pot_angle_threshold):
     closed_angle = 0
     if angle >= pot_angle_threshold: return open_angle
     else: return closed_angle
-    
-    
+
+
 def set_gripper_sim(lr, is_open, prev_is_open):
     mult = 5
     open_angle = .08 * mult
     closed_angle = (0 if not args.simulation else .02) * mult
-    
+
     target_val = open_angle if is_open else closed_angle
 
     if is_open and not prev_is_open:
@@ -272,7 +272,7 @@ def exec_traj_sim(lr_traj, animate=True):
     # in simulation mode, we must make sure to gradually move to the new starting position
     curr_rtf  = Globals.sim.grippers['r'].get_toolframe_transform()
     curr_ltf  = Globals.sim.grippers['l'].get_toolframe_transform()
-   
+
     l_transition_hmats, r_transition_hmats = ropesim_floating.retime_hmats([curr_ltf, lhmats_up[0]], [curr_rtf, rhmats_up[0]])
 
     animate_traj.animate_floating_traj(l_transition_hmats, r_transition_hmats,
@@ -284,7 +284,7 @@ def exec_traj_sim(lr_traj, animate=True):
 
 def find_closest_manual(demofiles):
     """for now, just prompt the user"""
-    
+
     if not isinstance(demofiles, list):
         demofiles = [demofiles]
 
@@ -301,18 +301,18 @@ def find_closest_manual(demofiles):
                     final_seg_id = len(demofile[demo_name].keys()) - 2
                 else:
                     final_seg_id = len(demofile[demo_name].keys()) - 1
-                    
-                
+
+
                 for seg_name in demofile[demo_name]:
                     if seg_name != 'done':
                         keys[seg_num] = (demotype_num, demo_name, seg_name)
                         print "%i: %i, %s, %s"%(seg_num, demotype_num+1, demo_name, seg_name)
-                        
+
                         if seg_name == "seg%02d"%(final_seg_id):
                             is_finalsegs[seg_num] = True
                         else:
                             is_finalsegs[seg_num] = False
-    
+
                         seg_num += 1
         demotype_num +=1
     choice_ind = task_execution.request_int_in_range(seg_num)
@@ -332,20 +332,20 @@ def registration_cost(xyz0, xyz1):
 
 def find_closest_auto(demofiles, new_xyz, sim_seg_num, init_tfm=None, n_jobs=3, seg_proximity=2, DS_LEAF_SIZE=0.02):
     """
-    sim_seg_num   : is the index of the segment being executed in the simulation: used to find 
-    seg_proximity : only segments with numbers in +- seg_proximity of sim_seg_num are selected. 
+    sim_seg_num   : is the index of the segment being executed in the simulation: used to find
+    seg_proximity : only segments with numbers in +- seg_proximity of sim_seg_num are selected.
     """
     if args.parallel:
         from joblib import Parallel, delayed
 
     if not isinstance(demofiles, list):
         demofiles = [demofiles]
-        
+
     demo_clouds = []
-    
-    
+
+
     new_xyz = clouds.downsample(new_xyz,DS_LEAF_SIZE)
-    
+
     avg = 0.0
 
     keys = {}
@@ -377,41 +377,63 @@ def find_closest_auto(demofiles, new_xyz, sim_seg_num, init_tfm=None, n_jobs=3, 
 
                     demo_clouds.append(demo_xyz)
         demotype_num +=1
-    
+
     # raw_input(avg/len(demo_clouds))
     if args.parallel:
         costs = Parallel(n_jobs=n_jobs,verbose=51)(delayed(registration_cost)(demo_cloud, new_xyz) for demo_cloud in demo_clouds)
     else:
         costs = []
-        
+
         for (i,ds_cloud) in enumerate(demo_clouds):
             costs.append(registration_cost(ds_cloud, new_xyz))
             print "completed %i/%i"%(i+1, len(demo_clouds))
-    
+
     print "costs\n", costs
-    
+
     if args.show_neighbors:
         nshow = min(5, len(demo_clouds.keys()))
         import cv2, hd_rapprentice.cv_plot_utils as cpu
         sortinds = np.argsort(costs)[:nshow]
-        
+
         near_rgbs = []
         for i in sortinds:
             (demo_name, seg_name) = keys[i]
             near_rgbs.append(np.asarray(demofile[demo_name][seg_name]["rgb"]))
-        
+
         bigimg = cpu.tile_images(near_rgbs, 1, nshow)
         cv2.imshow("neighbors", bigimg)
         print "press any key to continue"
         cv2.waitKey()
-    
-    choice_ind = np.argmin(costs)
-    
+
+    #choice_ind = np.argmin(costs)
+    choice_ind = match_crossings(demofiles, keys, costs, new_xyz)
+
     if demotype_num == 1:
         return (keys[choice_ind][1],keys[choice_ind][2]) , is_finalsegs[choice_ind]
     else:
         return keys[choice_ind], is_finalsegs[choice_ind]
 
+
+def match_crossings(demofiles, keys, costs, new_xyz):
+    from knot_classifier import calculateCrossings
+    from hd_visualization.label_crossings import calculate_mdp
+    sim_crossings = calculateCrossings(new_xyz)
+    equiv = calculate_mdp(demofiles[demotype_num])
+    while True: #check best TPS fit against crossings match
+        best_fit = np.argmin(costs)
+        demotype_num, demo, seg = keys[best_fit]
+        hdf = demofiles[demotype_num]
+        points = []
+        for crossing in hdf[demo][seg]["crossings"]:
+            if crossing[2] == 0:
+                points.append((crossing[0], crossing[1], -1))
+            elif crossing[2] == 1:
+                points.append(crossing)
+        equivalent_states = equiv[points]
+        if sim_crossings in equivalent_states: #or reverse -- need to match based on TPS
+            return best_fit
+        else:
+            del costs[best_fit]
 
 
 def append_to_dict_list(dic, key, item):
@@ -419,16 +441,16 @@ def append_to_dict_list(dic, key, item):
         dic[key].append(item)
     else:
         dic[key] = [item]
-          
+
 def find_closest_clusters(demofiles, clusterfiles, new_xyz, sim_seg_num, seg_proximity=2, init_tfm=None, check_n=3, n_jobs=3, DS_LEAF_SIZE=0.02):
     if args.parallel:
         from joblib import Parallel, delayed
-    
+
     if not isinstance(demofiles, list): demofiles = [demofiles]
     if not isinstance(clusterfiles, list): clusterfiles = [clusterfiles]
 
     new_xyz = clouds.downsample(new_xyz,DS_LEAF_SIZE)
-        
+
     # Store all the best cluster clouds
     clusters = {}
     keys = {}
@@ -436,7 +458,7 @@ def find_closest_clusters(demofiles, clusterfiles, new_xyz, sim_seg_num, seg_pro
     all_keys = {}
     idx = 0
     dnum = 0
-    for demofile,clusterfile in zip(demofiles, clusterfiles):        
+    for demofile,clusterfile in zip(demofiles, clusterfiles):
         keys[dnum] = clusterfile['keys']
         keys[dnum] = {int(key):keys[dnum][key] for key in keys[dnum]}
         clusters[dnum] = clusterfile['clusters']
@@ -448,7 +470,7 @@ def find_closest_clusters(demofiles, clusterfiles, new_xyz, sim_seg_num, seg_pro
             cloud = clouds.downsample(np.asarray(demofile[dname][sname]["cloud_xyz"]),DS_LEAF_SIZE)
             if init_tfm is not None:
                 cloud = cloud.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
-    
+
             all_keys[idx] = (dnum, cluster)
             cluster_clouds.append(cloud)
             idx += 1
@@ -462,24 +484,24 @@ def find_closest_clusters(demofiles, clusterfiles, new_xyz, sim_seg_num, seg_pro
         for (i,ds_cloud) in enumerate(cluster_clouds):
             ccosts.append(registration_cost(ds_cloud, new_xyz))
             print "completed %i/%i"%(i+1, len(cluster_clouds))
-    
+
     print "Cluster costs: \n", ccosts
 
-    
+
     best_clusters = np.argsort(ccosts)
     check_n = min(check_n, len(best_clusters))
-    
+
     if args.show_neighbors:
         nshow = min(check_n*3, len(cluster_clouds))
         import cv2, hd_rapprentice.cv_plot_utils as cpu, math
         closeinds = best_clusters[:nshow]
-        
+
         near_rgbs = []
         for i in closeinds:
             dn, cluster = all_keys[i]
             (demo_name, seg_name) = keys[dn][clusters[dn][cluster][0]]
             near_rgbs.append(np.asarray(demofiles[dn][demo_name][seg_name]["rgb"]))
-        
+
         rows = 6
         cols = int(math.ceil(nshow*1.0/rows))
         bigimg = cpu.tile_images(near_rgbs, rows, cols, max_width=300)
@@ -499,21 +521,21 @@ def find_closest_clusters(demofiles, clusterfiles, new_xyz, sim_seg_num, seg_pro
         else:
             final_seg_id = len(demofiles[dn][dname].keys()) - 1
         return sname == "seg%02d"%(final_seg_id)
-    
+
     for c in best_clusters[:check_n]:
         dn, cluster = all_keys[c]
         cluster_segs = clusters[dn][cluster]
 
         for seg in cluster_segs:
             dname,sname = keys[dn][seg]
-        
+
             snum  = int(sname.split('seg')[1])
             sdist = int(np.abs(sim_seg_num - snum)//seg_proximity)
-            
+
             cloud = clouds.downsample(np.asarray(demofiles[dn][dname][sname]["cloud_xyz"]),DS_LEAF_SIZE)
             if init_tfm is not None:
                 cloud = cloud.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
-            
+
             append_to_dict_list(demo_seg_clouds, sdist, cloud)
             append_to_dict_list(demo_seg_info, sdist, (dn,dname,sname))
 
@@ -529,27 +551,27 @@ def find_closest_clusters(demofiles, clusterfiles, new_xyz, sim_seg_num, seg_pro
         for (i,ds_cloud) in enumerate(check_clouds):
             costs.append(registration_cost(ds_cloud, new_xyz))
             print "completed %i/%i"%(i+1, len(check_clouds))
-    
+
     print "Costs: \n", costs
-    
+
     if args.show_neighbors:
         nshow = min(30, len(check_clouds))
         sortinds = np.argsort(costs)[:nshow]
-        
+
         near_rgbs = []
         for i in sortinds:
             (dn, demo_name, seg_name) = cluster_keys[i]
             near_rgbs.append(np.asarray(demofiles[dn][demo_name][seg_name]["rgb"]))
-        
+
         rows = 6
         cols = int(math.ceil(nshow*1.0/rows))
         bigimg = cpu.tile_images(near_rgbs, rows, cols, max_width=1000)
         cv2.imshow("neighbors", bigimg)
         print "press any key to continue"
         cv2.waitKey()
-    
+
     choice_ind = np.argmin(costs)
-    
+
     if dnum == 1:
         return (cluster_keys[choice_ind][1],cluster_keys[choice_ind][2]) , is_final_seg(cluster_keys[choice_ind])
     else:
@@ -564,14 +586,14 @@ def tpsrpm_plot_cb(x_nd, y_md, targ_Nd, corr_nm, wt_n, f):
     #handles.extend(plotting_openrave.draw_grid(Globals.env, f.transform_points, x_nd.min(axis=0), x_nd.max(axis=0), xres = .1, yres = .1, zres = .04))
     if Globals.viewer:
         Globals.viewer.Step()
-    
+
 def arm_moved(hmat_traj):
     return True
     if len(hmat_traj) < 2:
         return False
     tts = hmat_traj[:,:3,3]
     return ((tts[1:] - tts[:-1]).ptp(axis=0) > .01).any()
-    
+
 def unif_resample(traj, max_diff, wt = None):
     """
     Resample a trajectory so steps have same length in joint space
@@ -581,14 +603,14 @@ def unif_resample(traj, max_diff, wt = None):
     if wt is not None:
         wt = np.atleast_2d(wt)
         traj = traj*wt
-        
-        
+
+
     dl = mu.norms(traj[1:] - traj[:-1],1)
     l = np.cumsum(np.r_[0,dl])
     goodinds = np.r_[True, dl > 1e-8]
     deg = min(3, sum(goodinds) - 1)
     if deg < 1: return traj, np.arange(len(traj))
-    
+
     nsteps = max(int(np.ceil(float(l[-1])/max_diff)),2)
     newl = np.linspace(0,l[-1],nsteps)
 
@@ -619,28 +641,28 @@ def lerp (x, xp, fp, first=None):
         else:
             interp_vals = np.atleast_2d(np.interp(x,xp,fp[:,idx],left=first[idx])).T
         fp_interp = np.c_[fp_interp, interp_vals]
-    
+
     return fp_interp
 
 def close_traj(traj):
-    
+
     assert len(traj) > 0
-    
+
     curr_angs = traj[0]
     new_traj = []
-    
+
     for i in xrange(len(traj)):
         new_angs = traj[i]
         for j in range(len(new_angs)):
             new_angs[j] = closer_ang(new_angs[j], curr_angs[j])
         new_traj.append(new_angs)
         curr_angs = new_angs
-        
+
     return new_traj
 
 
 
-    
+
 
 def downsample_objects(objs, factor):
     """
@@ -667,12 +689,12 @@ def mirror_arm_joints(x):
     return np.r_[-x[0],x[1],-x[2],x[3],-x[4],x[5],-x[6]]
 
 
-L_POSTURES = dict(        
+L_POSTURES = dict(
     untucked = [0.4,  1.0,   0.0,  -2.05,  0.0,  -0.1,  0.0],
     tucked = [0.06, 1.25, 1.79, -1.68, -1.73, -0.10, -0.09],
     up = [ 0.33, -0.35,  2.59, -0.15,  0.59, -1.41, -0.27],
     side = [  1.832,  -0.332,   1.011,  -1.437,   1.1  ,  -2.106,  3.074]
-)   
+)
 
 
 use_diff_length = args.use_diff_length
@@ -680,7 +702,7 @@ use_diff_length = args.use_diff_length
 
 def main():
     global use_diff_length
-    
+
     if use_diff_length:
         from glob import glob
         demotype_dirs = glob(osp.join(demo_files_dir, args.demo_type+'[0-9]*'))
@@ -689,26 +711,26 @@ def main():
         print demo_h5files
         demofiles = [h5py.File(demofile, 'r') for demofile in demo_h5files]
         demofile = demofiles[0]
-        if len(demofiles) == 1: 
+        if len(demofiles) == 1:
             use_diff_length = False
     else:
         demotype_dir = osp.join(demo_files_dir, args.demo_type)
         demo_h5file = osp.join(demotype_dir, args.demo_type+".h5")
         print demo_h5file
         demofile = h5py.File(demo_h5file, 'r')
-    
-    
+
+
     if args.select == "clusters":
         if use_diff_length:
             c_h5files = [osp.join(demotype_dir, demo_type+"_clusters.h5") for demo_type in demo_types]
             clusterfiles = [h5py.File(c_h5file, 'r') for c_h5file in c_h5files]
         else:
             c_h5file = osp.join(demotype_dir, args.demo_type+"_clusters.h5")
-            clusterfile = h5py.File(c_h5file, 'r') 
-    
+            clusterfile = h5py.File(c_h5file, 'r')
+
     Globals.sim = ropesim_floating.FloatingGripperSimulation(Globals.env)
     trajoptpy.SetInteractive(args.interactive)
-    
+
     if args.log:
         LOG_DIR = osp.join(demotype_dir, "do_task_logs", datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
         os.mkdir(LOG_DIR)
@@ -728,7 +750,7 @@ def main():
         print a
         Globals.env.Load(osp.join(cad_files_dir, 'table_sim.xml'))
         body = Globals.env.GetKinBody('table')
-        
+
         if Globals.viewer:
             Globals.viewer.SetTransparency(body,0.4)
 
@@ -738,12 +760,12 @@ def main():
         # Get ar marker from demo:
         ar_demo_file = osp.join(hd_data_dir, ar_init_dir, ar_init_demo_name)
         with open(ar_demo_file,'r') as fh: ar_demo_tfms = cPickle.load(fh)
-        
+
         ar_marker = ar_demo_tfms['marker']
         # use camera 1 as default
         ar_marker_cameras = [1]
         ar_demo_tfm = avg_transform([ar_demo_tfms['tfms'][c] for c in ar_demo_tfms['tfms'] if c in ar_marker_cameras])
-        
+
         # Get ar marker for PR2:
         # default demo_file
         ar_run_file = osp.join(hd_data_dir, ar_init_dir, ar_init_playback_name)
@@ -766,7 +788,7 @@ def main():
         hitch_tfm = hitch_body.GetTransform()
         hitch_tfm[:3, 3] = hitch_pos
         hitch_height = hitch_body.GetLinks()[0].GetGeometries()[0].GetCylinderHeight()
-        table_z_extent = table_body.GetLinks()[0].GetGeometries()[0].GetBoxExtents()[2] 
+        table_z_extent = table_body.GetLinks()[0].GetGeometries()[0].GetBoxExtents()[2]
         table_height = table_body.GetLinks()[0].GetGeometries()[0].GetTransform()[2, 3]
         hitch_tfm[2, 3] = table_height + table_z_extent + hitch_height/2.0
         hitch_body.SetTransform(hitch_tfm)
@@ -774,7 +796,7 @@ def main():
     curr_step = 0
 
     while True:
-        
+
         if args.max_steps_before_failure != -1 and curr_step > args.max_steps_before_failure:
             redprint("Number of steps %d exceeded maximum %d" % (curr_step, args.max_steps_before_failure))
             break
@@ -785,10 +807,10 @@ def main():
         Acquire point cloud
         '''
         redprint("Acquire point cloud")
-        
-        
-        rope_cloud = None     
-                   
+
+
+        rope_cloud = None
+
         #Set home position in sim
         l_vals = L_POSTURES['side']
         Globals.robot.SetDOFValues(l_vals, Globals.robot.GetManipulator('leftarm').GetArmIndices())
@@ -798,9 +820,9 @@ def main():
             # for following steps in rope simulation, using simulation result
             new_xyz = Globals.sim.observe_cloud(3)
             new_xyz = clouds.downsample(new_xyz, args.cloud_downsample)
-            
+
             hitch = Globals.env.GetKinBody('hitch')
-                            
+
             if hitch != None:
                 pos = hitch.GetTransform()[:3,3]
                 hitch_height = hitch_body.GetLinks()[0].GetGeometries()[0].GetCylinderHeight()
@@ -808,15 +830,15 @@ def main():
                 hitch_cloud = cloud_proc_funcs.generate_hitch_points(pos)
                 hitch_cloud = clouds.downsample(hitch_cloud, args.cloud_downsample*2)
                 new_xyz = np.r_[new_xyz, hitch_cloud]
-            
-        else:          
+
+        else:
             fake_seg = demofile[args.fake_data_demo][args.fake_data_segment]
             new_xyz = np.squeeze(fake_seg["cloud_xyz"])
-    
+
             hmat = openravepy.matrixFromAxisAngle(args.fake_data_transform[3:6])
             hmat[:3,3] = args.fake_data_transform[0:3]
             if args.use_ar_init: hmat = init_tfm.dot(hmat)
-    
+
             # if not rope simulation
             new_xyz = new_xyz.dot(hmat[:3,:3].T) + hmat[:3,3][None,:]
             # if the first step in rope simulation
@@ -836,7 +858,7 @@ def main():
                 hitch_cloud = cloud_proc_funcs.generate_hitch_points(pos)
                 hitch_cloud = clouds.downsample(hitch_cloud, args.cloud_downsample*2)
                 new_xyz = np.r_[new_xyz, hitch_cloud]
-                
+
         if args.closest_rope_hack:
             rope_cloud = Globals.sim.observe_cloud(3)
             rope_cloud = clouds.downsample(rope_cloud, args.cloud_downsample)
@@ -847,7 +869,7 @@ def main():
             cv2.imwrite(osp.join(LOG_DIR,"rgb%05i.png"%LOG_COUNT), rgb)
             cv2.imwrite(osp.join(LOG_DIR,"depth%05i.png"%LOG_COUNT), depth)
             np.save(osp.join(LOG_DIR,"xyz%i.npy"%LOG_COUNT), new_xyz)
-            
+
         '''
         Finding closest demonstration
         '''
@@ -871,12 +893,12 @@ def main():
                 (demo_name, seg_name), is_final_seg = find_closest_clusters(demofile, clusterfile, new_xyz, curr_step-1, init_tfm=init_tfm)
             seg_info = demofile[demo_name][seg_name]
             redprint("closest demo: %s, %s"%(demo_name, seg_name))
-        
+
         if "done" == seg_name:
             redprint("DONE!")
             break
 
-    
+
         if args.log:
             with open(osp.join(LOG_DIR,"neighbor%i.txt"%LOG_COUNT),"w") as fh: fh.write(seg_name)
 
@@ -894,12 +916,12 @@ def main():
         old_xyz = np.squeeze(seg_info["cloud_xyz"])
         if args.use_ar_init:
             # Transform the old clouds approximately into PR2's frame
-            old_xyz = old_xyz.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]    
+            old_xyz = old_xyz.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
 
-        
+
         #print old_xyz.shape
         #print new_xyz.shape
-    
+
         color_old = [(1,0,0,1) for _ in range(len(old_xyz))]
         color_new = [(0,0,1,1) for _ in range(len(new_xyz))]
         color_old_transformed = [(0,1,0,1) for _ in range(len(old_xyz))]
@@ -913,12 +935,12 @@ def main():
                                        plotting=5 if args.animation else 0,rot_reg=np.r_[1e-4,1e-4,1e-1], n_iter=args.tps_n_iter, reg_init=args.tps_bend_cost_init, reg_final=args.tps_bend_cost_final)
         f = registration.unscale_tps(f, src_params, targ_params)
         t2 = time.time()
-        
+
         handles.extend(plotting_openrave.draw_grid(Globals.env, f.transform_points, old_xyz.min(axis=0)-np.r_[0,0,.1], old_xyz.max(axis=0)+np.r_[0,0,.1], xres = .1, yres = .1, zres = .04))
-        
+
         handles.append(Globals.env.plot3(f.transform_points(old_xyz),5,np.array(color_old_transformed)))
-        
-        
+
+
         print 'time: %f'%(t2-t1)
 
 
@@ -933,42 +955,42 @@ def main():
 
 
             eetraj[lr] = new_ee_traj
-            
+
             handles.append(Globals.env.drawlinestrip(old_ee_traj[:,:3,3], 2, (1,0,0,1)))
             handles.append(Globals.env.drawlinestrip(new_ee_traj[:,:3,3], 2, (0,1,0,1)))
-            
+
         '''
         Generating mini-trajectory
         '''
         miniseg_starts, miniseg_ends, lr_open = split_trajectory_by_gripper(seg_info, args.pot_threshold)
         success = True
         redprint("mini segments: %s %s"%(miniseg_starts, miniseg_ends))
-        
+
         segment_len = miniseg_ends[-1] - miniseg_starts[0] + 1
         portion = max(args.early_stop_portion, miniseg_ends[0] / float(segment_len))
-        
+
         prev_vals = {lr:None for lr in 'lr'}
         #l_vals = PR2.Arm.L_POSTURES['side']
         l_vals = L_POSTURES['side']
         for (i_miniseg, (i_start, i_end)) in enumerate(zip(miniseg_starts, miniseg_ends)):
-            
+
             redprint("Generating joint trajectory for demo %s segment %s, part %i"%(demo_name, seg_name, i_miniseg))
             ### adaptive resampling based on xyz in end_effector
             end_trans_trajs = np.zeros([i_end+1-i_start, 6])
-            
+
             for lr in 'lr':
                 for i in xrange(i_start,i_end+1):
                     if lr == 'l':
                         end_trans_trajs[i-i_start, :3] = eetraj[lr][i][:3,3]
                     else:
                         end_trans_trajs[i-i_start, 3:] = eetraj[lr][i][:3,3]
-                        
-            
+
+
             if not args.no_traj_resample:
                 adaptive_times, end_trans_trajs = resampling.adaptive_resample2(end_trans_trajs, 0.001)
             else:
                 adaptive_times = range(len(end_trans_trajs))
-            
+
             miniseg_traj = {}
             for lr in 'lr':
                 ee_hmats = resampling.interp_hmats(adaptive_times, range(i_end+1-i_start), eetraj[lr][i_start:i_end+1])
@@ -978,7 +1000,7 @@ def main():
             #len_miniseg = len(adaptive_times)
 
             redprint("Executing joint trajectory for demo %s segment %s, part %i using arms '%s'"%(demo_name, seg_name, i_miniseg, bodypart2traj.keys()))
-            
+
             for lr in 'lr':
                 gripper_open = lr_open[lr][i_miniseg]
                 prev_gripper_open = lr_open[lr][i_miniseg-1] if i_miniseg != 0 else False
@@ -986,7 +1008,7 @@ def main():
                     redprint("Grab %s failed"%lr)
                     success = False
 
-                        
+
             if len(bodypart2traj['larm']) > 0:
                 """HACK
                 """
@@ -1008,7 +1030,7 @@ def main():
         Globals.sim.settle(animate=False)
         if Globals.viewer and args.interactive:
             Globals.viewer.Idle()
-            
+
         redprint("Demo %s Segment %s result: %s"%(demo_name, seg_name, success))
 
     if use_diff_length:
