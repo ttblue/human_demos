@@ -108,11 +108,20 @@ def isKnot(rope_nodes):
             return True
     return False
 
+def matchTopology(rope_nodes, topology, demo_type):
+    crossings = calculateCrossings(rope_nodes)
+    s = crossingsToString(crossings)
+    topologies = getTopologies(demo_type)
+    h5filename = osp.join("/Users/George/Downloads", demo_type + '.h5')
+    hdf = h5py.File(h5filename, 'r+')
+    equiv = calculate_mdp(hdf);
+    if s in equiv[topology]:
+        return True
+    else: return False
 
-def get_topologies(demo_type):
+
+def getTopologies(demo_type):
     topologies = []
-    import os.path as osp
-    #import h5py
     h5filename = osp.join("/Users/George/Downloads", demo_type + '.h5')
     hdf = h5py.File(h5filename, 'r+')
     for demo in hdf.keys():
@@ -127,8 +136,34 @@ def get_topologies(demo_type):
         topologies2.append(crossingsToString(topo))
     return topologies2
 
+
 """
-    todo: 
+Creates a dictionary of equivalent states.
+equiv[cross_state] returns a list of all states equivalent to cross_state.
+Two states (crossings patterns) A and B are equivalent if a segment with A
+can transition into a state C that B can also transition into.
+"""
+def calculate_mdp(hdf):
+    stf = {}
+    equiv = {}
+    for demo in hdf.keys():
+        preceding = []
+        for seg in hdf[demo].keys():
+            points = []
+            for crossing in hdf[demo][seg]['crossings']:
+                points.append(crossing[2]) #for now, only save pattern, not point locations
+            if points in stf:
+                stf[points].append(preceding)
+            else:
+                stf.points = [preceding]
+            preceding = points
+    for state1 in stf.keys():
+        for state2 in stf[state1]:
+            equiv[state2] = stf[state1]
+    return equiv
+
+"""
+    todo:
         instead of is_knot, have match_topology classifer?
         learn knot_topologies arrays from SVM with labeled data
             or directly from point-cloud tracking data (tracking+calculateCrossings on demo pointclouds replaces labeling)
