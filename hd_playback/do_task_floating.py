@@ -97,8 +97,8 @@ from hd_utils.utils import avg_transform
 from hd_utils.defaults import demo_files_dir, hd_data_dir,\
         ar_init_dir, ar_init_demo_name, ar_init_playback_name, \
         tfm_head_dof, tfm_bf_head, cad_files_dir
-from knot_classifier import calculateCrossings
-from hd_visualization.label_crossings import calculate_mdp
+#from knot_classifier import calculateCrossings
+#rom hd_visualization.label_crossings import calculate_mdp
 
 
 
@@ -226,7 +226,7 @@ def binarize_gripper(angle, pot_angle_threshold):
 def set_gripper_sim(lr, is_open, prev_is_open):
     mult = 5
     open_angle = .08 * mult
-    closed_angle = (0 if not args.simulation else .02) * mult
+    closed_angle = .02 * mult
 
     target_val = open_angle if is_open else closed_angle
 
@@ -239,7 +239,7 @@ def set_gripper_sim(lr, is_open, prev_is_open):
     for val in joint_traj:
         Globals.sim.grippers[lr].set_gripper_joint_value(val)
         Globals.sim.step()
-        if args.animation:
+        if Globals.viewer:
             Globals.viewer.Step()
             if args.interactive: Globals.viewer.Idle()
     # add constraints if necessary
@@ -407,8 +407,8 @@ def find_closest_auto(demofiles, new_xyz, sim_seg_num, init_tfm=None, n_jobs=3, 
         print "press any key to continue"
         cv2.waitKey()
 
-    #choice_ind = np.argmin(costs)
-    choice_ind = match_crossings(demofiles, keys, costs, new_xyz)
+    choice_ind = np.argmin(costs)
+    #choice_ind = match_crossings(demofiles, keys, costs, new_xyz)
 
     if demotype_num == 1:
         return (keys[choice_ind][1],keys[choice_ind][2]) , is_finalsegs[choice_ind]
@@ -687,20 +687,6 @@ def has_hitch(h5data, demo_name=None, seg_name=None):
         return "hitch_pos" in first_seg
 
 
-#ros stuffs
-def mirror_arm_joints(x):
-    "mirror image of joints (r->l or l->r)"
-    return np.r_[-x[0],x[1],-x[2],x[3],-x[4],x[5],-x[6]]
-
-
-L_POSTURES = dict(
-    untucked = [0.4,  1.0,   0.0,  -2.05,  0.0,  -0.1,  0.0],
-    tucked = [0.06, 1.25, 1.79, -1.68, -1.73, -0.10, -0.09],
-    up = [ 0.33, -0.35,  2.59, -0.15,  0.59, -1.41, -0.27],
-    side = [  1.832,  -0.332,   1.011,  -1.437,   1.1  ,  -2.106,  3.074]
-)
-
-
 use_diff_length = args.use_diff_length
 
 
@@ -723,7 +709,6 @@ def main():
         print demo_h5file
         demofile = h5py.File(demo_h5file, 'r')
 
-
     if args.select == "clusters":
         if use_diff_length:
             c_h5files = [osp.join(demotype_dir, demo_type+"_clusters.h5") for demo_type in demo_types]
@@ -732,40 +717,17 @@ def main():
             c_h5file = osp.join(demotype_dir, args.demo_type+"_clusters.h5")
             clusterfile = h5py.File(c_h5file, 'r')
 
-    Globals.sim = ropesim_floating.FloatingGripperSimulation(Globals.env)
-    trajoptpy.SetInteractive(args.interactive)
-
-    if args.log:
-        LOG_DIR = osp.join(demotype_dir, "do_task_logs", datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
-        os.mkdir(LOG_DIR)
-        LOG_COUNT = 0
-
     Globals.env = openravepy.Environment()
     Globals.env.StopSimulation()
-    Globals.env.Load("robots/pr2-beta-static.zae")
-    Globals.robot = Globals.env.GetRobots()[0]
-
-    '''
-    Add table
-    '''
-    # As found from measuring
-    if not args.remove_table:
-        a = osp.join(cad_files_dir, 'table.xml')
-        print a
-        Globals.env.Load(osp.join(cad_files_dir, 'table_sim.xml'))
-        body = Globals.env.GetKinBody('table')
-
-        if Globals.viewer:
-            Globals.viewer.SetTransparency(body,0.4)
-
+    Globals.sim = ropesim_floating.FloatingGripperSimulation(Globals.env)
+    trajoptpy.SetInteractive(args.interactive)
+    Globals.viewer = trajoptpy.GetViewer(Globals.env)
 
     init_tfm = None
     if args.use_ar_init:
         # Get ar marker from demo:
         ar_demo_file = osp.join(hd_data_dir, ar_init_dir, ar_init_demo_name)
         with open(ar_demo_file,'r') as fh: ar_demo_tfms = cPickle.load(fh)
-
-        ar_marker = ar_demo_tfms['marker']
         # use camera 1 as default
         ar_marker_cameras = [1]
         ar_demo_tfm = avg_transform([ar_demo_tfms['tfms'][c] for c in ar_demo_tfms['tfms'] if c in ar_marker_cameras])
@@ -797,6 +759,17 @@ def main():
         hitch_tfm[2, 3] = table_height + table_z_extent + hitch_height/2.0
         hitch_body.SetTransform(hitch_tfm)
 
+    '''
+    Add table
+    '''
+    # As found from measuring
+    if not args.remove_table:
+        Globals.env.Load(osp.join(cad_files_dir, 'table_sim.xml'))
+        body = Globals.env.GetKinBody('table')
+        if Globals.viewer:
+            Globals.viewer.SetTransparency(body,0.4)
+
+
     curr_step = 0
 
     while True:
@@ -816,9 +789,7 @@ def main():
         rope_cloud = None
 
         #Set home position in sim
-        l_vals = L_POSTURES['side']
-        Globals.robot.SetDOFValues(l_vals, Globals.robot.GetManipulator('leftarm').GetArmIndices())
-        Globals.robot.SetDOFValues(mirror_arm_joints(l_vals), Globals.robot.GetManipulator('rightarm').GetArmIndices())
+        move_sim_arms_to_side() 
 
         if curr_step > 1:
             # for following steps in rope simulation, using simulation result
@@ -836,20 +807,21 @@ def main():
                 new_xyz = np.r_[new_xyz, hitch_cloud]
 
         else:
-            fake_seg = demofile[args.fake_data_demo][args.fake_data_segment]
-            new_xyz = np.squeeze(fake_seg["cloud_xyz"])
 
+            fake_seg = demofile[args.fake_data_demo][args.fake_data_segment]
+            fake_xyz = np.squeeze(fake_seg["cloud_xyz"])
             hmat = openravepy.matrixFromAxisAngle(args.fake_data_transform[3:6])
             hmat[:3,3] = args.fake_data_transform[0:3]
             if args.use_ar_init: hmat = init_tfm.dot(hmat)
-
             # if not rope simulation
-            new_xyz = new_xyz.dot(hmat[:3,:3].T) + hmat[:3,3][None,:]
+            fake_xyz = fake_xyz.dot(hmat[:3,:3].T) + hmat[:3,3][None,:]
+    
+    
             # if the first step in rope simulation
-            rope_nodes = rope_initialization.find_path_through_point_cloud(new_xyz)
+            rope_nodes = rope_initialization.find_path_through_point_cloud(fake_xyz)
             Globals.sim.create(rope_nodes)
-            new_xyz = Globals.sim.observe_cloud(3)
-            new_xyz = clouds.downsample(new_xyz, args.cloud_downsample)
+            fake_xyz = Globals.sim.observe_cloud(3)
+            fake_xyz = clouds.downsample(fake_xyz, args.cloud_downsample)
 #                     print new_xyz.shape
 #                     raw_input()
 
@@ -861,18 +833,14 @@ def main():
                 pos[2] = pos[2] - hitch_height/2
                 hitch_cloud = cloud_proc_funcs.generate_hitch_points(pos)
                 hitch_cloud = clouds.downsample(hitch_cloud, args.cloud_downsample*2)
-                new_xyz = np.r_[new_xyz, hitch_cloud]
+                fake_xyz = np.r_[fake_xyz, hitch_cloud]
+            
+            new_xyz = fake_xyz
 
         if args.closest_rope_hack:
             rope_cloud = Globals.sim.observe_cloud(3)
             rope_cloud = clouds.downsample(rope_cloud, args.cloud_downsample)
 
-        if args.log:
-            LOG_COUNT += 1
-            import cv2
-            cv2.imwrite(osp.join(LOG_DIR,"rgb%05i.png"%LOG_COUNT), rgb)
-            cv2.imwrite(osp.join(LOG_DIR,"depth%05i.png"%LOG_COUNT), depth)
-            np.save(osp.join(LOG_DIR,"xyz%i.npy"%LOG_COUNT), new_xyz)
 
         '''
         Finding closest demonstration
@@ -902,14 +870,6 @@ def main():
             redprint("DONE!")
             break
 
-
-        if args.log:
-            with open(osp.join(LOG_DIR,"neighbor%i.txt"%LOG_COUNT),"w") as fh: fh.write(seg_name)
-
-        # import matplotlib.pylab as plt
-        # plt.plot(np.np.asarray(demofile[demo_name][seg_name]['r']['pot_angles'])[:,0])
-        # plt.show()
-
         '''
         Generating end-effector trajectory
         '''
@@ -936,11 +896,11 @@ def main():
         scaled_old_xyz, src_params = registration.unit_boxify(old_xyz)
         scaled_new_xyz, targ_params = registration.unit_boxify(new_xyz)
         f,_ = registration.tps_rpm_bij(scaled_old_xyz, scaled_new_xyz, plot_cb = tpsrpm_plot_cb,
-                                       plotting=5 if args.animation else 0,rot_reg=np.r_[1e-4,1e-4,1e-1], n_iter=args.tps_n_iter, reg_init=args.tps_bend_cost_init, reg_final=args.tps_bend_cost_final)
+                                       plotting=0,rot_reg=np.r_[1e-4,1e-4,1e-1], n_iter=args.tps_n_iter, reg_init=args.tps_bend_cost_init, reg_final=args.tps_bend_cost_final)
         f = registration.unscale_tps(f, src_params, targ_params)
         t2 = time.time()
 
-        handles.extend(plotting_openrave.draw_grid(Globals.env, f.transform_points, old_xyz.min(axis=0)-np.r_[0,0,.1], old_xyz.max(axis=0)+np.r_[0,0,.1], xres = .1, yres = .1, zres = .04))
+        #handles.extend(plotting_openrave.draw_grid(Globals.env, f.transform_points, old_xyz.min(axis=0)-np.r_[0,0,.1], old_xyz.max(axis=0)+np.r_[0,0,.1], xres = .1, yres = .1, zres = .04))
 
         handles.append(Globals.env.plot3(f.transform_points(old_xyz),5,np.array(color_old_transformed)))
 
@@ -955,6 +915,7 @@ def main():
             if args.use_ar_init:
                 for i in xrange(len(old_ee_traj)):
                     old_ee_traj[i] = init_tfm.dot(old_ee_traj[i])
+
             new_ee_traj = f.transform_hmats(np.asarray(old_ee_traj))
 
 
@@ -973,9 +934,7 @@ def main():
         segment_len = miniseg_ends[-1] - miniseg_starts[0] + 1
         portion = max(args.early_stop_portion, miniseg_ends[0] / float(segment_len))
 
-        prev_vals = {lr:None for lr in 'lr'}
-        #l_vals = PR2.Arm.L_POSTURES['side']
-        l_vals = L_POSTURES['side']
+
         for (i_miniseg, (i_start, i_end)) in enumerate(zip(miniseg_starts, miniseg_ends)):
 
             redprint("Generating joint trajectory for demo %s segment %s, part %i"%(demo_name, seg_name, i_miniseg))
@@ -1003,7 +962,7 @@ def main():
 
             #len_miniseg = len(adaptive_times)
 
-            redprint("Executing joint trajectory for demo %s segment %s, part %i using arms '%s'"%(demo_name, seg_name, i_miniseg, bodypart2traj.keys()))
+            redprint("Executing joint trajectory for demo %s segment %s, part %i using arms '%s'"%(demo_name, seg_name, i_miniseg, miniseg_traj.keys()))
 
             for lr in 'lr':
                 gripper_open = lr_open[lr][i_miniseg]
@@ -1013,7 +972,7 @@ def main():
                     success = False
 
 
-            if len(bodypart2traj['larm']) > 0:
+            if len(miniseg_traj) > 0:
                 """HACK
                 """
                 is_final_seg = False
@@ -1025,13 +984,13 @@ def main():
                     else:
                         sub_traj = {}
                         for lr in miniseg_traj:
-                            sub_traj[lr] = miniseg_traj[lr][: int(portion * len(bodypart2traj[lr]))]
+                            sub_traj[lr] = miniseg_traj[lr][: int(portion * len(miniseg_traj[lr]))]
                         success &= exec_traj_sim(sub_traj)
                 else:
                     success &= exec_traj_sim(miniseg_traj)
 
 
-        Globals.sim.settle(animate=False)
+        Globals.sim.settle(animate=True)
         if Globals.viewer and args.interactive:
             Globals.viewer.Idle()
 

@@ -320,7 +320,6 @@ def auto_choose(actionfile, new_xyz, nparallel=-1):
     if not nparallel == -1:
         from joblib import Parallel, delayed
         nparallel = min(nparallel, 8)
-CLAUDIA HUEI-YING WONG claudiahwong@berkeley.edu
 
     demo_data = actionfile.items()
 
