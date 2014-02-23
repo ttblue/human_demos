@@ -788,7 +788,7 @@ def main():
         rope_cloud = None
 
         #Set home position in sim
-        move_sim_arms_to_side() 
+        move_sim_arms_to_side()
 
         if curr_step > 1:
             # for following steps in rope simulation, using simulation result
@@ -814,8 +814,8 @@ def main():
             if args.use_ar_init: hmat = init_tfm.dot(hmat)
             # if not rope simulation
             fake_xyz = fake_xyz.dot(hmat[:3,:3].T) + hmat[:3,3][None,:]
-    
-    
+
+
             # if the first step in rope simulation
             rope_nodes = rope_initialization.find_path_through_point_cloud(fake_xyz)
             Globals.sim.create(rope_nodes)
@@ -837,7 +837,7 @@ def main():
                 hitch_cloud = cloud_proc_funcs.generate_hitch_points(pos)
                 hitch_cloud = clouds.downsample(hitch_cloud, args.cloud_downsample*2)
                 fake_xyz = np.r_[fake_xyz, hitch_cloud]
-            
+
             new_xyz = fake_xyz
 
         if args.closest_rope_hack:

@@ -42,8 +42,8 @@ Over- and under-crossings are defined in relation to the starting and
 finishing ends of the rope. An under-crossing is a crossing where a
 traversal of the rope from the starting end to the finishing end would
 first encounter the crossing on the lower segment, followed by the upper
-segment. An over-crossing is a crossing where a traversal of the rope 
-from the starting end to the finishing end would first encounter the 
+segment. An over-crossing is a crossing where a traversal of the rope
+from the starting end to the finishing end would first encounter the
 crossing on the lower segment, followed by the upper segment.
 """
 def mark_end(event,x,y,flags,param):
@@ -203,34 +203,6 @@ def refactor(hdf):
             del hdf[demo][seg]['crossings']
             points = np.asarray(points)
             hdf[demo][seg].create_dataset('crossings', data=points)
-
-"""
-Creates a dictionary of equivalent states.
-eqiv[cross_state] returns a list of all states equivalent to cross_state. Two
-states (crossings patterns) A and B are equivalent if a segment with A can
-transition into a state C that B can also transition into.
-"""
-def calculate_mdp(hdf):
-    stf = {}
-    equiv = {}
-    for demo in hdf.keys():
-        preceding = []
-        for seg in hdf[demo].keys():
-            points = []
-            for crossing in hdf[demo][seg]['crossings']:
-                if crossing[2] == 0:
-                    points.append((crossing[0], crossing[1], -1))
-                elif crossing[2] == 1:
-                    points.append(crossing)
-            if points in stf:
-                stf[points].append(preceding)
-            else:
-                stf.points = [preceding]
-            preceding = points
-    for state1 in stf.keys():
-        for state2 in stf[state1]:
-            equiv[state2] = stf[state1]
-    return equiv
 
 
 if __name__ == "__main__":
