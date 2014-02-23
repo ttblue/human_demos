@@ -143,7 +143,7 @@ equiv[cross_state] returns a list of all states equivalent to cross_state.
 Two states (crossings patterns) A and B are equivalent if a segment with A
 can transition into a state C that B can also transition into.
 """
-def calculate_mdp(hdf):
+def calculateMdp(hdf):
     stf = {}
     equiv = {}
     for demo in hdf.keys():
@@ -152,14 +152,14 @@ def calculate_mdp(hdf):
             points = []
             for crossing in hdf[demo][seg]['crossings']:
                 points.append(crossing[2]) #for now, only save pattern, not point locations
-            if points in stf:
-                stf[points].append(preceding)
+            if tuple(points) in stf:
+                stf[tuple(points)].append(preceding)
             else:
-                stf.points = [preceding]
+                stf[tuple(points)] = [preceding]
             preceding = points
     for state1 in stf.keys():
         for state2 in stf[state1]:
-            equiv[state2] = stf[state1]
+            equiv[tuple(state2)] = stf[state1]
     return equiv
 
 """

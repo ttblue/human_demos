@@ -97,8 +97,7 @@ from hd_utils.utils import avg_transform
 from hd_utils.defaults import demo_files_dir, hd_data_dir,\
         ar_init_dir, ar_init_demo_name, ar_init_playback_name, \
         tfm_head_dof, tfm_bf_head, cad_files_dir
-#from knot_classifier import calculateCrossings
-#rom hd_visualization.label_crossings import calculate_mdp
+from knot_classifier import calculateCrossings, calculateMdp
 
 
 
@@ -416,27 +415,24 @@ def find_closest_auto(demofiles, new_xyz, init_tfm=None, n_jobs=3, seg_proximity
         return keys[choice_ind], is_finalsegs[choice_ind]
 
 
-def match_crossings(demofiles, keys, original_costs, new_xyz):
+def match_crossings(demofiles, keys, costs, new_xyz):
     sim_crossings = calculateCrossings(new_xyz)
-    costs = np.copy(original_costs)
-    while True: #check best TPS fit against crossings match
-        best_fit = np.argmin(costs)
-        demotype_num, demo, seg = keys[best_fit]
-        #equiv = calculate_mdp(demofiles[demotype_num])
+    cost_inds = np.argsort(costs)
+    for choice_ind in cost_inds: #check best TPS fit against crossings match
+        demotype_num, demo, seg = keys[choice_ind]
         hdf = demofiles[demotype_num]
+        equiv = calculateMdp(hdf)
+        import IPython
+        IPython.embed()
         points = []
         for crossing in hdf[demo][seg]["crossings"]:
-            if crossing[2] == 0:
-                points.append((crossing[0], crossing[1], -1))
-            elif crossing[2] == 1:
-                points.append(crossing)
-        #equivalent_states = equiv[points]
-        #if sim_crossings in equivalent_states: #or reverse -- need to match based on TPS
-        if sim_crossings == points:
-            return best_fit
-        else:
-            del costs[best_fit]
-    return np.argmin(original_costs)
+            points.append(crossing[2])
+        if tuple(points) in equiv or tuple(points.reverse()) in equiv:
+            equivalent_states = equiv[tuple(points)]
+            #if sim_crossings in equivalent_states: #or reverse -- need to match ends based on TPS
+            if sim_crossings in equivalent_states or sim_crossings.reverse() in equivalent_states:
+                return choice_ind
+    return np.argmin(costs)
 
 
 
