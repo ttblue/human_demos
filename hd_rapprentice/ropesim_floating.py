@@ -182,7 +182,7 @@ class FloatingGripperSimulation(object):
         lengths = np.r_[0, self.rope.GetHalfHeights() * 2]
         summed_lengths = np.cumsum(lengths)
         assert len(lengths) == len(pts)
-        return math_utils.interp2d(np.linspace(0, summed_lengths[-1], upsample), summed_lengths, pts)
+        return math_utils.interp2d(np.linspace(0, summed_lengths[-1], upsample*len(pts)), summed_lengths, pts)
 
     def grab_rope(self, lr):
         """Grab the rope with the gripper in simulation and return True if it grabbed it, else False."""

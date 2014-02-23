@@ -279,9 +279,9 @@ def exec_traj_sim(lr_traj, animate=True):
 
     animate_traj.animate_floating_traj(l_transition_hmats, r_transition_hmats,
                                        Globals.sim, pause=False,
-                                       callback=sim_callback, step_viewer=animate)
+                                       callback=sim_callback, step_viewer=animate, step=1)
     animate_traj.animate_floating_traj(lhmats_up, rhmats_up, Globals.sim, pause=False,
-                                       callback=sim_callback, step_viewer=animate)
+                                       callback=sim_callback, step_viewer=animate, step=1)
     return True
 
 def find_closest_manual(demofiles):
@@ -327,12 +327,12 @@ def find_closest_manual(demofiles):
 def registration_cost(xyz0, xyz1):
     scaled_xyz0, _ = registration.unit_boxify(xyz0)
     scaled_xyz1, _ = registration.unit_boxify(xyz1)
-    f,g = registration.tps_rpm_bij(scaled_xyz0, scaled_xyz1, rot_reg=1e-3, n_iter=30)
+    f,g = registration.tps_rpm_bij(scaled_xyz0, scaled_xyz1, reg_init=args.tps_bend_cost_init, reg_final = args.tps_bend_cost_final, rot_reg=np.r_[1e-4,1e-4,1e-1], n_iter=30)
     cost = registration.tps_reg_cost(f) + registration.tps_reg_cost(g)
     return cost
 
 
-def find_closest_auto(demofiles, new_xyz, sim_seg_num, init_tfm=None, n_jobs=3, seg_proximity=2, DS_LEAF_SIZE=0.02):
+def find_closest_auto(demofiles, new_xyz, init_tfm=None, n_jobs=3, seg_proximity=2, DS_LEAF_SIZE=0.02):
     """
     sim_seg_num   : is the index of the segment being executed in the simulation: used to find
     seg_proximity : only segments with numbers in +- seg_proximity of sim_seg_num are selected.
@@ -517,7 +517,6 @@ def find_closest_clusters(demofiles, clusterfiles, new_xyz, sim_seg_num, seg_pro
     demo_seg_clouds = {}
     demo_seg_info   = {}
 
-
     def is_final_seg(seg_info):
         dn, dname, sname = seg_info
         if 'done' in demofiles[dn][dname].keys():
@@ -570,7 +569,7 @@ def find_closest_clusters(demofiles, clusterfiles, new_xyz, sim_seg_num, seg_pro
         rows = 6
         cols = int(math.ceil(nshow*1.0/rows))
         bigimg = cpu.tile_images(near_rgbs, rows, cols, max_width=1000)
-        cv2.imshow("neighbors", bigimg)
+        cv2.imshow("neighbors2", bigimg)
         print "press any key to continue"
         cv2.waitKey()
 
@@ -822,6 +821,10 @@ def main():
             Globals.sim.create(rope_nodes)
             fake_xyz = Globals.sim.observe_cloud(3)
             fake_xyz = clouds.downsample(fake_xyz, args.cloud_downsample)
+            
+            if Globals.viewer:
+                rope_body = Globals.env.GetKinBody('rope')
+                Globals.viewer.SetTransparency(rope_body,0.6)
 #                     print new_xyz.shape
 #                     raw_input()
 
@@ -850,7 +853,7 @@ def main():
             if args.select=="manual":
                 dnum, (demo_name, seg_name), is_final_seg = find_closest_manual(demofiles)
             elif args.select=="auto":
-                dnum, (demo_name, seg_name), is_final_seg = find_closest_auto(demofiles, new_xyz, init_tfm, DS_LEAF_SIZE = args.cloud_downsample)
+                dnum, (demo_name, seg_name), is_final_seg = find_closest_auto(demofiles, new_xyz, init_tfm=init_tfm, DS_LEAF_SIZE = args.cloud_downsample)
             else:
                 dnum, (demo_name, seg_name), is_final_seg = find_closest_clusters(demofiles, clusterfiles, new_xyz, curr_step-1, init_tfm=init_tfm, DS_LEAF_SIZE = args.cloud_downsample)
 
@@ -860,7 +863,7 @@ def main():
             if args.select=="manual":
                 (demo_name, seg_name), is_final_seg = find_closest_manual(demofile)
             elif args.select=="auto":
-                (demo_name, seg_name), is_final_seg = find_closest_auto(demofile, new_xyz, init_tfm)
+                (demo_name, seg_name), is_final_seg = find_closest_auto(demofile, new_xyz, init_tfm=init_tfm)
             else:
                 (demo_name, seg_name), is_final_seg = find_closest_clusters(demofile, clusterfile, new_xyz, curr_step-1, init_tfm=init_tfm)
             seg_info = demofile[demo_name][seg_name]
@@ -900,7 +903,7 @@ def main():
         f = registration.unscale_tps(f, src_params, targ_params)
         t2 = time.time()
 
-        #handles.extend(plotting_openrave.draw_grid(Globals.env, f.transform_points, old_xyz.min(axis=0)-np.r_[0,0,.1], old_xyz.max(axis=0)+np.r_[0,0,.1], xres = .1, yres = .1, zres = .04))
+        handles.extend(plotting_openrave.draw_grid(Globals.env, f.transform_points, old_xyz.min(axis=0)-np.r_[0,0,.1], old_xyz.max(axis=0)+np.r_[0,0,.1], xres = .1, yres = .1, zres = .04))
 
         handles.append(Globals.env.plot3(f.transform_points(old_xyz),5,np.array(color_old_transformed)))
 
