@@ -144,7 +144,7 @@ def label_single_demo(seg_group, name, on_mouse, dataset):
     print points
     points = np.asarray(points)
     print points
-    seg_group.create_dataset(dataset, data=points)
+    seg_group.create_dataset(dataset, shape(len(points), 3), data=points)
     print seg_group[dataset]
     cv2.destroyAllWindows()
 
