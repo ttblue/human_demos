@@ -406,8 +406,8 @@ def find_closest_auto(demofiles, new_xyz, init_tfm=None, n_jobs=3, seg_proximity
         print "press any key to continue"
         cv2.waitKey()
 
-    choice_ind = np.argmin(costs)
-    #choice_ind = match_crossings(demofiles, keys, costs, new_xyz)
+    #choice_ind = np.argmin(costs)
+    choice_ind = match_crossings(demofiles, keys, costs, new_xyz)
 
     if demotype_num == 1:
         return (keys[choice_ind][1],keys[choice_ind][2]) , is_finalsegs[choice_ind]
@@ -416,22 +416,32 @@ def find_closest_auto(demofiles, new_xyz, init_tfm=None, n_jobs=3, seg_proximity
 
 
 def match_crossings(demofiles, keys, costs, new_xyz):
-    sim_crossings = calculateCrossings(new_xyz)
+    print "matching crossings"
+    sim_crossings = calculateCrossings(Globals.sim.observe_cloud(3)) 
+    #^ avoid using downsampled cloud as points are "out of order".
+    #This works for now but doesn't translate to live/non-simulated tests. 
+    #Not sure what to do then. Is it possible to downsample without re-ordering?
     cost_inds = np.argsort(costs)
     for choice_ind in cost_inds: #check best TPS fit against crossings match
         demotype_num, demo, seg = keys[choice_ind]
         hdf = demofiles[demotype_num]
         equiv = calculateMdp(hdf)
-        import IPython
-        IPython.embed()
+        #import IPython
+        #IPython.embed()
         points = []
         for crossing in hdf[demo][seg]["crossings"]:
             points.append(crossing[2])
-        if tuple(points) in equiv or tuple(points.reverse()) in equiv:
+        if tuple(points) in equiv or tuple(reversed(points)) in equiv:
             equivalent_states = equiv[tuple(points)]
             #if sim_crossings in equivalent_states: #or reverse -- need to match ends based on TPS
             if sim_crossings in equivalent_states or sim_crossings.reverse() in equivalent_states:
                 return choice_ind
+        print "discarding initial choice - did not match crossings pattern"
+        print "demonstration pattern:", tuple(points)
+        print "sim_crossings pattern:", sim_crossings
+        print "equivalent states:", equivalent_states
+#         import IPython
+#         IPython.embed()
     return np.argmin(costs)
 
 
