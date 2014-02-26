@@ -330,6 +330,13 @@ def registration_cost(xyz0, xyz1):
     cost = registration.tps_reg_cost(f) + registration.tps_reg_cost(g)
     return cost
 
+def registration_cost_and_tfm(xyz0, xyz1):
+    scaled_xyz0, _ = registration.unit_boxify(xyz0)
+    scaled_xyz1, _ = registration.unit_boxify(xyz1)
+    f,g = registration.tps_rpm_bij(scaled_xyz0, scaled_xyz1, reg_init=args.tps_bend_cost_init, reg_final = args.tps_bend_cost_final, rot_reg=np.r_[1e-4,1e-4,1e-1], n_iter=30)
+    cost = registration.tps_reg_cost(f) + registration.tps_reg_cost(g)
+    return cost, g
+
 
 def find_closest_auto(demofiles, new_xyz, init_tfm=None, n_jobs=3, seg_proximity=2, DS_LEAF_SIZE=0.02):
     """
@@ -384,9 +391,12 @@ def find_closest_auto(demofiles, new_xyz, init_tfm=None, n_jobs=3, seg_proximity
         costs = Parallel(n_jobs=n_jobs,verbose=51)(delayed(registration_cost)(demo_cloud, new_xyz) for demo_cloud in demo_clouds)
     else:
         costs = []
+        tfm_invs = []
 
         for (i,ds_cloud) in enumerate(demo_clouds):
-            costs.append(registration_cost(ds_cloud, new_xyz))
+            cost_i, tfm_inverse_i = registration_cost_and_tfm(ds_cloud, new_xyz)
+            costs.append(cost_i)
+            tfm_invs.append(tfm_inverse_i)
             print "completed %i/%i"%(i+1, len(demo_clouds))
 
     print "costs\n", costs
@@ -407,7 +417,7 @@ def find_closest_auto(demofiles, new_xyz, init_tfm=None, n_jobs=3, seg_proximity
         cv2.waitKey()
 
     #choice_ind = np.argmin(costs)
-    choice_ind = match_crossings(demofiles, keys, costs, new_xyz)
+    choice_ind = match_crossings(demofiles, keys, costs, tfm_invs)
 
     if demotype_num == 1:
         return (keys[choice_ind][1],keys[choice_ind][2]) , is_finalsegs[choice_ind]
@@ -415,12 +425,11 @@ def find_closest_auto(demofiles, new_xyz, init_tfm=None, n_jobs=3, seg_proximity
         return keys[choice_ind], is_finalsegs[choice_ind]
 
 
-def match_crossings(demofiles, keys, costs, new_xyz):
+def match_crossings(demofiles, keys, costs, tfm_invs):
     print "matching crossings"
-    sim_crossings = calculateCrossings(Globals.sim.observe_cloud(3)) 
+    sim_xyz = Globals.sim.rope.GetControlPoints()
+    sim_crossings = calculateCrossings(sim_xyz) 
     #^ avoid using downsampled cloud as points are "out of order".
-    #This works for now but doesn't translate to live/non-simulated tests. 
-    #Not sure what to do then. Is it possible to downsample without re-ordering?
     cost_inds = np.argsort(costs)
     for choice_ind in cost_inds: #check best TPS fit against crossings match
         demotype_num, demo, seg = keys[choice_ind]
@@ -431,6 +440,7 @@ def match_crossings(demofiles, keys, costs, new_xyz):
         points = []
         for crossing in hdf[demo][seg]["crossings"]:
             points.append(crossing[2])
+        endpoint = tfm_invs[choice_ind](sim_xyz[0])  #get the point in the demo point cloud corresponding to the beginning point of the simulated rope
         if tuple(points) in equiv or tuple(reversed(points)) in equiv:
             equivalent_states = equiv[tuple(points)]
             #if sim_crossings in equivalent_states: #or reverse -- need to match ends based on TPS
@@ -440,10 +450,9 @@ def match_crossings(demofiles, keys, costs, new_xyz):
         print "demonstration pattern:", tuple(points)
         print "sim_crossings pattern:", sim_crossings
         print "equivalent states:", equivalent_states
-#         import IPython
-#         IPython.embed()
+        import IPython
+        IPython.embed()
     return np.argmin(costs)
-
 
 
 def append_to_dict_list(dic, key, item):
