@@ -58,6 +58,8 @@ parser.add_argument("--closest_rope_hack", action="store_true", default=False)
 parser.add_argument("--closest_rope_hack_thresh", type=float, default=0.01)
 parser.add_argument("--cloud_downsample", type=float, default=.01)
 
+parser.add_argument("--use_crossings", action="store_true", default=False)
+
 
 
 args = parser.parse_args()
@@ -335,7 +337,7 @@ def registration_cost_and_tfm(xyz0, xyz1):
     scaled_xyz1, _ = registration.unit_boxify(xyz1)
     f,g = registration.tps_rpm_bij(scaled_xyz0, scaled_xyz1, reg_init=args.tps_bend_cost_init, reg_final = args.tps_bend_cost_final, rot_reg=np.r_[1e-4,1e-4,1e-1], n_iter=30)
     cost = registration.tps_reg_cost(f) + registration.tps_reg_cost(g)
-    return cost, g
+    return (cost, g)
 
 
 def find_closest_auto(demofiles, new_xyz, init_tfm=None, n_jobs=3, seg_proximity=2, DS_LEAF_SIZE=0.02):
@@ -387,17 +389,30 @@ def find_closest_auto(demofiles, new_xyz, init_tfm=None, n_jobs=3, seg_proximity
         demotype_num +=1
 
     # raw_input(avg/len(demo_clouds))
-    if args.parallel:
-        costs = Parallel(n_jobs=n_jobs,verbose=51)(delayed(registration_cost)(demo_cloud, new_xyz) for demo_cloud in demo_clouds)
+    if args.use_crossings:
+        if args.parallel:
+            results = Parallel(n_jobs=n_jobs,verbose=51)(delayed(registration_cost_and_tfm)(demo_cloud, new_xyz) for demo_cloud in demo_clouds)
+            print len(results)
+            print np.array(results).shape
+            costs, tfm_invs = zip(*results)
+        else:
+            costs = []
+            tfm_invs = []
+    
+            for (i,ds_cloud) in enumerate(demo_clouds):
+                cost_i, tfm_inverse_i = registration_cost_and_tfm(ds_cloud, new_xyz)
+                costs.append(cost_i)
+                tfm_invs.append(tfm_inverse_i)
+                print "completed %i/%i"%(i+1, len(demo_clouds))
     else:
-        costs = []
-        tfm_invs = []
-
-        for (i,ds_cloud) in enumerate(demo_clouds):
-            cost_i, tfm_inverse_i = registration_cost_and_tfm(ds_cloud, new_xyz)
-            costs.append(cost_i)
-            tfm_invs.append(tfm_inverse_i)
-            print "completed %i/%i"%(i+1, len(demo_clouds))
+        if args.parallel:
+            costs = Parallel(n_jobs=n_jobs,verbose=51)(delayed(registration_cost)(demo_cloud, new_xyz) for demo_cloud in demo_clouds)
+        else:
+            costs = []
+            for (i,ds_cloud) in enumerate(demo_clouds):
+                cost_i = registration_cost(ds_cloud, new_xyz)
+                costs.append(cost_i)
+                print "completed %i/%i"%(i+1, len(demo_clouds))
 
     print "costs\n", costs
 
@@ -416,16 +431,21 @@ def find_closest_auto(demofiles, new_xyz, init_tfm=None, n_jobs=3, seg_proximity
         print "press any key to continue"
         cv2.waitKey()
 
-    #choice_ind = np.argmin(costs)
-    choice_ind = match_crossings(demofiles, keys, costs, tfm_invs)
-
+    if args.use_crossings:
+        choice_ind = match_crossings(demofiles, keys, costs, tfm_invs, init_tfm)
+    else:
+        choice_ind = np.argmin(costs)
+        
     if demotype_num == 1:
         return (keys[choice_ind][1],keys[choice_ind][2]) , is_finalsegs[choice_ind]
     else:
         return keys[choice_ind], is_finalsegs[choice_ind]
 
 
-def match_crossings(demofiles, keys, costs, tfm_invs):
+def match_crossings(demofiles, keys, costs, tfm_invs, init_tfm):
+    import scipy
+    from scipy.spatial import *
+    
     print "matching crossings"
     sim_xyz = Globals.sim.rope.GetControlPoints()
     sim_crossings = calculateCrossings(sim_xyz) 
@@ -434,13 +454,33 @@ def match_crossings(demofiles, keys, costs, tfm_invs):
     for choice_ind in cost_inds: #check best TPS fit against crossings match
         demotype_num, demo, seg = keys[choice_ind]
         hdf = demofiles[demotype_num]
+        demo_pointcloud = np.array(hdf[demo][seg]["full_cloud_xyz"])
         equiv = calculateMdp(hdf)
         #import IPython
         #IPython.embed()
         points = []
         for crossing in hdf[demo][seg]["crossings"]:
             points.append(crossing[2])
-        endpoint = tfm_invs[choice_ind](sim_xyz[0])  #get the point in the demo point cloud corresponding to the beginning point of the simulated rope
+
+        tps_pt = tfm_invs[choice_ind].transform_points(np.array([sim_xyz[0], [0,0,0]]))
+        corresponding_pt = tps_pt[0].dot(init_tfm[:3,:3].T) #but actually need inverse of init_tfm 
+        #^ get the point in the demo point cloud space corresponding to the beginning point of the simulated rope
+        #annoyingly you can't evaluate just one point, hence the [0,0,0]
+"""
+plt = mlab.points3d(corresponding_pt[0,0], corresponding_pt[0,1], corresponding_pt[0,2], color=(0,1,0), scale_factor=0.02)   //tfmd point
+plt = mlab.points3d(sim_xyz[0,0], sim_xyz[0,1], sim_xyz[0,2], color=(1,0,0), scale_factor=0.02)                              //endpoint of sim_rope
+plt = mlab.points3d(sim_xyz[:,0], sim_xyz[:,1], sim_xyz[:,2], np.linspace(100,110,len(sim_xyz)), scale_factor=0.00005)                                   //sim rope
+plt = mlab.points3d(demo_pointcloud[:,0], demo_pointcloud[:,1], demo_pointcloud[:,2], np.linspace(100,110,len(demo_pointcloud)), scale_factor=0.00005)   //demo rope
+true_tfm = corresponding_pt[0].dot(init_tfm[:3,:3].T) //not actually the true tfm -- need inverse of init_tfm
+plt = mlab.points3d(true_tfm[0,0], true_tfm[0,1], true_tfm[0,2], color=(0,1,0), scale_factor=0.02)
+"""
+        mytree = scipy.spatial.cKDTree(demo_pointcloud)
+        dist, endpoint = mytree.query(corresponding_pt) #get index of nearest neighbor of the transformed point
+        #TODO:check if dist is halfway reasonable
+        demo_pointcloud[endpoint] #get actual point
+        import IPython
+        IPython.embed()
+    
         if tuple(points) in equiv or tuple(reversed(points)) in equiv:
             equivalent_states = equiv[tuple(points)]
             #if sim_crossings in equivalent_states: #or reverse -- need to match ends based on TPS
