@@ -333,10 +333,11 @@ def registration_cost(xyz0, xyz1):
     return cost
 
 def registration_cost_and_tfm(xyz0, xyz1):
-    scaled_xyz0, _ = registration.unit_boxify(xyz0)
-    scaled_xyz1, _ = registration.unit_boxify(xyz1)
+    scaled_xyz0, src_params = registration.unit_boxify(xyz0)
+    scaled_xyz1, targ_params = registration.unit_boxify(xyz1)
     f,g = registration.tps_rpm_bij(scaled_xyz0, scaled_xyz1, reg_init=args.tps_bend_cost_init, reg_final = args.tps_bend_cost_final, rot_reg=np.r_[1e-4,1e-4,1e-1], n_iter=30)
     cost = registration.tps_reg_cost(f) + registration.tps_reg_cost(g)
+    g = registration.unscale_tps_3d(g, targ_params, src_params)
     return (cost, g)
 
 
@@ -398,7 +399,7 @@ def find_closest_auto(demofiles, new_xyz, init_tfm=None, n_jobs=3, seg_proximity
         else:
             costs = []
             tfm_invs = []
-    
+            
             for (i,ds_cloud) in enumerate(demo_clouds):
                 cost_i, tfm_inverse_i = registration_cost_and_tfm(ds_cloud, new_xyz)
                 costs.append(cost_i)
@@ -432,7 +433,7 @@ def find_closest_auto(demofiles, new_xyz, init_tfm=None, n_jobs=3, seg_proximity
         cv2.waitKey()
 
     if args.use_crossings:
-        choice_ind = match_crossings(demofiles, keys, costs, tfm_invs, init_tfm)
+        choice_ind = match_crossings(demofiles, keys, costs, tfm_invs, init_tfm, demo_clouds)
     else:
         choice_ind = np.argmin(costs)
         
@@ -442,7 +443,7 @@ def find_closest_auto(demofiles, new_xyz, init_tfm=None, n_jobs=3, seg_proximity
         return keys[choice_ind], is_finalsegs[choice_ind]
 
 
-def match_crossings(demofiles, keys, costs, tfm_invs, init_tfm):
+def match_crossings(demofiles, keys, costs, tfm_invs, init_tfm, dclouds):
     import scipy
     from scipy.spatial import *
     
@@ -454,46 +455,62 @@ def match_crossings(demofiles, keys, costs, tfm_invs, init_tfm):
     for choice_ind in cost_inds: #check best TPS fit against crossings match
         demotype_num, demo, seg = keys[choice_ind]
         hdf = demofiles[demotype_num]
-        demo_pointcloud = np.array(hdf[demo][seg]["full_cloud_xyz"])
-        equiv = calculateMdp(hdf)
-        #import IPython
-        #IPython.embed()
         points = []
         for crossing in hdf[demo][seg]["crossings"]:
             points.append(crossing[2])
 
-        tps_pt = tfm_invs[choice_ind].transform_points(np.array([sim_xyz[0], [0,0,0]]))
-        corresponding_pt = tps_pt[0].dot(init_tfm[:3,:3].T) #but actually need inverse of init_tfm 
+        corresponding_pt = tfm_invs[choice_ind].transform_points(np.array([sim_xyz[0]]))    
         #^ get the point in the demo point cloud space corresponding to the beginning point of the simulated rope
-        #annoyingly you can't evaluate just one point, hence the [0,0,0]
-"""
-plt = mlab.points3d(corresponding_pt[0,0], corresponding_pt[0,1], corresponding_pt[0,2], color=(0,1,0), scale_factor=0.02)   //tfmd point
-plt = mlab.points3d(sim_xyz[0,0], sim_xyz[0,1], sim_xyz[0,2], color=(1,0,0), scale_factor=0.02)                              //endpoint of sim_rope
-plt = mlab.points3d(sim_xyz[:,0], sim_xyz[:,1], sim_xyz[:,2], np.linspace(100,110,len(sim_xyz)), scale_factor=0.00005)                                   //sim rope
-plt = mlab.points3d(demo_pointcloud[:,0], demo_pointcloud[:,1], demo_pointcloud[:,2], np.linspace(100,110,len(demo_pointcloud)), scale_factor=0.00005)   //demo rope
-true_tfm = corresponding_pt[0].dot(init_tfm[:3,:3].T) //not actually the true tfm -- need inverse of init_tfm
-plt = mlab.points3d(true_tfm[0,0], true_tfm[0,1], true_tfm[0,2], color=(0,1,0), scale_factor=0.02)
-"""
-        mytree = scipy.spatial.cKDTree(demo_pointcloud)
-        dist, endpoint = mytree.query(corresponding_pt) #get index of nearest neighbor of the transformed point
-        #TODO:check if dist is halfway reasonable
-        demo_pointcloud[endpoint] #get actual point
-        import IPython
-        IPython.embed()
-    
-        if tuple(points) in equiv or tuple(reversed(points)) in equiv:
-            equivalent_states = equiv[tuple(points)]
-            #if sim_crossings in equivalent_states: #or reverse -- need to match ends based on TPS
-            if sim_crossings in equivalent_states or sim_crossings.reverse() in equivalent_states:
-                return choice_ind
+        #annoyingly you can't evaluate just one point, hence the [0,0,0]        
+        
+        demo_pointcloud = dclouds[choice_ind]
+        demo_rope_nodes = rope_initialization.find_path_through_point_cloud(demo_pointcloud)
+        mytree = scipy.spatial.cKDTree(demo_rope_nodes)
+        dist, endindex = mytree.query(corresponding_pt) #get index of nearest neighbor of the transformed point
+
+        if dist > 5: #TODO:check if dist is halfway reasonable (once corresponding point is actually given in the same space as the demo_pointcloud)
+            break
+        demo_rope_nodes = (demo_rope_nodes - init_tfm[:3,3][None,:]).dot(np.linalg.pinv(init_tfm[:3,:3]).T)
+        if endindex <= len(demo_rope_nodes)/2:
+            demo_endpoint = demo_rope_nodes[0] #get actual point
+        else:
+            demo_endpoint = demo_rope_nodes[-1]
+            points.reverse()
+
+        xypoint = clouds.XYZ_to_xy(demo_endpoint[0], demo_endpoint[1], demo_endpoint[2])
+        if hdf[demo][seg]["ends"] and hdf[demo][seg]["ends"].shape[0] > 0:   #ends info exists and is not empty
+            plot_transform_mlab(demo_pointcloud, sim_xyz, corresponding_pt, demo_endpoint, demo_rope_nodes)
+#             import IPython
+#             IPython.embed()
+            if np.argmin(np.hypot(*(hdf[demo][seg]["ends"][:,:2] - xypoint))): #beginning endpoint of sim_rope is not beginning of demo rope
+                points.reverse()
+        
+        if points == sim_crossings:
+            return choice_ind
+        
+#         equiv = calculateMdp(hdf)
+#         if tuple(points) in equiv or tuple(reversed(points)) in equiv:
+#             equivalent_states = equiv[tuple(points)]
+#             #if sim_crossings in equivalent_states: #or reverse -- need to match ends based on TPS
+#             if sim_crossings in equivalent_states or sim_crossings.reverse() in equivalent_states:
+#                 return choice_ind
         print "discarding initial choice - did not match crossings pattern"
         print "demonstration pattern:", tuple(points)
         print "sim_crossings pattern:", sim_crossings
-        print "equivalent states:", equivalent_states
-        import IPython
-        IPython.embed()
+#        print "equivalent states:", equivalent_states
+
+
+
     return np.argmin(costs)
 
+def plot_transform_mlab(demo_pointcloud, sim_xyz, tps_pt, demo_endpoint, orig_demo):
+    from mayavi import mlab; mlab.figure(0); mlab.clf()
+    plt = mlab.points3d(demo_pointcloud[:,0], demo_pointcloud[:,1], demo_pointcloud[:,2], color=(0,1,0), scale_factor=0.01) #with true/good init tfm
+    plt = mlab.points3d(sim_xyz[0,0], sim_xyz[0,1], sim_xyz[0,2], color=(1,0,0), scale_factor=0.03)                         #endpoint of the simulated rope
+    plt = mlab.points3d(tps_pt[0,0], tps_pt[0,1], tps_pt[0,2], color=(0,1,0), scale_factor=0.03)                            #point given by tps
+    plt = mlab.points3d(sim_xyz[:,0], sim_xyz[:,1], sim_xyz[:,2], np.linspace(100,110,len(sim_xyz)), scale_factor=0.00005)
+    plt = mlab.points3d(orig_demo[:,0], orig_demo[:,1], orig_demo[:,2], np.linspace(100,110,len(orig_demo)), scale_factor=0.00005)
+    plt = mlab.points3d(demo_endpoint[0],demo_endpoint[1],demo_endpoint[2], color=(0,1,0), scale_factor=0.03)
 
 def append_to_dict_list(dic, key, item):
     if key in dic.keys():
