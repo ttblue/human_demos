@@ -146,21 +146,36 @@ can transition into a state C that B can also transition into.
 def calculateMdp(hdf):
     stf = {}
     equiv = {}
+    last = []
     for demo in hdf.keys():
-        preceding = []
+        preceding = ()
         for seg in hdf[demo].keys():
-            points = []
-            for crossing in hdf[demo][seg]['crossings']:
-                points.append(crossing[2]) #for now, only save pattern, not point locations
-            if tuple(points) in stf:
-                stf[tuple(points)].append(preceding)
-            else:
-                stf[tuple(points)] = [preceding]
+            if hdf[demo][seg]['crossings'].shape[0] == 0:
+                continue
+            points = tuple(hdf[demo][seg]['crossings'][:,2])
+            if preceding and preceding != points:
+                if points in stf and preceding not in stf[points]:
+                    stf[tuple(points)].append(preceding)
+                elif points not in stf:
+                    stf[tuple(points)] = [preceding]
+            if seg == hdf[demo].keys()[-1]:
+                last.append(tuple(points))
             preceding = points
+
     for state1 in stf.keys():
         for state2 in stf[state1]:
-            equiv[tuple(state2)] = stf[state1]
-    return equiv
+            for state in stf[state1]:
+                if tuple(state2) in equiv:
+                    equiv[tuple(state2)].append(state)
+                else:
+                    equiv[tuple(state2)] = [state]
+    for state1 in last:
+        for state2 in last:
+            if state1 in equiv and state2 not in equiv[state1]:
+                equiv[state1].append(state2)
+            elif state1 not in equiv:
+                equiv[state1] = [state2]
+    return equiv, stf
 
 """
     todo:
