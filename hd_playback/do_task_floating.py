@@ -59,6 +59,7 @@ parser.add_argument("--closest_rope_hack_thresh", type=float, default=0.01)
 parser.add_argument("--cloud_downsample", type=float, default=.01)
 
 parser.add_argument("--use_crossings", action="store_true", default=False)
+parser.add_argument("--test_success", action="store_true", default=False)
 
 
 
@@ -99,7 +100,7 @@ from hd_utils.utils import avg_transform
 from hd_utils.defaults import demo_files_dir, hd_data_dir,\
         ar_init_dir, ar_init_demo_name, ar_init_playback_name, \
         tfm_head_dof, tfm_bf_head, cad_files_dir
-from knot_classifier import calculateCrossings, calculateMdp
+from knot_classifier import calculateCrossings, calculateMdp, isKnot
 
 
 
@@ -393,8 +394,6 @@ def find_closest_auto(demofiles, new_xyz, init_tfm=None, n_jobs=3, seg_proximity
     if args.use_crossings:
         if args.parallel:
             results = Parallel(n_jobs=n_jobs,verbose=51)(delayed(registration_cost_and_tfm)(demo_cloud, new_xyz) for demo_cloud in demo_clouds)
-            print len(results)
-            print np.array(results).shape
             costs, tfm_invs = zip(*results)
         else:
             costs = []
@@ -452,6 +451,10 @@ def match_crossings(demofiles, keys, costs, tfm_invs, init_tfm, dclouds):
     sim_crossings = calculateCrossings(sim_xyz) 
     #^ avoid using downsampled cloud as points are "out of order".
     cost_inds = np.argsort(costs)
+    for demofile in demofiles:
+        equiv = calculateMdp(demofile)
+        if tuple(sim_crossings) not in equiv:
+            return np.argmin(costs)
     for choice_ind in cost_inds: #check best TPS fit against crossings match
         demotype_num, demo, seg = keys[choice_ind]
         hdf = demofiles[demotype_num]
@@ -461,56 +464,65 @@ def match_crossings(demofiles, keys, costs, tfm_invs, init_tfm, dclouds):
 
         corresponding_pt = tfm_invs[choice_ind].transform_points(np.array([sim_xyz[0]]))    
         #^ get the point in the demo point cloud space corresponding to the beginning point of the simulated rope
-        #annoyingly you can't evaluate just one point, hence the [0,0,0]        
         
         demo_pointcloud = dclouds[choice_ind]
         demo_rope_nodes = rope_initialization.find_path_through_point_cloud(demo_pointcloud)
         mytree = scipy.spatial.cKDTree(demo_rope_nodes)
         dist, endindex = mytree.query(corresponding_pt) #get index of nearest neighbor of the transformed point
 
-        if dist > 5: #TODO:check if dist is halfway reasonable (once corresponding point is actually given in the same space as the demo_pointcloud)
+        if dist > 5: #TODO:check if dist is halfway reasonable
             break
         demo_rope_nodes = (demo_rope_nodes - init_tfm[:3,3][None,:]).dot(np.linalg.pinv(init_tfm[:3,:3]).T)
         if endindex <= len(demo_rope_nodes)/2:
-            demo_endpoint = demo_rope_nodes[0] #get actual point
+            simrope_start = demo_rope_nodes[0]
+            simrope_finish = demo_rope_nodes[-1] #get actual point
         else:
-            demo_endpoint = demo_rope_nodes[-1]
-            points.reverse()
+            simrope_start = demo_rope_nodes[-1]
+            simrope_finish = demo_rope_nodes[0]
 
-        xypoint = clouds.XYZ_to_xy(demo_endpoint[0], demo_endpoint[1], demo_endpoint[2])
+        xystart = clouds.XYZ_to_xy(*simrope_start)
+        xyfinish = clouds.XYZ_to_xy(*simrope_finish)
         if hdf[demo][seg]["ends"] and hdf[demo][seg]["ends"].shape[0] > 0:   #ends info exists and is not empty
-            plot_transform_mlab(demo_pointcloud, sim_xyz, corresponding_pt, demo_endpoint, demo_rope_nodes)
-#             import IPython
-#             IPython.embed()
-            if np.argmin(np.hypot(*(hdf[demo][seg]["ends"][:,:2] - xypoint))): #beginning endpoint of sim_rope is not beginning of demo rope
+            ends_cost = np.hypot(*(hdf[demo][seg]["ends"][:,:2] - xystart).T) + np.hypot(*(hdf[demo][seg]["ends"][:,:2] - xyfinish).T)
+            if np.argmin(ends_cost) != 0:
                 points.reverse()
+        
+        plot_transform_mlab(demo_pointcloud, sim_xyz, corresponding_pt, simrope_start, demo_rope_nodes)
+        #import pdb
+        #pdb.set_trace()
         
         if points == sim_crossings:
             return choice_ind
         
-#         equiv = calculateMdp(hdf)
-#         if tuple(points) in equiv or tuple(reversed(points)) in equiv:
-#             equivalent_states = equiv[tuple(points)]
-#             #if sim_crossings in equivalent_states: #or reverse -- need to match ends based on TPS
-#             if sim_crossings in equivalent_states or sim_crossings.reverse() in equivalent_states:
-#                 return choice_ind
+        equiv = calculateMdp(hdf)
+        if tuple(points) in equiv:
+            equivalent_states = equiv[tuple(points)]
+            #if sim_crossings in equivalent_states: #or reverse -- need to match ends based on TPS
+            if tuple(sim_crossings) in equivalent_states:
+                return choice_ind
+            print "sim_crossings not in equiv[points]"
+        else:
+            print "pattern not found in equiv"
+
         print "discarding initial choice - did not match crossings pattern"
         print "demonstration pattern:", tuple(points)
-        print "sim_crossings pattern:", sim_crossings
-#        print "equivalent states:", equivalent_states
-
-
+        print "sim_crossings pattern:", tuple(sim_crossings)
+        print "choice ind:", str(choice_ind)+"/"+str(len(cost_inds))
 
     return np.argmin(costs)
 
+
 def plot_transform_mlab(demo_pointcloud, sim_xyz, tps_pt, demo_endpoint, orig_demo):
-    from mayavi import mlab; mlab.figure(0); mlab.clf()
+    from mayavi import mlab; mlab.figure(0, size=(700,650)); mlab.clf()
     plt = mlab.points3d(demo_pointcloud[:,0], demo_pointcloud[:,1], demo_pointcloud[:,2], color=(0,1,0), scale_factor=0.01) #with true/good init tfm
-    plt = mlab.points3d(sim_xyz[0,0], sim_xyz[0,1], sim_xyz[0,2], color=(1,0,0), scale_factor=0.03)                         #endpoint of the simulated rope
+    demo_pointcloud2 = rope_initialization.find_path_through_point_cloud(demo_pointcloud)
+    plt = mlab.points3d(demo_pointcloud2[0,0], demo_pointcloud2[0,1], demo_pointcloud2[0,2], color=(1,0,0), scale_factor=0.04) #start point of demo_rope. If this is the same as tps_pt, then the crossings should match
+    plt = mlab.points3d(sim_xyz[0,0], sim_xyz[0,1], sim_xyz[0,2], color=(0,1,0), scale_factor=0.03)                         #endpoint of the simulated rope
     plt = mlab.points3d(tps_pt[0,0], tps_pt[0,1], tps_pt[0,2], color=(0,1,0), scale_factor=0.03)                            #point given by tps
     plt = mlab.points3d(sim_xyz[:,0], sim_xyz[:,1], sim_xyz[:,2], np.linspace(100,110,len(sim_xyz)), scale_factor=0.00005)
     plt = mlab.points3d(orig_demo[:,0], orig_demo[:,1], orig_demo[:,2], np.linspace(100,110,len(orig_demo)), scale_factor=0.00005)
     plt = mlab.points3d(demo_endpoint[0],demo_endpoint[1],demo_endpoint[2], color=(0,1,0), scale_factor=0.03)
+
 
 def append_to_dict_list(dic, key, item):
     if key in dic.keys():
@@ -1070,6 +1082,14 @@ def main():
             Globals.viewer.Idle()
 
         redprint("Demo %s Segment %s result: %s"%(demo_name, seg_name, success))
+        
+        if args.test_success:
+            if isKnot(Globals.sim.rope.GetControlPoints()):
+                greenprint("Demo %s Segment %s success: isKnot returns true"%(args.fake_data_demo, args.fake_data_segment))
+                return
+            elif curr_step > 4:
+                redprint("Demo %s Segment %s failed: took more than 6 segments"%(args.fake_data_demo, args.fake_data_segment))
+                raise Exception("too many segments")
 
     if use_diff_length:
         for demofile in demofiles: demofile.close()

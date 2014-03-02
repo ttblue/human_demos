@@ -175,7 +175,7 @@ def calculateMdp(hdf):
                 equiv[state1].append(state2)
             elif state1 not in equiv:
                 equiv[state1] = [state2]
-    return equiv, stf
+    return equiv
 
 """
     todo:
