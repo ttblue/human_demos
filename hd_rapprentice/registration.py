@@ -167,7 +167,7 @@ def unscale_tps_3d(f, src_params, targ_params):
     assert len(f.trans_g) == 3
     p,q = src_params
     r,s = targ_params
-    print p,q,r,s
+    #print p,q,r,s
     fnew = ThinPlateSpline()
     fnew.x_na = (f.x_na  - q[None,:])/p 
     fnew.w_ng = f.w_ng * p / r

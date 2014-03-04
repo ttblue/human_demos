@@ -46,12 +46,15 @@ parser.add_argument("--no_traj_resample", action="store_true", default=False)
 
 parser.add_argument("--interactive",action="store_true", default=False)
 parser.add_argument("--remove_table", action="store_true")
+parser.add_argument("--step", type=int, default=1)
+
 
 parser.add_argument("--friction", help="friction value in bullet", type=float, default=1.0)
 
 parser.add_argument("--max_steps_before_failure", type=int, default=-1)
 parser.add_argument("--tps_bend_cost_init", type=float, default=1)
 parser.add_argument("--tps_bend_cost_final", type=float, default=.00001)
+parser.add_argument("--tps_bend_cost_final_search", type=float, default=.00001)
 parser.add_argument("--tps_n_iter", type=int, default=50)
 
 parser.add_argument("--closest_rope_hack", action="store_true", default=False)
@@ -281,9 +284,9 @@ def exec_traj_sim(lr_traj, animate=True):
 
     animate_traj.animate_floating_traj(l_transition_hmats, r_transition_hmats,
                                        Globals.sim, pause=False,
-                                       callback=sim_callback, step_viewer=animate, step=1)
+                                       callback=sim_callback, step_viewer=animate, step=args.step)
     animate_traj.animate_floating_traj(lhmats_up, rhmats_up, Globals.sim, pause=False,
-                                       callback=sim_callback, step_viewer=animate, step=1)
+                                       callback=sim_callback, step_viewer=animate, step=args.step)
     return True
 
 def find_closest_manual(demofiles):
@@ -329,14 +332,14 @@ def find_closest_manual(demofiles):
 def registration_cost(xyz0, xyz1):
     scaled_xyz0, _ = registration.unit_boxify(xyz0)
     scaled_xyz1, _ = registration.unit_boxify(xyz1)
-    f,g = registration.tps_rpm_bij(scaled_xyz0, scaled_xyz1, reg_init=args.tps_bend_cost_init, reg_final = args.tps_bend_cost_final, rot_reg=np.r_[1e-4,1e-4,1e-1], n_iter=30)
+    f,g = registration.tps_rpm_bij(scaled_xyz0, scaled_xyz1, reg_init=args.tps_bend_cost_init, reg_final = args.tps_bend_cost_final_search, rot_reg=np.r_[1e-4,1e-4,1e-1], n_iter=30)
     cost = registration.tps_reg_cost(f) + registration.tps_reg_cost(g)
     return cost
 
 def registration_cost_and_tfm(xyz0, xyz1):
     scaled_xyz0, src_params = registration.unit_boxify(xyz0)
     scaled_xyz1, targ_params = registration.unit_boxify(xyz1)
-    f,g = registration.tps_rpm_bij(scaled_xyz0, scaled_xyz1, reg_init=args.tps_bend_cost_init, reg_final = args.tps_bend_cost_final, rot_reg=np.r_[1e-4,1e-4,1e-1], n_iter=30)
+    f,g = registration.tps_rpm_bij(scaled_xyz0, scaled_xyz1, reg_init=args.tps_bend_cost_init, reg_final = args.tps_bend_cost_final_search, rot_reg=np.r_[1e-4,1e-4,1e-1], n_iter=30)
     cost = registration.tps_reg_cost(f) + registration.tps_reg_cost(g)
     g = registration.unscale_tps_3d(g, targ_params, src_params)
     return (cost, g)
@@ -467,7 +470,8 @@ def match_crossings(demofiles, keys, costs, tfm_invs, init_tfm, dclouds):
         
         demo_pointcloud = dclouds[choice_ind]
         demo_rope_nodes = rope_initialization.find_path_through_point_cloud(demo_pointcloud)
-        mytree = scipy.spatial.cKDTree(demo_rope_nodes)
+        demo_rope_ends = np.array([demo_rope_nodes[0], demo_rope_nodes[-1]])
+        mytree = scipy.spatial.cKDTree(demo_rope_ends)
         dist, endindex = mytree.query(corresponding_pt) #get index of nearest neighbor of the transformed point
 
         if dist > 5: #TODO:check if dist is halfway reasonable
@@ -485,11 +489,14 @@ def match_crossings(demofiles, keys, costs, tfm_invs, init_tfm, dclouds):
         if hdf[demo][seg]["ends"] and hdf[demo][seg]["ends"].shape[0] > 0:   #ends info exists and is not empty
             ends_cost = np.hypot(*(hdf[demo][seg]["ends"][:,:2] - xystart).T) + np.hypot(*(hdf[demo][seg]["ends"][:,:2] - xyfinish).T)
             if np.argmin(ends_cost) != 0:
-                points.reverse()
+                print "swapped ends"
+                continue
+                #points.reverse()
         
         plot_transform_mlab(demo_pointcloud, sim_xyz, corresponding_pt, simrope_start, demo_rope_nodes)
-        #import pdb
-        #pdb.set_trace()
+
+#         import IPython
+#         IPython.embed()
         
         if points == sim_crossings:
             return choice_ind
@@ -518,7 +525,7 @@ def plot_transform_mlab(demo_pointcloud, sim_xyz, tps_pt, demo_endpoint, orig_de
     demo_pointcloud2 = rope_initialization.find_path_through_point_cloud(demo_pointcloud)
     plt = mlab.points3d(demo_pointcloud2[0,0], demo_pointcloud2[0,1], demo_pointcloud2[0,2], color=(1,0,0), scale_factor=0.04) #start point of demo_rope. If this is the same as tps_pt, then the crossings should match
     plt = mlab.points3d(sim_xyz[0,0], sim_xyz[0,1], sim_xyz[0,2], color=(0,1,0), scale_factor=0.03)                         #endpoint of the simulated rope
-    plt = mlab.points3d(tps_pt[0,0], tps_pt[0,1], tps_pt[0,2], color=(0,1,0), scale_factor=0.03)                            #point given by tps
+    plt = mlab.points3d(tps_pt[0,0], tps_pt[0,1], tps_pt[0,2], color=(0,0,1), scale_factor=0.03)                            #point given by tps
     plt = mlab.points3d(sim_xyz[:,0], sim_xyz[:,1], sim_xyz[:,2], np.linspace(100,110,len(sim_xyz)), scale_factor=0.00005)
     plt = mlab.points3d(orig_demo[:,0], orig_demo[:,1], orig_demo[:,2], np.linspace(100,110,len(orig_demo)), scale_factor=0.00005)
     plt = mlab.points3d(demo_endpoint[0],demo_endpoint[1],demo_endpoint[2], color=(0,1,0), scale_factor=0.03)
@@ -927,8 +934,7 @@ def main():
         if args.closest_rope_hack:
             rope_cloud = Globals.sim.observe_cloud(3)
             rope_cloud = clouds.downsample(rope_cloud, args.cloud_downsample)
-
-
+        
         '''
         Finding closest demonstration
         '''
@@ -994,7 +1000,6 @@ def main():
 
         print 'time: %f'%(t2-t1)
 
-
         eetraj = {}
         for lr in 'lr':
             old_ee_traj = np.asarray(seg_info[lr]["tfms_s"])
@@ -1020,8 +1025,7 @@ def main():
 
         segment_len = miniseg_ends[-1] - miniseg_starts[0] + 1
         portion = max(args.early_stop_portion, miniseg_ends[0] / float(segment_len))
-
-
+        
         for (i_miniseg, (i_start, i_end)) in enumerate(zip(miniseg_starts, miniseg_ends)):
 
             redprint("Generating joint trajectory for demo %s segment %s, part %i"%(demo_name, seg_name, i_miniseg))
@@ -1050,14 +1054,13 @@ def main():
             #len_miniseg = len(adaptive_times)
 
             redprint("Executing joint trajectory for demo %s segment %s, part %i using arms '%s'"%(demo_name, seg_name, i_miniseg, miniseg_traj.keys()))
-
+            
             for lr in 'lr':
                 gripper_open = lr_open[lr][i_miniseg]
                 prev_gripper_open = lr_open[lr][i_miniseg-1] if i_miniseg != 0 else False
                 if not set_gripper_sim(lr, gripper_open, prev_gripper_open):
                     redprint("Grab %s failed"%lr)
                     success = False
-
 
             if len(miniseg_traj) > 0:
                 """HACK
@@ -1088,8 +1091,13 @@ def main():
                 greenprint("Demo %s Segment %s success: isKnot returns true"%(args.fake_data_demo, args.fake_data_segment))
                 return
             elif curr_step > 4:
-                redprint("Demo %s Segment %s failed: took more than 6 segments"%(args.fake_data_demo, args.fake_data_segment))
+                redprint("Demo %s Segment %s failed: took more than 4 segments"%(args.fake_data_demo, args.fake_data_segment))
                 raise Exception("too many segments")
+            else:
+                rope = Globals.sim.observe_cloud(5)
+                if rope[0][2] < 0:
+                    redprint("Demo %s Segment %s failed: rope fell off table"%(args.fake_data_demo, args.fake_data_segment))
+                    raise Exception("Rope fell off table")
 
     if use_diff_length:
         for demofile in demofiles: demofile.close()

@@ -28,14 +28,14 @@ def main():
     hdf = h5py.File(h5filename, 'r+')
     crossings_failures = []
     baseline_failures = []
-    for i in range(int(args.demo_start), int(args.demo_end)+1):
+    for i in range(int(args.demo_start), int(args.demo_end)):
             #import pdb
             #pdb.set_trace()
         demo = hdf.keys()[i]
         try:
             fake_data_demo = "--fake_data_demo="+demo
-            non_cross_call = "python do_task_floating.py --demo_type="+args.demo_type+" --fake_data_demo="+demo+" --fake_data_segment=seg00 --use_ar_init --select=auto --test_success"
-            cross_call = "python do_task_floating.py --demo_type="+args.demo_type+" --fake_data_demo="+demo+" --fake_data_segment=seg00 --use_ar_init --select=auto --use_crossings --test_success"
+            non_cross_call = "python do_task_floating.py --demo_type="+args.demo_type+" --fake_data_demo="+demo+" --fake_data_segment=seg00 --use_ar_init --select=auto --test_success --step=100"
+            cross_call = "python do_task_floating.py --demo_type="+args.demo_type+" --fake_data_demo="+demo+" --fake_data_segment=seg00 --use_ar_init --select=auto --use_crossings --test_success --step=100"
             ncs = subprocess.call(non_cross_call.split())
             if ncs != 0:
                 baseline_failures.append(demo)
