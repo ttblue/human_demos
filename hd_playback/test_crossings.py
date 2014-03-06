@@ -2,6 +2,7 @@ import numpy as np
 import cv2, argparse, h5py
 import os.path as osp
 import subprocess
+import pdb
 
 from hd_utils.defaults import demo_files_dir
 
@@ -32,22 +33,36 @@ def main():
             #import pdb
             #pdb.set_trace()
         demo = hdf.keys()[i]
+        fake_data_demo = "--fake_data_demo="+demo
+        non_cross_call = "python do_task_floating.py --demo_type="+args.demo_type+" --fake_data_demo="+demo+" --fake_data_segment=seg00 --use_ar_init --select=auto --test_success --step=100"
+        cross_call = "python do_task_floating.py --demo_type="+args.demo_type+" --fake_data_demo="+demo+" --fake_data_segment=seg00 --use_ar_init --select=auto --use_crossings --test_success --step=100"
         try:
-            fake_data_demo = "--fake_data_demo="+demo
-            non_cross_call = "python do_task_floating.py --demo_type="+args.demo_type+" --fake_data_demo="+demo+" --fake_data_segment=seg00 --use_ar_init --select=auto --test_success --step=100"
-            cross_call = "python do_task_floating.py --demo_type="+args.demo_type+" --fake_data_demo="+demo+" --fake_data_segment=seg00 --use_ar_init --select=auto --use_crossings --test_success --step=100"
             ncs = subprocess.call(non_cross_call.split())
-            if ncs != 0:
-                baseline_failures.append(demo)
-                print "baseline version failed"
+        except:
+            ncs = 1
+        savefile = open("test_results.txt", 'a')
+        if ncs != 0:
+            baseline_failures.append(demo)
+            savefile.write("Baseline failure: " + demo +"\n")
+            print "baseline version failed"
+        try:
             cs = subprocess.call(cross_call.split())
-            if cs != 0:
-                crossings_failures.append(demo)
-                print "crossings version failed"
-        except Exception:
-            print demo
-            import pdb; pdb.set_trace()
+        except:
+            cs = 1
+        if cs != 0:
+            crossings_failures.append(demo)
+            savefile.write("Crossings failure: " + demo +"\n")
+            print "crossings version failed"
+        savefile.close()
     print "crossings failures:", crossings_failures, "\nbaseline failures:", baseline_failures
+    savefile = open("test_results.txt", 'a')
+    savefile.write("Crossings_failures:\n")
+    for item in crossings_failures:
+        savefile.write(str(item)+"\n")
+    savefile.write("Baseline failures:\n")
+    for item in baseline_failures:
+        savefile.write(str(item)+"\n")
+    savefile.close()
     return crossings_failures, baseline_failures
  
 
