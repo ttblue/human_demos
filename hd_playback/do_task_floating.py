@@ -62,6 +62,7 @@ parser.add_argument("--closest_rope_hack_thresh", type=float, default=0.01)
 parser.add_argument("--cloud_downsample", type=float, default=.01)
 
 parser.add_argument("--use_crossings", action="store_true", default=False)
+parser.add_argument("--use_rotation", action="store_true", default=False)
 parser.add_argument("--test_success", action="store_true", default=False)
 
 
@@ -341,6 +342,26 @@ def registration_cost_and_tfm(xyz0, xyz1):
     g = registration.unscale_tps_3d(g, targ_params, src_params)
     return (cost, g)
 
+def registration_cost_with_rotation(xyz0, xyz1):
+    rad_angs = np.linspace(10*np.pi/180,2*np.pi,36)
+    costs = np.zeros(len(rad_angs))
+    for i in range(len(rad_angs)):
+        try:
+            rotated_demo = rotate_about_median(xyz0, rad_angs[i])
+        except ValueError as e:
+            import IPython
+            IPython.embed()
+        scaled_rotated_demo, src_params = registration.unit_boxify(rotated_demo)
+        scaled_xyz1, targ_params = registration.unit_boxify(xyz1)
+        f,g = registration.tps_rpm_bij(scaled_rotated_demo, scaled_xyz1, reg_init=args.tps_bend_cost_init, reg_final = args.tps_bend_cost_final_search, rot_reg=np.r_[1e-4,1e-4,1e-1], n_iter=3)
+        costs[i] = registration.tps_reg_cost(f) + registration.tps_reg_cost(g)
+    theta = rad_angs[np.argmin(costs)]
+    rotated_demo = rotate_about_median(xyz0, theta)
+    f,g = registration.tps_rpm_bij(rotated_demo, scaled_xyz1, reg_init=args.tps_bend_cost_init, reg_final = args.tps_bend_cost_final_search, rot_reg=np.r_[1e-4,1e-4,1e-1], n_iter=30)
+    cost = registration.tps_reg_cost(f) + registration.tps_reg_cost(g)
+    g = registration.unscale_tps_3d(g, targ_params, src_params)
+    return (cost, g, theta)
+    
 
 def find_closest_auto(demofiles, new_xyz, init_tfm=None, n_jobs=3, seg_proximity=2, DS_LEAF_SIZE=0.02):
     """
@@ -393,16 +414,27 @@ def find_closest_auto(demofiles, new_xyz, init_tfm=None, n_jobs=3, seg_proximity
     # raw_input(avg/len(demo_clouds))
     if args.use_crossings:
         if args.parallel:
-            results = Parallel(n_jobs=n_jobs,verbose=51)(delayed(registration_cost_and_tfm)(demo_cloud, new_xyz) for demo_cloud in demo_clouds)
-            costs, tfm_invs = zip(*results)
+            if args.use_rotation:
+                results = Parallel(n_jobs=n_jobs,verbose=51)(delayed(registration_cost_with_rotation)(demo_cloud, new_xyz) for demo_cloud in demo_clouds)
+                costs, tfm_invs, rotations = zip(*results)
+            else:
+                rotations = []
+                results = Parallel(n_jobs=n_jobs,verbose=51)(delayed(registration_cost_and_tfm)(demo_cloud, new_xyz) for demo_cloud in demo_clouds)
+                costs, tfm_invs = zip(*results)
         else:
             costs = []
             tfm_invs = []
+            rotations = []
             
             for (i,ds_cloud) in enumerate(demo_clouds):
-                cost_i, tfm_inverse_i = registration_cost_and_tfm(ds_cloud, new_xyz)
+                if args.use_rotation:
+                    cost_i, tfm_inverse_i , rotation_i = registration_cost_with_rotation(ds_cloud, new_xyz)
+                    rotations.append(rotation_i)
+                else:
+                    cost_i, tfm_inverse_i = registration_cost_and_tfm(ds_cloud, new_xyz)                    
                 costs.append(cost_i)
                 tfm_invs.append(tfm_inverse_i)
+                
                 print "completed %i/%i"%(i+1, len(demo_clouds))
     else:
         if args.parallel:
@@ -432,17 +464,23 @@ def find_closest_auto(demofiles, new_xyz, init_tfm=None, n_jobs=3, seg_proximity
         cv2.waitKey()
 
     if args.use_crossings:
-        choice_ind = match_crossings(demofiles, keys, costs, tfm_invs, init_tfm, demo_clouds)
+        choice_ind = match_crossings(demofiles, keys, costs, tfm_invs, init_tfm, demo_clouds, rotations)    
     else:
         choice_ind = np.argmin(costs)
         
+    if args.use_rotation:
+        if demotype_num == 1:
+            return (keys[choice_ind][1],keys[choice_ind][2]) , is_finalsegs[choice_ind], rotations[choice_ind]
+        else:
+            return keys[choice_ind], is_finalsegs[choice_ind], rotations[choice_ind]
+
     if demotype_num == 1:
         return (keys[choice_ind][1],keys[choice_ind][2]) , is_finalsegs[choice_ind]
     else:
         return keys[choice_ind], is_finalsegs[choice_ind]
 
 
-def match_crossings(demofiles, keys, costs, tfm_invs, init_tfm, dclouds):
+def match_crossings(demofiles, keys, costs, tfm_invs, init_tfm, dclouds, rotations):
     import scipy
     from scipy.spatial import *
     
@@ -454,8 +492,10 @@ def match_crossings(demofiles, keys, costs, tfm_invs, init_tfm, dclouds):
     for demofile in demofiles:
         equiv = calculateMdp(demofile)
         if tuple(sim_crossings) not in equiv and tuple(reversed(sim_crossings)) not in equiv:
+            import IPython
+            IPython.embed()
             print sim_crossings, "not in equiv"
-            return np.argmin(costs)
+            #return np.argmin(costs)
     for choice_ind in cost_inds: #check best TPS fit against crossings match
         demotype_num, demo, seg = keys[choice_ind]
         hdf = demofiles[demotype_num]
@@ -466,7 +506,10 @@ def match_crossings(demofiles, keys, costs, tfm_invs, init_tfm, dclouds):
 
         #^ get the point in the demo point cloud space corresponding to the beginning point of the simulated rope
         
-        demo_pointcloud = dclouds[choice_ind]
+        if args.use_rotation:
+            demo_pointcloud = rotate_about_median(dclouds[choice_ind], rotations[choice_ind])
+        else:
+            demo_pointcloud = dclouds[choice_ind]
 #         demo_rope_nodes = rope_initialization.find_path_through_point_cloud(demo_pointcloud)
 #         demo_rope_ends = np.array([demo_rope_nodes[0], demo_rope_nodes[-1]])
 #         mytree = scipy.spatial.cKDTree(demo_rope_ends)
@@ -497,17 +540,17 @@ def match_crossings(demofiles, keys, costs, tfm_invs, init_tfm, dclouds):
                 points.reverse()
         
         plot_transform_mlab(demo_pointcloud, sim_xyz, orig_demo, init_inverse_start, init_inverse_finish)
-#         import IPython
-#         IPython.embed()
-        if points == sim_crossings:
-            return choice_ind
+        import IPython
+        IPython.embed()
+        #if points == sim_crossings:            
+            #return choice_ind
         
         equiv = calculateMdp(hdf)
         if tuple(points) in equiv:
             equivalent_states = equiv[tuple(points)]
-            #if sim_crossings in equivalent_states: #or reverse -- need to match ends based on TPS
-            if tuple(sim_crossings) in equivalent_states:
-                return choice_ind
+            #if sim_crossings in equivalent_states:
+            #if tuple(sim_crossings) in equivalent_states:
+                #return choice_ind
             print "sim_crossings not in equiv[points]"
         else:
             print "pattern not found in equiv"
@@ -942,7 +985,11 @@ def main():
             if args.select=="manual":
                 dnum, (demo_name, seg_name), is_final_seg = find_closest_manual(demofiles)
             elif args.select=="auto":
-                dnum, (demo_name, seg_name), is_final_seg = find_closest_auto(demofiles, new_xyz, init_tfm=init_tfm, DS_LEAF_SIZE = args.cloud_downsample)
+#                 dnum, (demo_name, seg_name), is_final_seg = find_closest_auto(demofiles, new_xyz, init_tfm=init_tfm, DS_LEAF_SIZE = args.cloud_downsample)
+                if args.use_rotation:
+                    dnum, (demo_name, seg_name), is_final_seg, theta = find_closest_auto(demofiles, new_xyz, init_tfm=init_tfm, DS_LEAF_SIZE = args.cloud_downsample)
+                else:
+                    dnum, (demo_name, seg_name), is_final_seg = find_closest_auto(demofiles, new_xyz, init_tfm=init_tfm, DS_LEAF_SIZE = args.cloud_downsample)
             else:
                 dnum, (demo_name, seg_name), is_final_seg = find_closest_clusters(demofiles, clusterfiles, new_xyz, curr_step-1, init_tfm=init_tfm, DS_LEAF_SIZE = args.cloud_downsample)
 
@@ -952,7 +999,11 @@ def main():
             if args.select=="manual":
                 (demo_name, seg_name), is_final_seg = find_closest_manual(demofile)
             elif args.select=="auto":
-                (demo_name, seg_name), is_final_seg = find_closest_auto(demofile, new_xyz, init_tfm=init_tfm)
+#                 (demo_name, seg_name), is_final_seg = find_closest_auto(demofile, new_xyz, init_tfm=init_tfm)
+                if args.use_rotation:
+                    (demo_name, seg_name), is_final_seg, theta = find_closest_auto(demofile, new_xyz, init_tfm=init_tfm)
+                else:
+                    (demo_name, seg_name), is_final_seg = find_closest_auto(demofile, new_xyz, init_tfm=init_tfm)
             else:
                 (demo_name, seg_name), is_final_seg = find_closest_clusters(demofile, clusterfile, new_xyz, curr_step-1, init_tfm=init_tfm)
             seg_info = demofile[demo_name][seg_name]
@@ -973,7 +1024,8 @@ def main():
         if args.use_ar_init:
             # Transform the old clouds approximately into PR2's frame
             old_xyz = old_xyz.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
-
+        if args.use_rotation:
+            old_xyz = rotate_about_median(old_xyz, theta)
 
         #print old_xyz.shape
         #print new_xyz.shape
@@ -1088,6 +1140,8 @@ def main():
         if args.test_success:
             if isKnot(Globals.sim.rope.GetControlPoints()):
                 greenprint("Demo %s Segment %s success: isKnot returns true"%(args.fake_data_demo, args.fake_data_segment))
+                import IPython
+                IPython.embed()
                 return
             elif curr_step > 4:
                 redprint("Demo %s Segment %s failed: took more than 4 segments"%(args.fake_data_demo, args.fake_data_segment))
