@@ -464,13 +464,13 @@ def find_closest_auto(demofiles, new_xyz, init_tfm=None, n_jobs=3, seg_proximity
         cv2.waitKey()
 
     if args.use_crossings:
-        choice_ind = match_crossings(demofiles, keys, costs, tfm_invs, init_tfm, demo_clouds, rotations)    
+        choice_ind = match_crossings(demofiles, keys, costs, tfm_invs, init_tfm, demo_clouds, r_mat, median) #can get r_mat from theta, median from ptcloud
     else:
         choice_ind = np.argmin(costs)
         
     if args.use_rotation:
         if demotype_num == 1:
-            return (keys[choice_ind][1],keys[choice_ind][2]) , is_finalsegs[choice_ind], rotations[choice_ind]
+            return (keys[choice_ind][1],keys[choice_ind][2]) , is_finalsegs[choice_ind], r_mat, median #can get r_mat from theta, median from ptcloud
         else:
             return keys[choice_ind], is_finalsegs[choice_ind], rotations[choice_ind]
 
@@ -508,6 +508,7 @@ def match_crossings(demofiles, keys, costs, tfm_invs, init_tfm, dclouds, rotatio
         
         if args.use_rotation:
             demo_pointcloud = rotate_about_median(dclouds[choice_ind], rotations[choice_ind])
+            #also rotate end points? if so, use rmat and median, not rotate_about_median
         else:
             demo_pointcloud = dclouds[choice_ind]
 #         demo_rope_nodes = rope_initialization.find_path_through_point_cloud(demo_pointcloud)
@@ -987,7 +988,7 @@ def main():
             elif args.select=="auto":
 #                 dnum, (demo_name, seg_name), is_final_seg = find_closest_auto(demofiles, new_xyz, init_tfm=init_tfm, DS_LEAF_SIZE = args.cloud_downsample)
                 if args.use_rotation:
-                    dnum, (demo_name, seg_name), is_final_seg, theta = find_closest_auto(demofiles, new_xyz, init_tfm=init_tfm, DS_LEAF_SIZE = args.cloud_downsample)
+                    dnum, (demo_name, seg_name), is_final_seg, r_mat, median = find_closest_auto(demofiles, new_xyz, init_tfm=init_tfm, DS_LEAF_SIZE = args.cloud_downsample)
                 else:
                     dnum, (demo_name, seg_name), is_final_seg = find_closest_auto(demofiles, new_xyz, init_tfm=init_tfm, DS_LEAF_SIZE = args.cloud_downsample)
             else:
@@ -1001,7 +1002,7 @@ def main():
             elif args.select=="auto":
 #                 (demo_name, seg_name), is_final_seg = find_closest_auto(demofile, new_xyz, init_tfm=init_tfm)
                 if args.use_rotation:
-                    (demo_name, seg_name), is_final_seg, theta = find_closest_auto(demofile, new_xyz, init_tfm=init_tfm)
+                    (demo_name, seg_name), is_final_seg, r_mat, median = find_closest_auto(demofile, new_xyz, init_tfm=init_tfm)
                 else:
                     (demo_name, seg_name), is_final_seg = find_closest_auto(demofile, new_xyz, init_tfm=init_tfm)
             else:
@@ -1058,6 +1059,14 @@ def main():
             if args.use_ar_init:
                 for i in xrange(len(old_ee_traj)):
                     old_ee_traj[i] = init_tfm.dot(old_ee_traj[i])
+            if args.use_rotation:
+                r1 = np.eye(4); r1[0:3,3] = median
+                r2 = np.eye(4); r2[0:3,0:3] = r_mat
+                r3 = np.eye(4); r3[0:3,3] = -median
+                rotation_tfm = r1*r2*r3
+                rotation_tfm[0:3,1] = np.cross(rotation_tfm[0:3,2], rotation_tfm[0:3,0])
+                for i in xrange(len(old_ee_traj)):
+                    old_ee_traj[i] = rotation_tfm.dot(old_ee_traj[i])
 
             new_ee_traj = f.transform_hmats(np.asarray(old_ee_traj))
 

@@ -26,7 +26,9 @@ def main():
     subprocess_call.append("--use_ar_init")
     subprocess_call.append("--select=auto")
     h5filename = osp.join(demo_files_dir, args.demo_type, args.demo_type + '.h5')
-    hdf = h5py.File(h5filename, 'r+')
+    #import IPython
+    #IPython.embed()
+    hdf = h5py.File(h5filename, 'r')
     crossings_failures = []
     baseline_failures = []
     for i in range(int(args.demo_start), int(args.demo_end)):
