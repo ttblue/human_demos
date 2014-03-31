@@ -3,13 +3,14 @@ import cv2, argparse, h5py
 import os.path as osp
 import subprocess
 import pdb
+import IPython
 
 from hd_utils.defaults import demo_files_dir
 
 usage = """
 To compare the success of two versions of the do_task program on demos
 of type DEMO_TYPE:
-python test_crossings.py --demo_type=DEMO_TYPE
+python test_crossings.py --demo_type=DEMO_TYPE --name=<name of file to save results in>
 """
 parser = argparse.ArgumentParser(usage=usage)
 
@@ -17,6 +18,7 @@ parser.add_argument("--demo_type", type=str)
 parser.add_argument("--single_demo", help="View and label a single demo", default=False, type=str)
 parser.add_argument("--demo_start", help="Start of demo range.", default='0', type=str)
 parser.add_argument("--demo_end", help="End of demo range.", default='100', type=str)
+parser.add_argument("--name", help="name to save file", default='test_results.txt', type=str)
 
 
 def main():
@@ -37,12 +39,12 @@ def main():
         demo = hdf.keys()[i]
         fake_data_demo = "--fake_data_demo="+demo
         non_cross_call = "python do_task_floating.py --demo_type="+args.demo_type+" --fake_data_demo="+demo+" --fake_data_segment=seg00 --use_ar_init --select=auto --test_success --step=100"
-        cross_call = "python do_task_floating.py --demo_type="+args.demo_type+" --fake_data_demo="+demo+" --fake_data_segment=seg00 --use_ar_init --select=auto --use_crossings --test_success --step=100"
+        cross_call = "python do_task_floating.py --demo_type="+args.demo_type+" --fake_data_demo="+demo+" --fake_data_segment=seg00 --use_ar_init --select=auto --use_crossings --use_rotation --test_success --step=100"
         try:
             ncs = subprocess.call(non_cross_call.split())
         except:
             ncs = 1
-        savefile = open("test_results.txt", 'a')
+        savefile = open(args.name, 'a')
         if ncs != 0:
             baseline_failures.append(demo)
             savefile.write("Baseline failure: " + demo +"\n")
@@ -56,14 +58,15 @@ def main():
             savefile.write("Crossings failure: " + demo +"\n")
             print "crossings version failed"
         savefile.close()
+        #IPython.embed()
     print "crossings failures:", crossings_failures, "\nbaseline failures:", baseline_failures
-    savefile = open("test_results.txt", 'a')
-    savefile.write("Crossings_failures:\n")
+    savefile = open(args.name, 'a')
+    savefile.write("Crossings_failures: " + str(len(crossings_failures)) + "\n")
     for item in crossings_failures:
-        savefile.write(str(item)+"\n")
-    savefile.write("Baseline failures:\n")
+        savefile.write("   " + str(item)+"\n")
+    savefile.write("Baseline failures: " + str(len(baseline_failures)) + "\n")
     for item in baseline_failures:
-        savefile.write(str(item)+"\n")
+        savefile.write("   " + str(item)+"\n")
     savefile.close()
     return crossings_failures, baseline_failures
  

@@ -58,8 +58,9 @@ def calculateCrossings(rope_nodes):
     """
     intersections = calculateIntersections(rope_nodes)
     crossings = []
-#     links_to_cross_info = {}
-#     curr_cross_id = 1
+    points = []
+    #links_to_cross_info = {}
+    #curr_cross_id = 1
     for i_link in range(intersections.shape[0]):
         j_links = sorted(range(intersections.shape[1]), key=lambda j_link: intersections[i_link,j_link])
         j_links = [j_link for j_link in j_links if intersections[i_link,j_link] != -1]
@@ -68,6 +69,7 @@ def calculateCrossings(rope_nodes):
             j_link_z = rope_nodes[j_link,2] + intersections[j_link,i_link] * (rope_nodes[j_link+1,2] - rope_nodes[j_link,2])
             i_over_j = 1 if i_link_z > j_link_z else -1
             crossings.append(i_over_j)
+            points.append(rope_nodes[i_link])
 #             link_pair_id = (min(i_link,j_link), max(i_link,j_link))
 #             if link_pair_id not in links_to_cross_info:
 #                 links_to_cross_info[link_pair_id] = []
@@ -80,7 +82,7 @@ def calculateCrossings(rope_nodes):
 #             dt_code[cross_info[1][0]/2] = i_over_j * cross_info[0][0]
 #         else:
 #             dt_code[cross_info[0][0]/2] = i_over_j * cross_info[1][0]
-    return crossings
+    return crossings, np.array(points)
 
 def crossingsToString(crossings):
     s = ''
@@ -91,11 +93,36 @@ def crossingsToString(crossings):
             s += 'u'
     return s
 
+#returns a dictionary indexed by location, returns the corresponding point at that location
+def cluster_points(points):
+    pairs = {}
+    for i in range(len(points)):
+        if i not in pairs:
+            min_dist = 50
+            min_ind = None
+            for j in range(len(points)):
+                dist = np.linalg.norm(points[i]-points[j])
+                if dist < min_dist and j != i:
+                    min_dist = dist
+                    min_ind = j
+            pairs[i] = min_ind
+            pairs[min_ind] = i
+    return pairs
+
+
 #rope_nodes is an nx3 numpy array of the points of n control points of the rope
-def isKnot(rope_nodes):
-    crossings = calculateCrossings(rope_nodes)
+def isKnot(rope_nodes, rdm1=False):
+    crossings, coords = calculateCrossings(rope_nodes)
+    if rdm1: #apply Reidemeister move 1 where possible
+        pairs = cluster_points(coords)
+        for i in pairs:
+            if i == pairs[i]-1:
+                crossings[i] = "x"
+                crossings[i+1] = "x"
+        crossings = [i for i in crossings if i != "x"]
     s = crossingsToString(crossings)
-    knot_topologies = ['uououo', 'uoouuoou']
+    #knot_topologies = ['uououo', 'uoouuoou']
+    knot_topologies = ['uououo']
     for top in knot_topologies:
         if top in s:
             return True
@@ -108,8 +135,9 @@ def isKnot(rope_nodes):
             return True
     return False
 
+
 def matchTopology(rope_nodes, topology, demo_type):
-    crossings = calculateCrossings(rope_nodes)
+    crossings, x = calculateCrossings(rope_nodes)
     s = crossingsToString(crossings)
     topologies = getTopologies(demo_type)
     h5filename = osp.join("/Users/George/Downloads", demo_type + '.h5')
@@ -151,8 +179,9 @@ def calculateMdp(hdf):
         preceding = ()
         for seg in hdf[demo].keys():
             if hdf[demo][seg]['crossings'].shape[0] == 0:
-                continue
-            points = tuple(hdf[demo][seg]['crossings'][:,2])
+                points = ()
+            else:
+                points = tuple(hdf[demo][seg]['crossings'][:,2])
             if preceding and preceding != points:
                 if points in stf and preceding not in stf[points]:
                     stf[tuple(points)].append(preceding)
