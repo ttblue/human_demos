@@ -87,9 +87,12 @@ If you're using fake data, don't update it.
 
 """
 
+from __future__ import division
+
 import os, h5py, time, os.path as osp
 import cPickle
-import numpy as np
+import numpy as np, numpy.linalg as nlg
+import math
 
 import openravepy, trajoptpy
 
@@ -101,6 +104,7 @@ from hd_utils import clouds, math_utils as mu, cloud_proc_funcs
 #from hd_utils.pr2_utils import get_kinect_transform
 from hd_utils.colorize import *
 from hd_utils.utils import avg_transform
+from hd_utils import transformations
 from hd_utils.defaults import demo_files_dir, hd_data_dir,\
         ar_init_dir, ar_init_demo_name, ar_init_playback_name, \
         tfm_head_dof, tfm_bf_head, cad_files_dir
@@ -834,7 +838,7 @@ def find_closest_clusters(demofiles, clusterfiles, new_xyz, sim_seg_num, seg_pro
 
     if args.show_neighbors:
         nshow = min(check_n*3, len(cluster_clouds))
-        import cv2, hd_rapprentice.cv_plot_utils as cpu, math
+        import cv2, hd_rapprentice.cv_plot_utils as cpu
         closeinds = best_clusters[:nshow]
 
         near_rgbs = []
@@ -934,6 +938,33 @@ def arm_moved(hmat_traj):
     tts = hmat_traj[:,:3,3]
     return ((tts[1:] - tts[:-1]).ptp(axis=0) > .01).any()
 
+
+
+def slerp(p0, p1, t):
+        omega = np.arccos(np.dot(p0/nlg.norm(p0), p1/nlg.norm(p1)))
+        so = np.sin(omega)
+        return np.sin((1.0-t)*omega) / so * p0 + np.sin(t*omega)/so * p1
+
+
+def lerp (x, xp, fp, first=None):
+    """
+    Returns linearly interpolated n-d vector at specified times.
+    """
+
+    fp = np.asarray(fp)
+
+    fp_interp = np.empty((len(x),0))
+    for idx in range(fp.shape[1]):
+        if first is None:
+            interp_vals = np.atleast_2d(np.interp(x,xp,fp[:,idx])).T
+        else:
+            interp_vals = np.atleast_2d(np.interp(x,xp,fp[:,idx],left=first[idx])).T
+        fp_interp = np.c_[fp_interp, interp_vals]
+
+    return fp_interp
+
+
+
 def unif_resample(traj, max_diff, wt = None):
     """
     Resample a trajectory so steps have same length in joint space
@@ -969,22 +1000,27 @@ def unif_resample(traj, max_diff, wt = None):
     return traj_rs, newt
 
 
-def lerp (x, xp, fp, first=None):
-    """
-    Returns linearly interpolated n-d vector at specified times.
-    """
+def unif_resample_hmats(hmats, max_diff, wt = None):
+    
+    hmats = np.asarray(hmats)
+    xyzs = hmats[:,0:3,3]
+    
+    new_xyzs, newt = unif_resample(xyzs, max_diff, wt)
+    
+    new_hmats = []
+    for xyz, t in zip(new_xyzs, newt):
+        t1 = int(math.floor(t))
+        t2 = int(math.ceil(t))
+        quat1 = transformations.quaternion_from_matrix(hmats[t1,0:3,0:3]) 
+        quat2 = transformations.quaternion_from_matrix(hmats[t2,0:3,0:3])        
+        quat = slerp(quat1, quat2, t-t1)
+        
+        hmat = transformations.quaternion_matrix(quat)
+        hmat[0:3,3] = xyz
+        new_hmats.append(hmat)
+    
+    return new_hmats, newt
 
-    fp = np.asarray(fp)
-
-    fp_interp = np.empty((len(x),0))
-    for idx in range(fp.shape[1]):
-        if first is None:
-            interp_vals = np.atleast_2d(np.interp(x,xp,fp[:,idx])).T
-        else:
-            interp_vals = np.atleast_2d(np.interp(x,xp,fp[:,idx],left=first[idx])).T
-        fp_interp = np.c_[fp_interp, interp_vals]
-
-    return fp_interp
 
 def close_traj(traj):
 
