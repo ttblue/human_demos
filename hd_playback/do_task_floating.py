@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-
+from __future__ import division
 import argparse
 usage="""
 
@@ -47,6 +47,7 @@ parser.add_argument("--no_traj_resample", action="store_true", default=False)
 parser.add_argument("--interactive",action="store_true", default=False)
 parser.add_argument("--remove_table", action="store_true")
 parser.add_argument("--step", type=int, default=1)
+parser.add_argument("--no_display",action="store_true", default=False)
 
 
 parser.add_argument("--friction", help="friction value in bullet", type=float, default=1.0)
@@ -86,9 +87,6 @@ The question is, do you update the robot's head transform.
 If you're using fake data, don't update it.
 
 """
-
-from __future__ import division
-
 import os, h5py, time, os.path as osp
 import cPickle
 import numpy as np, numpy.linalg as nlg
@@ -289,6 +287,8 @@ def unwrap_in_place(t):
 def exec_traj_sim(lr_traj, animate=True):
     def sim_callback(i):
         Globals.sim.step()
+    if args.no_display:
+        animate = False
 
     lhmats_up, rhmats_up = ropesim_floating.retime_hmats(lr_traj['l'], lr_traj['r'])
 
@@ -362,9 +362,9 @@ def registration_cost_and_tfm(xyz0, xyz1):
     return (cost, f, g)
 
 def registration_cost_with_rotation(xyz0, xyz1):
-    rad_angs = np.linspace(-np.pi+np.pi*(float(10)/180), np.pi,36)
+    #rad_angs = np.linspace(-np.pi+np.pi*(float(10)/180), np.pi,36)
     #rad_angs = np.linspace(-np.pi+np.pi*(float(30)/180), np.pi,12)
-    #rad_angs = np.linspace(-np.pi+np.pi*(float(45)/180), np.pi,8)
+    rad_angs = np.linspace(-np.pi+np.pi*(float(45)/180), np.pi,8)
     costs = np.zeros(len(rad_angs))
     for i in range(len(rad_angs)):
         try:
@@ -742,13 +742,14 @@ def match_crossings(demofiles, keys, costs, tfms, tfm_invs, init_tfm, dclouds, t
                 print "points cost too high"
                 # import IPython
                 # IPython.embed()
-                continue
+                # continue
             if np.argmin(ends_cost) != 0:
                 print "swapped ends"
                 #continue //just give up on this demo?
                 demo_pattern.reverse()
         
-        plot_transform_mlab(demo_pointcloud, sim_xyz, orig_demo, init_inverse_start, init_inverse_finish, critical_points)
+        if not args.no_display:
+            plot_transform_mlab(demo_pointcloud, sim_xyz, orig_demo, init_inverse_start, init_inverse_finish, critical_points)
 
         if demo_pattern == sim_crossings:
             print "match found"
@@ -926,7 +927,8 @@ def find_closest_clusters(demofiles, clusterfiles, new_xyz, sim_seg_num, seg_pro
 def tpsrpm_plot_cb(x_nd, y_md, targ_Nd, corr_nm, wt_n, f):
     ypred_nd = f.transform_points(x_nd)
     handles = []
-    handles.append(Globals.env.plot3(ypred_nd, 3, (0,1,0)))
+    if not args.no_display:
+        handles.append(Globals.env.plot3(ypred_nd, 3, (0,1,0)))
     #handles.extend(plotting_openrave.draw_grid(Globals.env, f.transform_points, x_nd.min(axis=0), x_nd.max(axis=0), xres = .1, yres = .1, zres = .04))
     if Globals.viewer:
         Globals.viewer.Step()
@@ -969,6 +971,8 @@ def unif_resample(traj, max_diff, wt = None):
     """
     Resample a trajectory so steps have same length in joint space
     """
+    #import pdb
+    #pdb.set_trace()
     import scipy.interpolate as si
     tol = .005
     if wt is not None:
@@ -976,10 +980,10 @@ def unif_resample(traj, max_diff, wt = None):
         traj = traj*wt
 
     dl = mu.norms(traj[1:] - traj[:-1],1)
-    #l = np.cumsum(np.r_[0,dl])
-    #goodinds = np.r_[True, dl > 1e-8]
-    l = np.cumsum(np.r_['0',dl])
-    goodinds = l[l > 1e-8]
+    l = np.cumsum(np.r_[0,dl])
+    goodinds = np.r_[True, dl > 1e-8]
+    # l = np.cumsum(np.r_['0',dl])
+    # goodinds = l[l > 1e-8]
 
     deg = min(3, sum(goodinds) - 1)
     if deg < 1: return traj, np.arange(len(traj))
@@ -1001,7 +1005,8 @@ def unif_resample(traj, max_diff, wt = None):
 
 
 def unif_resample_hmats(hmats, max_diff, wt = None):
-    
+    #import pdb
+    #pdb.set_trace()
     hmats = np.asarray(hmats)
     xyzs = hmats[:,0:3,3]
     
@@ -1011,14 +1016,15 @@ def unif_resample_hmats(hmats, max_diff, wt = None):
     for xyz, t in zip(new_xyzs, newt):
         t1 = int(math.floor(t))
         t2 = int(math.ceil(t))
-        quat1 = transformations.quaternion_from_matrix(hmats[t1,0:3,0:3]) 
-        quat2 = transformations.quaternion_from_matrix(hmats[t2,0:3,0:3])        
+        quat1 = transformations.quaternion_from_matrix(hmats[t1,:,:]) 
+        quat2 = transformations.quaternion_from_matrix(hmats[t2,:,:])        
         quat = slerp(quat1, quat2, t-t1)
         
         hmat = transformations.quaternion_matrix(quat)
         hmat[0:3,3] = xyz
         new_hmats.append(hmat)
-    
+    # import IPython
+    # IPython.embed()
     return new_hmats, newt
 
 
@@ -1037,9 +1043,6 @@ def close_traj(traj):
         curr_angs = new_angs
 
     return new_traj
-
-
-
 
 
 def downsample_objects(objs, factor):
@@ -1095,7 +1098,8 @@ def main():
     Globals.env.StopSimulation()
     Globals.sim = ropesim_floating.FloatingGripperSimulation(Globals.env)
     trajoptpy.SetInteractive(args.interactive)
-    Globals.viewer = trajoptpy.GetViewer(Globals.env)
+    if not args.no_display:
+        Globals.viewer = trajoptpy.GetViewer(Globals.env)
 
     init_tfm = None
     if args.use_ar_init:
@@ -1277,8 +1281,9 @@ def main():
         color_old = [(1,0,0,1) for _ in range(len(old_xyz))]
         color_new = [(0,0,1,1) for _ in range(len(new_xyz))]
         color_old_transformed = [(0,1,0,1) for _ in range(len(old_xyz))]
-        handles.append(Globals.env.plot3(old_xyz,5,np.array(color_old)))
-        handles.append(Globals.env.plot3(new_xyz,5,np.array(color_new)))
+        if not args.no_display:
+            handles.append(Globals.env.plot3(old_xyz,5,np.array(color_old)))
+            handles.append(Globals.env.plot3(new_xyz,5,np.array(color_new)))
 
         t1 = time.time()
         if not args.use_rotation:
@@ -1289,9 +1294,9 @@ def main():
             f = registration.unscale_tps(f, src_params, targ_params)
         t2 = time.time()
 
-        handles.extend(plotting_openrave.draw_grid(Globals.env, f.transform_points, old_xyz.min(axis=0)-np.r_[0,0,.1], old_xyz.max(axis=0)+np.r_[0,0,.1], xres = .1, yres = .1, zres = .04))
-
-        handles.append(Globals.env.plot3(f.transform_points(old_xyz),5,np.array(color_old_transformed)))
+        if not args.no_display:
+            handles.extend(plotting_openrave.draw_grid(Globals.env, f.transform_points, old_xyz.min(axis=0)-np.r_[0,0,.1], old_xyz.max(axis=0)+np.r_[0,0,.1], xres = .1, yres = .1, zres = .04))
+            handles.append(Globals.env.plot3(f.transform_points(old_xyz),5,np.array(color_old_transformed)))
 
 
         print 'time: %f'%(t2-t1)
@@ -1306,12 +1311,16 @@ def main():
 
             new_ee_traj = f.transform_hmats(np.asarray(old_ee_traj))
 
-            # new_ee_traj = resampling.unif_resample(new_ee_traj, 1, np.ones(len(new_ee_traj)))
+            new_ee_traj, new_times = unif_resample_hmats(new_ee_traj, 1) #decreasing max_diff increases number of steps
+
+            # import IPython
+            # IPython.embed()
 
             eetraj[lr] = new_ee_traj
 
-            handles.append(Globals.env.drawlinestrip(old_ee_traj[:,:3,3], 2, (1,0,0,1)))
-            handles.append(Globals.env.drawlinestrip(new_ee_traj[:,:3,3], 2, (0,1,0,1)))
+            if not args.no_display:
+                handles.append(Globals.env.drawlinestrip(old_ee_traj[:,:3,3], 2, (1,0,0,1)))
+                handles.append(Globals.env.drawlinestrip(new_ee_traj[:,:3,3], 2, (0,1,0,1)))
 
         '''
         Generating mini-trajectory
