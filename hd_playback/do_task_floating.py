@@ -971,8 +971,8 @@ def unif_resample(traj, max_diff, wt = None):
     """
     Resample a trajectory so steps have same length in joint space
     """
-    #import pdb
-    #pdb.set_trace()
+    import pdb
+    pdb.set_trace()
     import scipy.interpolate as si
     tol = .005
     if wt is not None:
@@ -1025,7 +1025,7 @@ def unif_resample_hmats(hmats, max_diff, wt = None):
         new_hmats.append(hmat)
     # import IPython
     # IPython.embed()
-    return new_hmats, newt
+    return np.asarray(new_hmats), newt
 
 
 def close_traj(traj):
@@ -1311,10 +1311,11 @@ def main():
 
             new_ee_traj = f.transform_hmats(np.asarray(old_ee_traj))
 
-            new_ee_traj, new_times = unif_resample_hmats(new_ee_traj, 1) #decreasing max_diff increases number of steps
 
-            # import IPython
-            # IPython.embed()
+            #new_ee_traj, new_times = unif_resample_hmats(tfm_ee_traj, 0.005) #decreasing max_diff increases number of steps
+
+            #import IPython
+            #IPython.embed()
 
             eetraj[lr] = new_ee_traj
 
@@ -1337,6 +1338,9 @@ def main():
             redprint("Generating joint trajectory for demo %s segment %s, part %i"%(demo_name, seg_name, i_miniseg))
             ### adaptive resampling based on xyz in end_effector
             end_trans_trajs = np.zeros([i_end+1-i_start, 6])
+
+            #import IPython
+            #IPython.embed()
 
             for lr in 'lr':
                 for i in xrange(i_start,i_end+1):
