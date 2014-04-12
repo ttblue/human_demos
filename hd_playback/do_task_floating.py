@@ -92,6 +92,9 @@ import cPickle
 import numpy as np, numpy.linalg as nlg
 import math
 
+import scipy
+from scipy.spatial import *
+
 import openravepy, trajoptpy
 
 from hd_rapprentice import registration, animate_traj, \
@@ -208,10 +211,12 @@ def rotate_about_median(xyz, theta):
     centered_xyz = xyz - median
     if np.shape(theta):
         r_mat = theta
+        rotated_xyz = centered_xyz.dot(r_mat)
+        rotated_xyz = rotated_xyz - np.median(rotated_xyz, axis=0) #recenter to avoid numerical issues - hacky
     else:
         r_mat = np.eye(3)
         r_mat[0:2, 0:2] = np.array([[np.cos(theta), -np.sin(theta)],[np.sin(theta), np.cos(theta)]])
-    rotated_xyz = centered_xyz.dot(r_mat)
+        rotated_xyz = centered_xyz.dot(r_mat)
     new_xyz = rotated_xyz + median
     return new_xyz
 
@@ -234,19 +239,29 @@ def rotate_by_pca(xyz0, xyz1):
     median = np.median(xyz0, axis=0)
     centered_xyz = xyz0 - median
     aligned_xyz = centered_xyz.dot(pca0) # aligned to global axes
-    aligned_xyz = aligned_xyz.dot(np.linalg.pinv(pca1)) # aligned to PC axes of xyz1   
+    aligned_xyz = aligned_xyz - np.median(aligned_xyz) #recenter to avoid numerical issues - hacky
+    aligned_xyz = aligned_xyz.dot(np.linalg.inv(pca1)) # aligned to PC axes of xyz1
+    aligned_xyz = aligned_xyz - np.median(aligned_xyz) #recenter to avoid numerical issues -hacky
     new_xyz = aligned_xyz + median
     return new_xyz
 
 def get_critical_points(rope_points, seg_group):
-    _, crossings_locations = calculateCrossings(sim_xyz)
-    crit_pts1 = np.vstack(rope_points[0,:], crossings_locations, rope_points[-1,:])
-    demo_pts = np.empty((len(seg_group["crossings"])+2,3))
-    for i in range(seg_group["crossings"]):
-        demo_pts[i+1,:2] = seg_group["crossings"][:2]
-        demo_pts[i+1,2] = crit_pts1[i+1,2] #hacky guess at z -- or should use avg from seg ptcloud? probably yes
-        clouds.xyZ_to_XY() #get closest point in demo_cloud
-
+    print "get critical points"
+    # import IPython
+    # IPython.embed()
+    _, crossings_locations = calculateCrossings(rope_points)
+    if crossings_locations.size == 0:
+        crit_pts1 = np.vstack([rope_points[0,:], rope_points[-1,:]])
+    else:
+        crit_pts1 = np.vstack([rope_points[0,:], crossings_locations, rope_points[-1,:]])
+    crit_pts2 = np.empty((len(seg_group["crossings"])+2,3))
+    depth_xyz = clouds.depth_to_xyz(seg_group['depth'][:,:])
+    for i in range(len(seg_group["crossings"])):
+        (x,y,_) = seg_group["crossings"][i,:]
+        crit_pts2[i+1,:] = depth_xyz[y,x]
+    end1, end2 = seg_group["ends"]
+    crit_pts2[0,:] = depth_xyz[end1[1], end1[0]]; crit_pts2[-1,:] = depth_xyz[end2[1], end2[0]]
+    return (crit_pts1, crit_pts2)
 
 FEASIBLE_REGION = [[.3, -.5], [.8, .5]]# bounds on region robot can hope to tie rope in
 
@@ -388,8 +403,8 @@ def registration_cost_and_tfm(xyz0, xyz1):
     return (cost, f, g)
 
 def registration_cost_with_rotation(xyz0, xyz1):
-    rad_angs = np.linspace(-np.pi+np.pi*(float(10)/180), np.pi,36)
-    #rad_angs = np.linspace(-np.pi+np.pi*(float(30)/180), np.pi,12)
+    #rad_angs = np.linspace(-np.pi+np.pi*(float(10)/180), np.pi,36)
+    rad_angs = np.linspace(-np.pi+np.pi*(float(30)/180), np.pi,12)
     #rad_angs = np.linspace(-np.pi+np.pi*(float(45)/180), np.pi,8)
     costs = np.zeros(len(rad_angs))
     for i in range(len(rad_angs)):
@@ -433,10 +448,13 @@ def registration_cost_with_pca_rotation(xyz0, xyz1):
         scaled_xyz0, src_params = registration.unit_boxify(ptcloud)
         f1,g1 = registration.tps_rpm_bij(scaled_xyz0, scaled_xyz1, reg_init=args.tps_bend_cost_init, reg_final = args.tps_bend_cost_final_search, rot_reg=np.r_[1e-4,1e-4,1e-1], n_iter=3)
         costs.append(registration.tps_reg_cost(f1) + registration.tps_reg_cost(g1))
-        f = registration.unscale_tps_3d(f1, src_params, targ_params)
-        g = registration.unscale_tps_3d(g1, targ_params, src_params)
-        tfms.append((f,g))
-    f,g = tfms[np.argmin(costs)]
+    ptcloud = ptclouds[np.argmin(costs)]
+    scaled_xyz1, targ_params = registration.unit_boxify(xyz1)
+    scaled_xyz0, src_params = registration.unit_boxify(ptcloud)
+    f1,g1 = registration.tps_rpm_bij(scaled_xyz0, scaled_xyz1, reg_init=args.tps_bend_cost_init, reg_final = args.tps_bend_cost_final_search, rot_reg=np.r_[1e-4,1e-4,1e-1], n_iter=30)
+    costs.append(registration.tps_reg_cost(f1) + registration.tps_reg_cost(g1))
+    f = registration.unscale_tps_3d(f1, src_params, targ_params)
+    g = registration.unscale_tps_3d(g1, targ_params, src_params)
     pca0,_,_ = np.linalg.svd(np.cov(xyz0.T)); pca1,_,_ = np.linalg.svd(np.cov(xyz1.T))
     rmat = pca0.dot(np.linalg.pinv(pca1))
     if np.argmin(costs) == 2:
@@ -649,21 +667,23 @@ def find_closest_auto_with_crossings(demofiles, new_xyz, init_tfm=None, n_jobs=3
             results = Parallel(n_jobs=n_jobs,verbose=51)(delayed(registration_cost_with_pca_rotation)(demo_cloud, new_xyz) for demo_cloud in demo_clouds)
             costs, tfms, tfm_invs, thetas = zip(*results)
         else:
-            results = Parallel(n_jobs=n_jobs,verbose=51)(delayed(registration_cost_and_tfm)(demo_cloud, new_xyz) for demo_cloud in demo_clouds)
+            results = Parallel(n_jobs=n_jobs,verbose=51)(delayed(registration_cost_with_pca_rotation)(demo_cloud, new_xyz) for demo_cloud in demo_clouds)
             costs, tfms, tfm_invs = zip(*results)
             thetas = []
     else:
         costs = []
+        tfms = []
         tfm_invs = []
         thetas = []
         
         for (i,ds_cloud) in enumerate(demo_clouds):
             if args.use_rotation:
-                cost_i, tfm_inverse_i , theta_i = registration_cost_with_pca_rotation(ds_cloud, new_xyz)
+                cost_i, tfm_i, tfm_inverse_i, theta_i = registration_cost_with_pca_rotation(ds_cloud, new_xyz)
                 thetas.append(theta_i)
             else:
-                cost_i, tfm_inverse_i = registration_cost_and_tfm(ds_cloud, new_xyz)                    
+                cost_i, tfm_i, tfm_inverse_i = registration_cost_and_tfm(ds_cloud, new_xyz)                    
             costs.append(cost_i)
+            tfms.append(tfm_i)
             tfm_invs.append(tfm_inverse_i)
             
             print "completed %i/%i"%(i+1, len(demo_clouds))
@@ -676,8 +696,6 @@ def find_closest_auto_with_crossings(demofiles, new_xyz, init_tfm=None, n_jobs=3
     return (keys[choice_ind][1],keys[choice_ind][2]) , is_finalsegs[choice_ind], tfms[choice_ind]
 
 def match_crossings(demofiles, keys, costs, tfms, tfm_invs, init_tfm, dclouds, thetas):
-    import scipy
-    from scipy.spatial import *
     
     print "matching crossings"
     sim_xyz = Globals.sim.rope.GetControlPoints()
@@ -691,78 +709,57 @@ def match_crossings(demofiles, keys, costs, tfms, tfm_invs, init_tfm, dclouds, t
             return np.argmin(costs)
     for choice_ind in cost_inds: #check best TPS fit against crossings match
         demotype_num, demo, seg = keys[choice_ind]
-        hdf = demofiles[demotype_num]
+        seg_group = demofiles[demotype_num][demo][seg]
         demo_pattern = []
-        demo_points = []
-        for crossing in hdf[demo][seg]["crossings"]:
+        for crossing in seg_group["crossings"]:
             demo_pattern.append(crossing[2])
-            demo_points.append(crossing[:2])
 
-        if args.use_rotation:
-            demo_pointcloud = rotate_about_median(dclouds[choice_ind], thetas[choice_ind])
-        else:
-            demo_pointcloud = dclouds[choice_ind]
+        demo_pointcloud = dclouds[choice_ind]
         orig_demo = (dclouds[choice_ind] - init_tfm[:3,3][None,:]).dot(np.linalg.pinv(init_tfm[:3,:3]).T)
 
-        critical_points = np.vstack([sim_xyz[0], crossings_locations, sim_xyz[-1]])
-#        critical_points = np.vstack([sim_xyz[0], sim_xyz[-1]])
-        critical_points = tfm_invs[choice_ind].transform_points(critical_points)
-        simrope_start = critical_points[0]
-        simrope_finish = critical_points[-1]
-        critical_points = (critical_points - init_tfm[:3,3][None,:]).dot(np.linalg.pinv(init_tfm[:3,:3]).T)
-        init_inverse_start = critical_points[0]
-        init_inverse_finish = critical_points[-1]
-        xystart = clouds.XYZ_to_xy(*critical_points[0])
-        xyfinish = clouds.XYZ_to_xy(*critical_points[-1])
+        crit1, crit2 = get_critical_points(sim_xyz, seg_group)
+        crit3 = (tfm_invs[choice_ind].transform_points(crit1) - init_tfm[:3,3][None,:]).dot(np.linalg.pinv(init_tfm[:3,:3]).T)
+        crit4 = tfms[choice_ind].transform_points(crit2.dot(init_tfm[:3,:3].T)+init_tfm[:3,3][None,:])
+        flat_points = [clouds.XYZ_to_xy(*pt) for pt in crit3]
+        xystart, xyfinish = flat_points[0], flat_points[1]
 
-        flat_points = []
-        for point in critical_points:
-            flat_points.append(clouds.XYZ_to_xy(*point))
-
-        plot_crossings_2d(flat_points, hdf[demo][seg])
-
-        if hdf[demo][seg]["ends"] and hdf[demo][seg]["ends"].shape[0] > 0:   #ends info exists and is not empty
-            ends_cost = np.hypot(*(hdf[demo][seg]["ends"][:,:2] - xystart).T) + np.hypot(*((hdf[demo][seg]["ends"][:,:2] - xyfinish)[::-1]).T)
-            
+        if seg_group["ends"] and seg_group["ends"].shape[0] > 0:   #ends info exists and is not empty
+            #ends_cost = np.hypot(*(seg_group["ends"][:,:2] - xystart).T) + np.hypot(*((seg_group["ends"][:,:2] - xyfinish)[::-1]).T)
+            ends_cost = [np.linalg.norm(crit1[0] - crit4[0])+np.linalg.norm(crit1[-1] - crit4[-1]), np.linalg.norm(crit1[-1] - crit4[0])+np.linalg.norm(crit1[0] - crit4[-1])]
             points_cost = [0,0]
-            b = hdf[demo][seg]["ends"][:,:2]
-            m = np.array([demo_points, demo_points[::-1]])
-            e = b[::-1]
-            demo_points2 = np.array([np.vstack([b[0], m[0,:], e[0]]), np.vstack([b[1], m[1,:], e[1]])])
-            if len(demo_points2[0]) != len(flat_points):
+            if len(crit1) != len(crit2):
                 print "array of critical points in demonstration is different length from simulation"
-                # import IPython
-                # IPython.embed()
             else:
-                for i in range(len(demo_points2[0])):
-                    points_cost[0] += np.hypot(*(demo_points2[0,i] - flat_points[i]))
-                    points_cost[1] += np.hypot(*(demo_points2[1,i] - flat_points[i]))
-
-            if np.ma.min(ends_cost) > 40:
-                continue
-            if np.ma.min(points_cost) > (len(demo_points)*20):
-                print "points cost too high"
-                # import IPython
-                # IPython.embed()
-                # continue
+                for i in range(len(crit1)):
+                    points_cost[0] += np.linalg.norm(crit1[i] - crit4[i])
+                    points_cost[1] += np.linalg.norm(crit1[-1-i] - crit4[i])
+            if np.ma.min(ends_cost) > 100:
+                print "ends cost too high, abandon demo?"
+            if np.ma.min(points_cost) > (len(crit1)*20):
+                print "points cost too high, abandon demo?"
             if np.argmin(ends_cost) != 0:
-                print "swapped ends"
-                #continue //just give up on this demo?
+                print "swapped ends to improve ends cost"
                 demo_pattern.reverse()
 
         if not args.no_display:
-            plot_transform_mlab(demo_pointcloud, sim_xyz, orig_demo, init_inverse_start, init_inverse_finish, critical_points)
+            plot_transform_mlab(demo_pointcloud, sim_xyz, orig_demo, crit1, crit3)
+            plot_crossings_2d(flat_points, seg_group)
 
         if demo_pattern == sim_crossings:
             print "match found"
             return choice_ind
         
-        equiv = calculateMdp(hdf)
+        equiv = calculateMdp(demofiles[demotype_num])
         if tuple(demo_pattern) in equiv:
             equivalent_states = equiv[tuple(demo_pattern)]
             if tuple(sim_crossings) in equivalent_states:
                 return choice_ind
             print "sim_crossings not in equiv[demo_pattern]"
+        elif tuple(reversed(demo_pattern)) in equiv:
+            equivalent_states = equiv[tuple(reversed(demo_pattern))]
+            if tuple(reversed(sim_crossings)) in equivalent_states:
+                return choice_ind
+            print "reversed sim_crossings not in equiv[reversed demo_pattern]"
         else:
             print "pattern not found in equiv"
 
@@ -774,15 +771,15 @@ def match_crossings(demofiles, keys, costs, tfms, tfm_invs, init_tfm, dclouds, t
     return np.argmin(costs)
 
 
-def plot_transform_mlab(demo_pointcloud, sim_xyz, orig_demo, simrope_start, simrope_finish, critical_points):
+def plot_transform_mlab(demo_pointcloud, sim_xyz, orig_demo,  critical_points, critical_points2):
     from mayavi import mlab; mlab.figure(0, size=(700,650)); mlab.clf()
     plt = mlab.points3d(demo_pointcloud[:,0], demo_pointcloud[:,1], demo_pointcloud[:,2], color=(0,1,0), scale_factor=0.01) #with true/good init tfm
     plt = mlab.points3d(sim_xyz[:,0], sim_xyz[:,1], sim_xyz[:,2], np.linspace(100,110,len(sim_xyz)), scale_factor=0.00005)
     plt = mlab.points3d(orig_demo[:,0], orig_demo[:,1], orig_demo[:,2], np.linspace(100,110,len(orig_demo)), scale_factor=0.00005)
-    plt = mlab.points3d(sim_xyz[0,0], sim_xyz[0,1], sim_xyz[0,2], color=(0,1,0), scale_factor=0.03)   #endpoint of the simulated rope
-    plt = mlab.points3d(simrope_start[0],simrope_start[1],simrope_start[2], color=(0,0,1), scale_factor=0.03)  #points given by tps
-    plt = mlab.points3d(simrope_finish[0], simrope_finish[1], simrope_finish[2], color=(1,1,0), scale_factor=0.03)
-    plt = mlab.points3d(critical_points[:,0], critical_points[:,1], critical_points[:,2], color=(1,0,0), scale_factor=0.04)
+    plt = mlab.points3d(sim_xyz[0,0], sim_xyz[0,1], sim_xyz[0,2], color=(0,1,1), scale_factor=0.02)   #endpoint of the simulated rope
+    plt = mlab.points3d(critical_points[:,0], critical_points[:,1], critical_points[:,2], color=(1,0,0), scale_factor=0.015)
+    plt = mlab.points3d(critical_points2[:,0], critical_points2[:,1], critical_points2[:,2], color=(0,1,0), scale_factor=0.015)
+
 
 def plot_crossings_2d(critical_points, seg_group):
     from matplotlib import pyplot as plt

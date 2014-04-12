@@ -23,19 +23,10 @@ parser.add_argument("--name", help="name to save file", default='test_results.tx
 
 def main():
     args = parser.parse_args()
-    subprocess_call = ["python", "do_task_floating.py"]
-    subprocess_call.append("--demo_type="+args.demo_type)
-    subprocess_call.append("--use_ar_init")
-    subprocess_call.append("--select=auto")
-    h5filename = osp.join(demo_files_dir, args.demo_type, args.demo_type + '.h5')
-    #import IPython
-    #IPython.embed()
-    hdf = h5py.File(h5filename, 'r')
+    hdf = h5py.File(osp.join(demo_files_dir, args.demo_type, args.demo_type + '.h5'), 'r')
     crossings_failures = []
     baseline_failures = []
     for i in range(int(args.demo_start), int(args.demo_end)):
-            #import pdb
-            #pdb.set_trace()
         demo = hdf.keys()[i]
         fake_data_demo = "--fake_data_demo="+demo
         non_cross_call = "python do_task_floating.py --demo_type="+args.demo_type+" --fake_data_demo="+demo+" --fake_data_segment=seg00 --use_ar_init --select=auto --test_success --no_display --step=100"

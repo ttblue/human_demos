@@ -248,6 +248,10 @@ def tps_rpm_bij(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_in
     g = ThinPlateSpline(d)
     g.trans_g = -f.trans_g
 
+    #add points here
+    if critical_points != None:
+        x_nd2 = np.vstack([x_nd, critical_points[0][:,:]])
+        y_md2 = np.vstack([y_md, critical_points[1][:,:]])
 
     # r_N = None
     
@@ -262,6 +266,8 @@ def tps_rpm_bij(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_in
         prob_nm = np.exp( -(fwddist_nm + invdist_nm) / (2*r) )
         corr_nm, r_N, _ =  balance_matrix3(prob_nm, 10, 1e-1, 2e-1)
         corr_nm += 1e-9
+
+        #manipulate weights here? set corr_nm[n+i,m+i] to be high for i in critical points
         
         wt_n = corr_nm.sum(axis=1)
         wt_m = corr_nm.sum(axis=0)
@@ -271,10 +277,6 @@ def tps_rpm_bij(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_in
         
         if plotting and i%plotting==0:
             plot_cb(x_nd, y_md, xtarg_nd, corr_nm, wt_n, f)
-        import IPython
-        IPython.embed()
-        if critical_points != None:
-            x_n2d = np.vstack([x_nd, critical_points[:,0]])
 
         f = fit_ThinPlateSpline(x_nd, xtarg_nd, bend_coef = regs[i], wt_n=wt_n, rot_coef = rot_reg)
         g = fit_ThinPlateSpline(y_md, ytarg_md, bend_coef = regs[i], wt_n=wt_m, rot_coef = rot_reg)
