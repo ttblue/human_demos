@@ -246,8 +246,7 @@ def tps_fit3(x_na, y_ng, bend_coef, rot_coef, wt_n):
     A = np.r_[np.zeros((d+1,d+1)), np.c_[np.ones((n,1)), x_na]].T
     
     Theta = solve_eqp1(H,f,A)
-    
-    return Theta[1:d+1], Theta[0], Theta[d+1:]
+    return Theta[1:d+1], Theta[0], Theta[d+1:]    
     
     
 def tps_fit2(x_na, y_ng, bend_coef, rot_coef, wt_n=None):

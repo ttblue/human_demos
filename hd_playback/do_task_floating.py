@@ -203,11 +203,12 @@ def split_trajectory_by_gripper(seg_info, pot_angle_threshold, ms_thresh=2):
 """
 Not sure if these are required.
 """
-def rotate_about_median(xyz, theta):
+def rotate_about_median(xyz, theta, median=None):
     """
     rotates xyz by theta around the median along the x, y dimensions
     """
-    median = np.median(xyz, axis=0)
+    if median==None:
+        median = np.median(xyz, axis=0)
     centered_xyz = xyz - median
     if np.shape(theta):
         r_mat = theta
@@ -245,8 +246,24 @@ def rotate_by_pca(xyz0, xyz1):
     new_xyz = aligned_xyz + median
     return new_xyz
 
+def rotations_from_ang(theta,median):
+    if not np.shape(theta):
+        rotation_matrix = np.eye(3)
+        rotation_matrix_inv = np.eye(3)
+        rotation_matrix[0:2, 0:2] = np.array([[np.cos(theta), -np.sin(theta)],[np.sin(theta), np.cos(theta)]])
+        rotation_matrix_inv[0:2, 0:2] = np.array([[np.cos(-theta), -np.sin(-theta)],[np.sin(-theta), np.cos(-theta)]])
+    else:
+        rotation_matrix = theta; rotation_matrix_inv = np.linalg.inv(rotation_matrix)
+    shift_from_origin = Affine(np.eye(3), median)
+    rotate = Affine(rotation_matrix, np.zeros((3,)))
+    unrotate = Affine(rotation_matrix_inv, np.zeros((3,)))
+    shift_to_origin = Affine(np.eye(3), -1*median)
+    rotate = Composition([shift_to_origin,rotate,shift_from_origin])
+    unrotate = Composition([shift_to_origin,unrotate,shift_from_origin])
+    return rotate, unrotate
+
 def get_critical_points(rope_points, seg_group):
-    print "get critical points"
+    # print "get critical points"
     # import IPython
     # IPython.embed()
     _, crossings_locations = calculateCrossings(rope_points)
@@ -259,6 +276,8 @@ def get_critical_points(rope_points, seg_group):
     for i in range(len(seg_group["crossings"])):
         (x,y,_) = seg_group["crossings"][i,:]
         crit_pts2[i+1,:] = depth_xyz[y,x]
+    if seg_group["ends"].shape == (0,):
+        return None, None
     end1, end2 = seg_group["ends"]
     crit_pts2[0,:] = depth_xyz[end1[1], end1[0]]; crit_pts2[-1,:] = depth_xyz[end2[1], end2[0]]
     return (crit_pts1, crit_pts2)
@@ -386,56 +405,38 @@ def find_closest_manual(demofiles):
         return keys[choice_ind], is_finalsegs[choice_ind]
 
 
-def registration_cost(xyz0, xyz1):
+def registration_cost(xyz0, xyz1, num_iters=30, critical_points=0):
+    # if critical_points != 0: print "forcing critical points to match"
     scaled_xyz0, _ = registration.unit_boxify(xyz0)
     scaled_xyz1, _ = registration.unit_boxify(xyz1)
-    f,g = registration.tps_rpm_bij(scaled_xyz0, scaled_xyz1, reg_init=args.tps_bend_cost_init, reg_final = args.tps_bend_cost_final_search, rot_reg=np.r_[1e-4,1e-4,1e-1], n_iter=30)
+    f,g = registration.tps_rpm_bij(scaled_xyz0, scaled_xyz1, reg_init=args.tps_bend_cost_init, reg_final = args.tps_bend_cost_final_search, rot_reg=np.r_[1e-4,1e-4,1e-1], n_iter=num_iters, critical_points=critical_points)
     cost = registration.tps_reg_cost(f) + registration.tps_reg_cost(g)
     return cost
 
-def registration_cost_and_tfm(xyz0, xyz1):
+def registration_cost_and_tfm(xyz0, xyz1, num_iters=30):
     scaled_xyz0, src_params = registration.unit_boxify(xyz0)
     scaled_xyz1, targ_params = registration.unit_boxify(xyz1)
-    f,g = registration.tps_rpm_bij(scaled_xyz0, scaled_xyz1, reg_init=args.tps_bend_cost_init, reg_final = args.tps_bend_cost_final_search, rot_reg=np.r_[1e-4,1e-4,1e-1], n_iter=30)
+    f,g = registration.tps_rpm_bij(scaled_xyz0, scaled_xyz1, reg_init=args.tps_bend_cost_init, reg_final = args.tps_bend_cost_final_search, rot_reg=np.r_[1e-4,1e-4,1e-1], n_iter=num_iters)
     cost = registration.tps_reg_cost(f) + registration.tps_reg_cost(g)
     g = registration.unscale_tps_3d(g, targ_params, src_params)
     f = registration.unscale_tps_3d(f, src_params, targ_params)
     return (cost, f, g)
 
-def registration_cost_with_rotation(xyz0, xyz1):
+def registration_cost_with_rotation(xyz0, xyz1, critical_points=0):
     #rad_angs = np.linspace(-np.pi+np.pi*(float(10)/180), np.pi,36)
     rad_angs = np.linspace(-np.pi+np.pi*(float(30)/180), np.pi,12)
     #rad_angs = np.linspace(-np.pi+np.pi*(float(45)/180), np.pi,8)
     costs = np.zeros(len(rad_angs))
     for i in range(len(rad_angs)):
-        try:
-            rotated_demo = rotate_about_median(xyz0, rad_angs[i])
-        except ValueError as e:
-            import IPython
-            IPython.embed()
-        scaled_rotated_demo, src_params = registration.unit_boxify(rotated_demo)
-        scaled_xyz1, targ_params = registration.unit_boxify(xyz1)
-        f,g = registration.tps_rpm_bij(scaled_rotated_demo, scaled_xyz1, reg_init=args.tps_bend_cost_init, reg_final = args.tps_bend_cost_final_search, rot_reg=np.r_[1e-4,1e-4,1e-1], n_iter=3)
-        costs[i] = registration.tps_reg_cost(f) + registration.tps_reg_cost(g)
+        rotated_demo = rotate_about_median(xyz0, rad_angs[i])
+        costs[i] = registration_cost(rotated_demo, xyz1, 3, critical_points=critical_points)
     theta = rad_angs[np.argmin(costs)]
     rotated_demo = rotate_about_median(xyz0, theta)
-    scaled_rotated_demo, src_params = registration.unit_boxify(rotated_demo)
-    scaled_xyz1, targ_params = registration.unit_boxify(xyz1)
-    f,g = registration.tps_rpm_bij(scaled_rotated_demo, scaled_xyz1, reg_init=args.tps_bend_cost_init, reg_final = args.tps_bend_cost_final_search, rot_reg=np.r_[1e-4,1e-4,1e-1], n_iter=30)
-    cost = registration.tps_reg_cost(f) + registration.tps_reg_cost(g) #plus some rotation penalty?
-    g = registration.unscale_tps_3d(g, targ_params, src_params)
-    f = registration.unscale_tps_3d(f, src_params, targ_params)
+    cost, f, g = registration_cost_and_tfm(rotated_demo, xyz1)
 
-    rotation_matrix = np.eye(3)
-    rotation_matrix_inv = np.eye(3)
-    rotation_matrix[0:2, 0:2] = np.array([[np.cos(theta), -np.sin(theta)],[np.sin(theta), np.cos(theta)]])
-    rotation_matrix_inv[0:2, 0:2] = np.array([[np.cos(-theta), -np.sin(-theta)],[np.sin(-theta), np.cos(-theta)]])
-    shift_from_origin = Affine(np.eye(3), np.median(xyz0, axis=0))
-    rotate = Affine(rotation_matrix, np.zeros((3,)))
-    unrotate = Affine(rotation_matrix_inv, np.zeros((3,)))
-    shift_to_origin = Affine(np.eye(3), -1*np.median(xyz0, axis=0))
-    f = Composition([shift_to_origin, rotate, shift_from_origin, f])
-    g = Composition([g, shift_to_origin, unrotate, shift_from_origin])
+    rotate, unrotate = rotations_from_ang(theta,np.median(xyz0, axis=0))
+    f = Composition([rotate, f])
+    g = Composition([g, unrotate])
 
     return (cost, f, g, theta)
 
@@ -444,19 +445,11 @@ def registration_cost_with_pca_rotation(xyz0, xyz1):
     pca_demo = rotate_by_pca(xyz0, xyz1)
     ptclouds = [pca_demo, reflect_across_median(pca_demo, 1), rotate_about_median(pca_demo, np.pi)]
     for ptcloud in ptclouds:
-        scaled_xyz1, targ_params = registration.unit_boxify(xyz1)
-        scaled_xyz0, src_params = registration.unit_boxify(ptcloud)
-        f1,g1 = registration.tps_rpm_bij(scaled_xyz0, scaled_xyz1, reg_init=args.tps_bend_cost_init, reg_final = args.tps_bend_cost_final_search, rot_reg=np.r_[1e-4,1e-4,1e-1], n_iter=3)
-        costs.append(registration.tps_reg_cost(f1) + registration.tps_reg_cost(g1))
+        costs.append(registration_cost(ptcloud, xyz1, 3))
     ptcloud = ptclouds[np.argmin(costs)]
-    scaled_xyz1, targ_params = registration.unit_boxify(xyz1)
-    scaled_xyz0, src_params = registration.unit_boxify(ptcloud)
-    f1,g1 = registration.tps_rpm_bij(scaled_xyz0, scaled_xyz1, reg_init=args.tps_bend_cost_init, reg_final = args.tps_bend_cost_final_search, rot_reg=np.r_[1e-4,1e-4,1e-1], n_iter=30)
-    costs.append(registration.tps_reg_cost(f1) + registration.tps_reg_cost(g1))
-    f = registration.unscale_tps_3d(f1, src_params, targ_params)
-    g = registration.unscale_tps_3d(g1, targ_params, src_params)
+    cost,f,g = registration_cost_and_tfm(ptcloud, xyz1)
     pca0,_,_ = np.linalg.svd(np.cov(xyz0.T)); pca1,_,_ = np.linalg.svd(np.cov(xyz1.T))
-    rmat = pca0.dot(np.linalg.pinv(pca1))
+    rmat = pca0.dot(np.linalg.inv(pca1))
     if np.argmin(costs) == 2:
         rotation_matrix = np.eye(3)
         rotation_matrix[0:2, 0:2] = np.array([[-1, 0],[0, -1]])
@@ -478,6 +471,39 @@ def registration_cost_with_pca_rotation(xyz0, xyz1):
 
     return (np.min(costs), f, g, rmat)
 
+def remove_dups(arr):
+    seen = set()
+    for i in xrange(len(arr)-1,-1,-1):
+        if tuple(arr[i]) in seen:
+            arr = np.delete(arr, i, axis=0)
+        else:
+            seen.add(tuple(arr[i]))
+    return arr
+
+def remove_dups2(arr, arr2):
+    seen = set()
+    for i in range(len(arr2)):
+        seen.add(tuple(arr2[i,:]))
+    for i in xrange(len(arr)-1,-1,-1):
+        if tuple(arr[i]) in seen:
+            arr = np.delete(arr, i, axis=0)
+    return arr
+
+def registration_cost_crit(demofile,indset, xyz1, xyz0):
+    seg_group = demofile[indset[1]][indset[2]]
+    #xyz0 = np.asarray(seg_group['cloud_xyz'])
+    crit1, crit0 = get_critical_points(xyz1, seg_group)
+    crit_num = 0
+    if crit1 != None and len(crit1) == len(crit0):
+        crit0 = remove_dups(crit0)
+        crit1 = remove_dups(crit1)
+        xyz0 = remove_dups2(xyz0, crit0)
+        xyz1 = remove_dups2(xyz1, crit1)
+        xyz0 = np.vstack([xyz0, crit0])
+        xyz1 = np.vstack([xyz1, crit1])
+        crit_num = len(crit1)
+    return registration_cost_with_rotation(xyz0, xyz1, critical_points=crit_num)
+
 
 def find_closest_auto(demofiles, new_xyz, init_tfm=None, n_jobs=3, seg_proximity=2, DS_LEAF_SIZE=0.02):
     """
@@ -491,7 +517,6 @@ def find_closest_auto(demofiles, new_xyz, init_tfm=None, n_jobs=3, seg_proximity
         demofiles = [demofiles]
 
     demo_clouds = []
-
 
     new_xyz = clouds.downsample(new_xyz,DS_LEAF_SIZE)
 
@@ -576,7 +601,8 @@ def find_closest_auto_with_crossings(demofiles, new_xyz, init_tfm=None, n_jobs=3
     if not isinstance(demofiles, list):
         demofiles = [demofiles]
 
-    new_xyz = clouds.downsample(new_xyz,DS_LEAF_SIZE)
+    new_xyz = Globals.sim.rope.GetControlPoints() # not sure why this is an issue
+    #new_xyz = clouds.downsample(new_xyz,DS_LEAF_SIZE)
 
     global global_keys
     global global_demo_clouds
@@ -664,10 +690,10 @@ def find_closest_auto_with_crossings(demofiles, new_xyz, init_tfm=None, n_jobs=3
             is_finalsegs = global_is_finalsegs
     if args.parallel:
         if args.use_rotation:
-            results = Parallel(n_jobs=n_jobs,verbose=51)(delayed(registration_cost_with_pca_rotation)(demo_cloud, new_xyz) for demo_cloud in demo_clouds)
+            results = Parallel(n_jobs=n_jobs,verbose=51)(delayed(registration_cost_with_rotation)(demo_cloud, new_xyz) for demo_cloud in demo_clouds)
             costs, tfms, tfm_invs, thetas = zip(*results)
         else:
-            results = Parallel(n_jobs=n_jobs,verbose=51)(delayed(registration_cost_with_pca_rotation)(demo_cloud, new_xyz) for demo_cloud in demo_clouds)
+            results = Parallel(n_jobs=n_jobs,verbose=51)(delayed(registration_cost_crit)(demofiles[0], keys[i], new_xyz, demo_clouds[i]) for i in keys)
             costs, tfms, tfm_invs = zip(*results)
             thetas = []
     else:
@@ -675,10 +701,12 @@ def find_closest_auto_with_crossings(demofiles, new_xyz, init_tfm=None, n_jobs=3
         tfms = []
         tfm_invs = []
         thetas = []
-        
-        for (i,ds_cloud) in enumerate(demo_clouds):
+
+        #for (i,ds_cloud) in enumerate(demo_clouds):
+        for i in keys:
+            indset = keys[i]
             if args.use_rotation:
-                cost_i, tfm_i, tfm_inverse_i, theta_i = registration_cost_with_pca_rotation(ds_cloud, new_xyz)
+                cost_i, tfm_i, tfm_inverse_i, theta_i = registration_cost_crit(demofiles[0], indset, new_xyz, demo_clouds[i])
                 thetas.append(theta_i)
             else:
                 cost_i, tfm_i, tfm_inverse_i = registration_cost_and_tfm(ds_cloud, new_xyz)                    
@@ -690,12 +718,12 @@ def find_closest_auto_with_crossings(demofiles, new_xyz, init_tfm=None, n_jobs=3
 
     print "costs\n", costs
 
-    choice_ind = match_crossings(demofiles, keys, costs, tfms, tfm_invs, init_tfm, demo_clouds, thetas)
+    choice_ind = match_crossings(demofiles, keys, costs, tfms, tfm_invs, init_tfm, demo_clouds, thetas, new_xyz)
 
     #for now, assume only one demotype at a time
     return (keys[choice_ind][1],keys[choice_ind][2]) , is_finalsegs[choice_ind], tfms[choice_ind]
 
-def match_crossings(demofiles, keys, costs, tfms, tfm_invs, init_tfm, dclouds, thetas):
+def match_crossings(demofiles, keys, costs, tfms, tfm_invs, init_tfm, dclouds, thetas, new_xyz):
     
     print "matching crossings"
     sim_xyz = Globals.sim.rope.GetControlPoints()
@@ -724,7 +752,6 @@ def match_crossings(demofiles, keys, costs, tfms, tfm_invs, init_tfm, dclouds, t
         xystart, xyfinish = flat_points[0], flat_points[1]
 
         if seg_group["ends"] and seg_group["ends"].shape[0] > 0:   #ends info exists and is not empty
-            #ends_cost = np.hypot(*(seg_group["ends"][:,:2] - xystart).T) + np.hypot(*((seg_group["ends"][:,:2] - xyfinish)[::-1]).T)
             ends_cost = [np.linalg.norm(crit1[0] - crit4[0])+np.linalg.norm(crit1[-1] - crit4[-1]), np.linalg.norm(crit1[-1] - crit4[0])+np.linalg.norm(crit1[0] - crit4[-1])]
             points_cost = [0,0]
             if len(crit1) != len(crit2):
@@ -744,6 +771,8 @@ def match_crossings(demofiles, keys, costs, tfms, tfm_invs, init_tfm, dclouds, t
         if not args.no_display:
             plot_transform_mlab(demo_pointcloud, sim_xyz, orig_demo, crit1, crit3)
             plot_crossings_2d(flat_points, seg_group)
+            # import IPython
+            # IPython.embed()
 
         if demo_pattern == sim_crossings:
             print "match found"

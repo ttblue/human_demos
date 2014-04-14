@@ -230,7 +230,7 @@ def tps_rpm(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_init =
     return f
 
 def tps_rpm_bij(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_init = .1, rad_final = .005, rot_reg = 1e-3, 
-                plotting = False, plot_cb = None, critical_points=None):
+                plotting = False, plot_cb = None, critical_points=0):
     """
     tps-rpm algorithm mostly as described by chui and rangaran
     reg_init/reg_final: regularization on curvature
@@ -248,13 +248,11 @@ def tps_rpm_bij(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_in
     g = ThinPlateSpline(d)
     g.trans_g = -f.trans_g
 
-    #add points here
-    if critical_points != None:
-        x_nd2 = np.vstack([x_nd, critical_points[0][:,:]])
-        y_md2 = np.vstack([y_md, critical_points[1][:,:]])
-
     # r_N = None
     
+    # if critical_points != 0:
+    #     import IPython
+    #     IPython.embed()
     for i in xrange(n_iter):
         xwarped_nd = f.transform_points(x_nd)
         ywarped_md = g.transform_points(y_md)
@@ -264,10 +262,14 @@ def tps_rpm_bij(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_in
         
         r = rads[i]
         prob_nm = np.exp( -(fwddist_nm + invdist_nm) / (2*r) )
-        corr_nm, r_N, _ =  balance_matrix3(prob_nm, 10, 1e-1, 2e-1)
-        corr_nm += 1e-9
 
-        #manipulate weights here? set corr_nm[n+i,m+i] to be high for i in critical points
+        for j in range(critical_points):
+            prob_nm[-(j+1),:] = 0
+            prob_nm[:,-(j+1)] = 0
+            prob_nm[-(j+1), -(j+1)] = 1
+        corr_nm, r_N, _ =  balance_matrix3(prob_nm, 10, 1e-1, 2e-1)
+
+        corr_nm += 1e-9
         
         wt_n = corr_nm.sum(axis=1)
         wt_m = corr_nm.sum(axis=0)
@@ -275,12 +277,15 @@ def tps_rpm_bij(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_in
         xtarg_nd = (corr_nm/wt_n[:,None]).dot(y_md)
         ytarg_md = (corr_nm/wt_m[None,:]).T.dot(x_nd)
         
-        if plotting and i%plotting==0:
-            plot_cb(x_nd, y_md, xtarg_nd, corr_nm, wt_n, f)
-
-        f = fit_ThinPlateSpline(x_nd, xtarg_nd, bend_coef = regs[i], wt_n=wt_n, rot_coef = rot_reg)
-        g = fit_ThinPlateSpline(y_md, ytarg_md, bend_coef = regs[i], wt_n=wt_m, rot_coef = rot_reg)
-
+        # if plotting and i%plotting==0:
+        #     plot_cb(x_nd, y_md, xtarg_nd, corr_nm, wt_n, f)
+        try:
+            f = fit_ThinPlateSpline(x_nd, xtarg_nd, bend_coef = regs[i], wt_n=wt_n, rot_coef = rot_reg)
+            g = fit_ThinPlateSpline(y_md, ytarg_md, bend_coef = regs[i], wt_n=wt_m, rot_coef = rot_reg)
+        except:
+            print "error in tps_rpm_bij"
+            import IPython
+            IPython.embed()
     f._cost = tps.tps_cost(f.lin_ag, f.trans_g, f.w_ng, f.x_na, xtarg_nd, regs[i], wt_n=wt_n)/wt_n.mean()
     g._cost = tps.tps_cost(g.lin_ag, g.trans_g, g.w_ng, g.x_na, ytarg_md, regs[i], wt_n=wt_m)/wt_m.mean()
     return f,g
