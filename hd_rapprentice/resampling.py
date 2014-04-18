@@ -200,11 +200,24 @@ def test_resample_big():
 
     
 def interp_quats(newtimes, oldtimes, oldquats):
-    "should actually do slerp"
-    quats_unnormed = mu.interp2d(newtimes, oldtimes, oldquats)
-    return mu.normr(quats_unnormed)
-        
-        
+    #"should actually do slerp"
+    #quats_unnormed = mu.interp2d(newtimes, oldtimes, oldquats)
+    #return mu.normr(quats_unnormed)
+    from hd_utils.transformations import quaternion_slerp
+    oldindices = range(len(oldtimes))
+    newindices = np.interp(newtimes, oldtimes, oldindices)
+    newquats = []
+
+    for i in range(len(newtimes)):
+        l = int(np.floor(newindices[i]))
+        u = int(np.ceil(newindices[i]))
+        if l == u:
+            newquats.append(oldquats[l])
+        else:      
+            t = (newtimes[i] - oldtimes[l]) / (oldtimes[u] - oldtimes[l])
+            newquats.append(quaternion_slerp(oldquats[l], oldquats[u], t))
+           
+    return newquats
 
 def interp_hmats(newtimes, oldtimes, oldhmats):
     oldposes = openravepy.poseFromMatrices(oldhmats)
