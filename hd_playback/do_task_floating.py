@@ -1017,8 +1017,12 @@ def unif_resample_hmats(hmats, max_diff, wt = None):
         t1 = int(math.floor(t))
         t2 = int(math.ceil(t))
         quat1 = transformations.quaternion_from_matrix(hmats[t1,:,:]) 
-        quat2 = transformations.quaternion_from_matrix(hmats[t2,:,:])        
-        quat = slerp(quat1, quat2, t-t1)
+        quat2 = transformations.quaternion_from_matrix(hmats[t2,:,:])     
+        
+        if t1 == t2:
+            quat = quat1
+        else:      
+            quat = slerp(quat1, quat2, t-t1)
         
         hmat = transformations.quaternion_matrix(quat)
         hmat[0:3,3] = xyz
@@ -1311,7 +1315,7 @@ def main():
 
             new_ee_traj = f.transform_hmats(np.asarray(old_ee_traj))
 
-            new_ee_traj, new_times = unif_resample_hmats(new_ee_traj, 1) #decreasing max_diff increases number of steps
+            # new_ee_traj, new_times = unif_resample_hmats(new_ee_traj, 1) #decreasing max_diff increases number of steps
 
             # import IPython
             # IPython.embed()

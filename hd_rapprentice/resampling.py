@@ -198,10 +198,12 @@ def test_resample_big():
     
     assert np.allclose(inds0, inds1)
 
+    
 def interp_quats(newtimes, oldtimes, oldquats):
     "should actually do slerp"
     quats_unnormed = mu.interp2d(newtimes, oldtimes, oldquats)
     return mu.normr(quats_unnormed)
+        
         
 
 def interp_hmats(newtimes, oldtimes, oldhmats):
