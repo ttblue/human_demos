@@ -10,9 +10,10 @@ from hd_rapprentice import knot_identification
 
 MIN_SEG_LEN = 3
 
-def find_path_through_point_cloud(xyzs, plotting=False, perturb_peak_dist=None, num_perturb_points=7):
+def find_path_through_point_cloud(xyzs, plotting=False, perturb_peak_dist=None, num_perturb_points=7, critical_points=[]):
+
     xyzs = np.asarray(xyzs).reshape(-1,3)
-    S = skeletonize_point_cloud(xyzs)
+    S = skeletonize_point_cloud(xyzs, critical_points)
     segs = get_segments(S)
 
     if plotting: 
@@ -20,13 +21,15 @@ def find_path_through_point_cloud(xyzs, plotting=False, perturb_peak_dist=None, 
         mlab.figure(1); mlab.clf()
         plot_graph_3d(S)
 
+    #import pdb; pdb.set_trace()
+
     S,segs = prune_skeleton(S, segs)
+    #reshape_skeleton(S)
 
     if plotting: 
         from mayavi import mlab
         mlab.figure(3); mlab.clf()
         plot_graph_3d(S)
-
 
     segs3d = [np.array([S.node[i]["xyz"] for i in seg]) for seg in segs]
 
@@ -43,7 +46,7 @@ def find_path_through_point_cloud(xyzs, plotting=False, perturb_peak_dist=None, 
         if node%2 == 0: total_path.extend(segs[node//2])
         else: total_path.extend(segs[node//2][::-1])
 
-    print np.array([S.node[i]["xyz"] for i in total_path])
+    #print np.array([S.node[i]["xyz"] for i in total_path])
     total_path_3d = remove_duplicate_rows(np.array([S.node[i]["xyz"] for i in total_path]))
 
     # perturb the path, if requested
@@ -115,8 +118,48 @@ def prune_skeleton(S, segs):
     for seg in bad_segs: segs.remove(seg)
     for node in bad_nodes: S.remove_node(node)
     return S, segs
-    
-    
+
+def reshape_skeleton(S):
+    import copy
+    for node in S.node:
+        if S.node[node]['crit'] and S.degree(node) != 4:
+            neighbors = copy.deepcopy(S.adj[node])
+            for nei in neighbors:
+                if S.degree(nei) == 3:
+                    #relink nodes to have even degree
+                    closest_neighbor = None
+                    min_dist = float('inf')
+                    for nei2 in S.adj[nei]:
+                        if nei2 == node: continue
+                        dist = np.linalg.norm(S.node[nei2]['xyz']-S.node[node]['xyz'])
+                        if dist < min_dist:
+                            min_dist = dist
+                            closest_neighbor = nei2
+                    S.remove_edge(nei, closest_neighbor)
+                    S.add_edge(node, closest_neighbor)
+    for node in S.node:
+        for nei in S.adj[node]:
+            if S.degree(nei) == S.degree(node) == 3:
+                #relink nodes to have even degree
+                if S.node[node]['crit']:
+                    other_node = nei
+                    critnode = node
+                elif S.node[nei]['crit']:
+                    other_node = node
+                    critnode = nei
+                closest_neighbor = None
+                min_dist = float('inf')
+                for nei2 in S.adj[other_node]:
+                    if nei2 == critnode: continue
+                    dist = np.linalg.norm(S.node[nei2]['xyz']-S.node[critnode]['xyz'])
+                    if dist < min_dist:
+                        min_dist = dist
+                        closest_neighbor = nei2
+                S.remove_edge(other_node, closest_neighbor)
+                S.add_edge(critnode, closest_neighbor)
+
+
+
 def get_skeleton_points(xyzs):
     S = skeletonize_point_cloud(xyzs)
     points = np.array([S.node[i]["xyz"] for i in S.nodes()])
@@ -167,21 +210,27 @@ def points_to_graph(xyzs, max_dist):
             G.add_edge(i_from, i_to, length = pdists[i_from, i_to])
     return G
 
-def skeletonize_graph(G, resolution):
+def skeletonize_graph(G, resolution, crits=[]):
     #G = largest_connected_component(G)
     partitions = []
-    for SG in nx.connected_component_subgraphs(G):
+    for SG in nx.connected_component_subgraphs(G): #most ropes will have only 1 CC
         calc_distances(SG)
-        partitions.extend(calc_reeb_partitions(SG,resolution))
+        partitions.extend(calc_reeb_partitions(SG,resolution)) #divide into partitions
     node2part = {}
-    skel = nx.Graph()    
-    for (i_part, part) in enumerate(partitions):
+    skel = nx.Graph()
+    i = 0
+    for part in partitions:
         xyzsum = np.zeros(3)
         for node in part:
-            node2part[node] = i_part
+            node2part[node] = i
             xyzsum += G.node[node]["xyz"]
-        skel.add_node(i_part,xyz = xyzsum / len(part))
-            
+        skel.add_node(i,xyz = xyzsum / len(part),crit=False) #add "average" point of each partition
+        i+=1
+
+    for pt in crits:
+        closest_to_crit = np.argmin([np.linalg.norm(pt-skel.node[node]['xyz']) for node in skel.node])
+        skel.node[closest_to_crit]['crit'] = True
+
     for (node0, node1) in G.edges():
         if node2part[node0] != node2part[node1]:
             skel.add_edge(node2part[node0], node2part[node1])
@@ -192,9 +241,10 @@ def largest_connected_component(G):
     sgs = nx.connected_component_subgraphs(G)
     return sgs[0]
 
-def skeletonize_point_cloud(xyzs, point_conn_dist = .03, cluster_size = .06):
+def skeletonize_point_cloud(xyzs, critical_points=[], point_conn_dist = .03, cluster_size = .06):
+    if critical_points != []: point_conn_dist = 0.02
     G = points_to_graph(xyzs, point_conn_dist)
-    S = skeletonize_graph(G, cluster_size)
+    S = skeletonize_graph(G, cluster_size, crits=critical_points)
     return S
         
 def calc_distances(G):
@@ -226,13 +276,20 @@ def calc_reeb_partitions(G, resolution):
         reeb_partitions.extend(nx.connected_components(sg))
     return reeb_partitions
     
-def plot_graph_3d(G):
+def plot_graph_3d(G, highlights=[]):
     from mayavi import mlab
     for (node0, node1) in G.edges():
         (x0,y0,z0) = G.node[node0]["xyz"]
         (x1,y1,z1) = G.node[node1]["xyz"]
-        mlab.plot3d([x0,x1],[y0,y1],[z0,z1], color=(1,0,0),tube_radius=.0025)        
-    
+        mlab.plot3d([x0,x1],[y0,y1],[z0,z1], color=(1,0,0),tube_radius=.0025)
+        mlab.points3d([x0,x1],[y0,y1],[z0,z1], color=(1,1,0), scale_factor=0.01)
+    for ind in G.node:
+        node = G.node[ind]
+        if 'crit' in node.keys() and node['crit']:
+            mlab.points3d(node['xyz'][0],node['xyz'][1],node['xyz'][2],color=(0,1,0),scale_factor=0.02)    
+    for ind in highlights:
+        node = G.node[ind]
+        mlab.points3d(node['xyz'][0],node['xyz'][1],node['xyz'][2],color=(1,0,0),scale_factor=0.02)    
     
 ############### GENERATE PATHS FROM GRAPH ###########
 

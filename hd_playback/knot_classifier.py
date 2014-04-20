@@ -110,6 +110,12 @@ def cluster_points(points):
     return pairs
 
 
+def cluster_points2(points):
+    from scipy import cluster
+    new_points = cluster.vq.kmeans(points, len(points)/2)[0]
+    return new_points #order not guaranteed!
+
+
 #rope_nodes is an nx3 numpy array of the points of n control points of the rope
 def isKnot(rope_nodes, rdm1=False):
     crossings, coords = calculateCrossings(rope_nodes)

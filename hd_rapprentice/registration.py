@@ -237,7 +237,8 @@ def tps_rpm_bij(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_in
     rad_init/rad_final: radius for correspondence calculation (meters)
     plotting: 0 means don't plot. integer n means plot every n iterations
     """
-    
+    import traceback
+
     _,d=x_nd.shape
     regs = loglinspace(reg_init, reg_final, n_iter)
     rads = loglinspace(rad_init, rad_final, n_iter)
@@ -250,9 +251,6 @@ def tps_rpm_bij(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_in
 
     # r_N = None
     
-    # if critical_points != 0:
-    #     import IPython
-    #     IPython.embed()
     for i in xrange(n_iter):
         xwarped_nd = f.transform_points(x_nd)
         ywarped_md = g.transform_points(y_md)
@@ -267,8 +265,8 @@ def tps_rpm_bij(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_in
             prob_nm[-(j+1),:] = 0
             prob_nm[:,-(j+1)] = 0
             prob_nm[-(j+1), -(j+1)] = 1
-        corr_nm, r_N, _ =  balance_matrix3(prob_nm, 10, 1e-1, 2e-1)
 
+        corr_nm, r_N, _ =  balance_matrix3(prob_nm, 10, 1e-1, 2e-1)
         corr_nm += 1e-9
         
         wt_n = corr_nm.sum(axis=1)
@@ -283,6 +281,7 @@ def tps_rpm_bij(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_in
             f = fit_ThinPlateSpline(x_nd, xtarg_nd, bend_coef = regs[i], wt_n=wt_n, rot_coef = rot_reg)
             g = fit_ThinPlateSpline(y_md, ytarg_md, bend_coef = regs[i], wt_n=wt_m, rot_coef = rot_reg)
         except:
+            tb = traceback.format_exc()
             print "error in tps_rpm_bij"
             import IPython
             IPython.embed()
