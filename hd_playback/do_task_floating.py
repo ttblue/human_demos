@@ -1087,7 +1087,6 @@ def unif_resample(traj, max_diff, wt = None):
 
     return traj_rs, newt
 
-
 def close_traj(traj):
 
     assert len(traj) > 0

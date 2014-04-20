@@ -10,6 +10,44 @@ from hd_rapprentice.rope_initialization import points_to_graph
 import networkx as nx
 from openravepy import matrixFromAxisAngle
 
+import random
+from ransac import *
+
+def augment(xyz):
+    axyz = np.ones((len(xyz), 4))
+    axyz[:, :3] = xyz
+    return axyz
+
+def estimate(xyz):
+    axyz = augment(xyz[:3])
+    return np.linalg.svd(axyz)[-1][-1, :]
+
+def is_inlier(coeffs, xyz, threshold):
+    return np.abs(coeffs.dot(augment([xyz]).T)) < threshold
+
+def plot_plane(a, b, c, d):
+    xx, yy = np.mgrid[-1:3, -1:3]
+    print a, b, c, d
+    return xx, yy, (-d - a * xx - b * yy) / c
+
+def extract_table_ransac(rgb, depth, T_w_k, inlier_fraction=0.9):    
+    
+    xyz = extract_green(rgb, depth, T_w_k)
+    n_rows, n_cols = xyz.shape
+    
+    max_iterations = 100
+    m, _ = run_ransac(xyz, estimate, lambda x, y: is_inlier(x, y, 0.01), 3, inlier_fraction, max_iterations)
+    print "running ransac"
+    a, b, c, d = m
+    xx, yy, zz = plot_plane(a, b, c, d)
+    
+    return (xx, yy, zz), m
+
+    
+def extract_raw_cloud(rgb, depth, T_w_k, inlier_fraction=0.9):    
+    xyz = extract_green(rgb, depth, T_w_k)
+    return xyz    
+
 def remove_outlier_connected_component(xyz, max_dist = .03):
     G = points_to_graph(xyz, max_dist)
 
@@ -75,9 +113,12 @@ def extract_color(rgb, depth, mask, T_w_k, xyz_mask=None, use_outlier_removal=Fa
     return good_xyz
 
 
+
 def extract_red(rgb, depth, T_w_k):
-    red_mask = [lambda(x): (x<15)|(x>125), lambda(x): x>80, lambda(x): x>100]
-    xyz_mask = (lambda(xyz): xyz[:, :, 2] > 0.95)
+    #red_mask = [lambda(x): (x<50)|(x>105), lambda(x): x>50, lambda(x): x>50]
+    red_mask = [lambda(x): (x<25)|(x>115), lambda(x): x>80, lambda(x): x>100]
+
+    xyz_mask = (lambda(xyz): xyz[:, :, 2] > 0.9)
     return extract_color(rgb, depth, red_mask, T_w_k, xyz_mask, True)
 
 def extract_white(rgb, depth, T_w_k):
@@ -89,6 +130,12 @@ def extract_yellow(rgb, depth, T_w_k):
     #xyz_mask = (lambda(xyz): xyz[:, :, 2] < 0.9)
     xyz_mask = None
     return extract_color(rgb, depth, yellow_mask, T_w_k, xyz_mask)
+
+def extract_green(rgb, depth, T_w_k):
+    green_mask = [lambda(x): (x<140)&(x>60), lambda(x): x>30, lambda(x): x>80]
+    
+    xyz_mask = (lambda(xyz): xyz[:, :, 2] > 0.9)
+    return extract_color(rgb, depth, green_mask, T_w_k, xyz_mask, True)   
     
 
 def extract_hitch(rgb, depth, T_w_k, dir=None, radius=0.016, length =0.215, height_range=[0.70,0.80]):

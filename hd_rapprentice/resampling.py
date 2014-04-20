@@ -198,6 +198,7 @@ def test_resample_big():
     
     assert np.allclose(inds0, inds1)
 
+    
 def interp_quats(newtimes, oldtimes, oldquats):
     #"should actually do slerp"
     #quats_unnormed = mu.interp2d(newtimes, oldtimes, oldquats)
@@ -217,7 +218,6 @@ def interp_quats(newtimes, oldtimes, oldquats):
             newquats.append(quaternion_slerp(oldquats[l], oldquats[u], t))
            
     return newquats
-
 
 def interp_hmats(newtimes, oldtimes, oldhmats):
     oldposes = openravepy.poseFromMatrices(oldhmats)
