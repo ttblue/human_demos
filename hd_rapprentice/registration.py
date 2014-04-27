@@ -238,6 +238,11 @@ def tps_rpm_bij(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_in
     plotting: 0 means don't plot. integer n means plot every n iterations
     """
     import traceback
+    #adjust for duplicate points to prevent singular matrix errors
+    for i in range(len(x_nd)):
+        for j in range(len(x_nd)):
+            if i!=j and np.all(x_nd[i]==x_nd[j]):
+                x_nd[j][0] += 0.0001
 
     _,d=x_nd.shape
     regs = loglinspace(reg_init, reg_final, n_iter)

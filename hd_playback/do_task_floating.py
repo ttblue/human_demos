@@ -110,7 +110,7 @@ from hd_utils import transformations
 from hd_utils.defaults import demo_files_dir, hd_data_dir,\
         ar_init_dir, ar_init_demo_name, ar_init_playback_name, \
         tfm_head_dof, tfm_bf_head, cad_files_dir
-from knot_classifier import calculateCrossings, calculateMdp, isKnot
+from knot_classifier import calculateCrossings, calculateMdp, isKnot, remove_last_crossing
 
 
 
@@ -284,6 +284,16 @@ def get_critical_points_demo(seg_group):
     crit_pts[0,:] = depth_xyz[end1[1], end1[0]]; crit_pts[-1,:] = depth_xyz[end2[1], end2[0]]
     return crit_pts
 
+def xy_to_XYZ_array(labeled_points, depth_image):
+    lpts = np.empty((len(labeled_points),3))
+    depth_xyz = clouds.depth_to_xyz(depth_image)
+    for i in range(len(lpts)):
+        (x,y,c) = labeled_points[i,:]
+        lpts[i,:] = depth_xyz[y,x]
+        #lpts[i-1:i+2,2] += c*0.001 #move undercrossing points down a bit
+    return lpts    
+
+
 FEASIBLE_REGION = [[.3, -.5], [.8, .5]]# bounds on region robot can hope to tie rope in
 
 def place_in_feasible_region(xyz):
@@ -408,7 +418,6 @@ def find_closest_manual(demofiles):
 
 
 def registration_cost(xyz0, xyz1, num_iters=30, critical_points=0):
-    #if critical_points != 0 and num_iters == 30: print "[registration cost] forcing critical points to match"
     scaled_xyz0, _ = registration.unit_boxify(xyz0)
     scaled_xyz1, _ = registration.unit_boxify(xyz1)
     f,g = registration.tps_rpm_bij(scaled_xyz0, scaled_xyz1, reg_init=args.tps_bend_cost_init, reg_final = args.tps_bend_cost_final_search, 
@@ -417,7 +426,6 @@ def registration_cost(xyz0, xyz1, num_iters=30, critical_points=0):
     return cost
 
 def registration_cost_and_tfm(xyz0, xyz1, num_iters=30, critical_points=0):
-    #if critical_points != 0 and num_iters==30: print "[registration cost and tfm] forcing critical points to match"
     scaled_xyz0, src_params = registration.unit_boxify(xyz0)
     scaled_xyz1, targ_params = registration.unit_boxify(xyz1)
     f,g = registration.tps_rpm_bij(scaled_xyz0, scaled_xyz1, reg_init=args.tps_bend_cost_init, reg_final = args.tps_bend_cost_final_search, 
@@ -428,7 +436,6 @@ def registration_cost_and_tfm(xyz0, xyz1, num_iters=30, critical_points=0):
     return (cost, f, g)
 
 def registration_cost_with_rotation(xyz0, xyz1, critical_points=0):
-    #if critical_points != 0: print "[registration cost with rotation] forcing critical points to match"
     #rad_angs = np.linspace(-np.pi+np.pi*(float(10)/180), np.pi,36)
     rad_angs = np.linspace(-np.pi+np.pi*(float(30)/180), np.pi,12)
     #rad_angs = np.linspace(-np.pi+np.pi*(float(45)/180), np.pi,8)
@@ -497,16 +504,21 @@ def remove_dups2(arr, arr2):
 
 def registration_cost_crit(xyz0, xyz1, crit_demo, crit_sim):
     crit_num = 0
+    sim_crossings, crossings_locations = calculateCrossings(xyz1)
     if crit_demo != None:
-        if len(crit_sim) == len(crit_demo):
-            crit_sim = remove_dups(crit_sim)
-            crit_demo = remove_dups(crit_demo)
-            xyz0 = remove_dups2(xyz0, crit_demo)
-            xyz1 = remove_dups2(xyz1, crit_sim)
-            xyz0 = np.vstack([xyz0, crit_demo])
-            xyz1 = np.vstack([xyz1, crit_sim])
-            crit_num = len(crit_sim)
-    return registration_cost_with_rotation(xyz0, xyz1, critical_points=crit_num)
+        demo_crossings = crit_demo[1:-1]
+        if sim_crossings == reversed(demo_crossings):
+            xyz0 = xyz0[::-1]
+    # if crit_demo != None:
+    #     if len(crit_sim) == len(crit_demo):
+    #         crit_sim = remove_dups(crit_sim)#[1:-1])
+    #         crit_demo = remove_dups(crit_demo)#[1:-1])
+    #         xyz0 = remove_dups2(xyz0, crit_demo)
+    #         xyz1 = remove_dups2(xyz1, crit_sim)
+    #         xyz0 = np.vstack([xyz0, crit_demo])
+    #         xyz1 = np.vstack([xyz1, crit_sim])
+    #         crit_num = len(crit_sim)
+    return registration_cost_with_rotation(xyz0, xyz1, critical_points=len(xyz0))
 
 
 def find_closest_auto(demofiles, new_xyz, init_tfm=None, n_jobs=3, seg_proximity=2, DS_LEAF_SIZE=0.02):
@@ -613,96 +625,105 @@ def find_closest_auto_with_crossings(demofiles, new_xyz, init_tfm=None, n_jobs=3
     global global_demo_clouds
     global global_is_finalsegs    
 
-    if global_keys == {}: #need to initialize keys, demo_clouds, is_finalsegs
-        demo_clouds = []
-        crit_points = []
-        keys = {}
-        is_finalsegs = {}
-        demotype_num = 0
-        seg_num = 0      ## this seg num is the index of all the segments in all the demos.
+    # if global_keys == {}: #need to initialize keys, demo_clouds, is_finalsegs
+    demo_clouds = []
+    crit_points = []
+    keys = {}
+    is_finalsegs = {}
+    demotype_num = 0
+    seg_num = 0      ## this seg num is the index of all the segments in all the demos.
 
-        for demofile in demofiles:
-            equiv = calculateMdp(demofile)
-            if crossings_to_demos == {}:
-                fill_crossings = True
-            else:
-                fill_crossings = False
-            for demo_name in demofile:
-                if demo_name != "ar_demo":
-                    if 'done' in demofile[demo_name].keys():
-                        final_seg_id = len(demofile[demo_name].keys()) - 2
-                    else:
-                        final_seg_id = len(demofile[demo_name].keys()) - 1
-
-                    for seg_name in demofile[demo_name]:
-
-                        keys[seg_num] = (demotype_num, demo_name, seg_name)
-
-                        points = []
-                        for crossing in demofile[demo_name][seg_name]["crossings"]:
-                            points.append(crossing[2])
-                        equivalent_states = []
-                        if tuple(points) in equiv:
-                            equivalent_states = equiv[tuple(points)]
-                        elif tuple(points[::-1]) in equiv:
-                            equivalent_states = equiv[tuple(points)]
-                        for state in equivalent_states:
-                            if state in crossings_to_demos:
-                                if seg_num not in crossings_to_demos[state]:
-                                    crossings_to_demos[state].append(seg_num)
-                            else:
-                                crossings_to_demos[state] = [seg_num]
-                            if state[::-1] in crossings_to_demos:
-                                if seg_num not in crossings_to_demos[state[::-1]]:
-                                    crossings_to_demos[state[::-1]].append(seg_num)
-                            else:
-                                crossings_to_demos[state[::-1]] = [seg_num]
-
-                        if seg_name == "seg%02d"%(final_seg_id):
-                            is_finalsegs[seg_num] = True
-                        else:
-                            is_finalsegs[seg_num] = False
-
-                        seg_num += 1
-                        demo_xyz = clouds.downsample(np.asarray(demofile[demo_name][seg_name]["cloud_xyz"]),DS_LEAF_SIZE)
-                        #demo_xyz = rope_initialization.unif_resample(fit_rope_to_pointcloud(demofile[demo_name][seg_name]),len(new_xyz))
-                        if init_tfm is not None:
-                            demo_xyz = demo_xyz.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
-                        print demo_xyz.shape
-                        
-                        demo_clouds.append(demo_xyz)
-
-                        crit_pts_demo = get_critical_points_demo(demofile[demo_name][seg_name])
-                        if crit_pts_demo != None:
-                            crit_pts_demo = crit_pts_demo.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
-                        crit_points.append(crit_pts_demo)
-
-            demotype_num +=1
-        #save keys, demo_clouds, is_finalsegs globally so they can be used again on future segments
-        global_keys = keys
-        global_demo_clouds = demo_clouds
-        global_crit_points = crit_points
-        global_is_finalsegs = is_finalsegs
-    else:
-        new_xyz = Globals.sim.rope.GetControlPoints()
-        sim_crossings, crossings_locations = calculateCrossings(new_xyz)
-        sim_crossings = tuple(sim_crossings)
-        i = 0
-        keys = {}
-        demo_clouds = []; crit_points = []
-        is_finalsegs = {}
-        if sim_crossings in crossings_to_demos:
-            for seg_num in crossings_to_demos[sim_crossings]:
-                keys[i] = global_keys[seg_num]
-                demo_clouds.append(global_demo_clouds[seg_num])
-                crit_points.append(global_crit_points[seg_num])
-                is_finalsegs[i] = global_is_finalsegs[seg_num]
-                i += 1
+    for demofile in demofiles:
+        equiv = calculateMdp(demofile)
+        if crossings_to_demos == {}:
+            fill_crossings = True
         else:
-            keys = global_keys
-            demo_clouds = global_demo_clouds
-            crit_points = global_crit_points
-            is_finalsegs = global_is_finalsegs
+            fill_crossings = False
+        for demo_name in demofile:
+            if demo_name == "demo00026":
+                break
+            if demo_name != "ar_demo":                    
+                if 'done' in demofile[demo_name].keys():
+                    final_seg_id = len(demofile[demo_name].keys()) - 2
+                else:
+                    final_seg_id = len(demofile[demo_name].keys()) - 1
+
+                for seg_name in demofile[demo_name]:
+
+                    keys[seg_num] = (demotype_num, demo_name, seg_name)
+
+                    points = []
+                    for crossing in demofile[demo_name][seg_name]["crossings"]:
+                        points.append(crossing[2])
+                    equivalent_states = []
+                    if tuple(points) in equiv:
+                        equivalent_states = equiv[tuple(points)]
+                    elif tuple(points[::-1]) in equiv:
+                        equivalent_states = equiv[tuple(points)]
+                    for state in equivalent_states:
+                        if state in crossings_to_demos:
+                            if seg_num not in crossings_to_demos[state]:
+                                crossings_to_demos[state].append(seg_num)
+                        else:
+                            crossings_to_demos[state] = [seg_num]
+                        if state[::-1] in crossings_to_demos:
+                            if seg_num not in crossings_to_demos[state[::-1]]:
+                                crossings_to_demos[state[::-1]].append(seg_num)
+                        else:
+                            crossings_to_demos[state[::-1]] = [seg_num]
+
+                    if seg_name == "seg%02d"%(final_seg_id):
+                        is_finalsegs[seg_num] = True
+                    else:
+                        is_finalsegs[seg_num] = False
+
+                    seg_num += 1
+                
+                    seg_group = demofile[demo_name][seg_name]
+                    if 'labeled_points' in seg_group.keys():
+                        demo_xyz = segment_demo(new_xyz, seg_group)
+                        #demo_xyz = xy_to_XYZ_array(seg_group["labeled_points"][:], seg_group["depth"][:])
+                        #demo_xyz = rope_initialization.unif_resample(demo_xyz,len(new_xyz)) #resample to smooth it out
+                    else:
+                        demo_xyz = clouds.downsample(np.asarray(seg_group["cloud_xyz"]),DS_LEAF_SIZE)
+
+                    if init_tfm is not None:
+                        demo_xyz = demo_xyz.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
+                    print demo_xyz.shape
+                    
+                    demo_clouds.append(demo_xyz)
+
+                    crit_pts_demo = get_critical_points_demo(seg_group)
+                    if crit_pts_demo != None:
+                        crit_pts_demo = crit_pts_demo.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
+                    crit_points.append(crit_pts_demo)
+
+        demotype_num +=1
+        #save keys, demo_clouds, is_finalsegs globally so they can be used again on future segments
+        # global_keys = keys
+        # global_demo_clouds = demo_clouds
+        # global_crit_points = crit_points
+        # global_is_finalsegs = is_finalsegs
+    # else:
+    #     new_xyz = Globals.sim.rope.GetControlPoints()
+    #     sim_crossings, crossings_locations = calculateCrossings(new_xyz)
+    #     sim_crossings = tuple(sim_crossings)
+    #     i = 0
+    #     keys = {}
+    #     demo_clouds = []; crit_points = []
+    #     is_finalsegs = {}
+    #     if sim_crossings in crossings_to_demos:
+    #         for seg_num in crossings_to_demos[sim_crossings]:
+    #             keys[i] = global_keys[seg_num]
+    #             demo_clouds.append(global_demo_clouds[seg_num])
+    #             crit_points.append(global_crit_points[seg_num])
+    #             is_finalsegs[i] = global_is_finalsegs[seg_num]
+    #             i += 1
+    #     else:
+    #         keys = global_keys
+    #         demo_clouds = global_demo_clouds
+    #         crit_points = global_crit_points
+    #         is_finalsegs = global_is_finalsegs
     if args.parallel:
         if args.use_rotation:
             if args.use_crits:
@@ -723,15 +744,19 @@ def find_closest_auto_with_crossings(demofiles, new_xyz, init_tfm=None, n_jobs=3
         tfm_invs = []
         thetas = []
 
-        #for (i,ds_cloud) in enumerate(demo_clouds):
-        for i in keys:
+        for (i,ds_cloud) in enumerate(demo_clouds):
+        #for i in keys:
             if args.use_rotation:
                 if args.use_crits:
                     crit_pts_sim = get_critical_points_sim(new_xyz)
                     cost_i, tfm_i, tfm_inverse_i, theta_i = registration_cost_crit(demo_clouds[i], new_xyz, crit_points[i], crit_pts_sim)
                     thetas.append(theta_i)
                 else:
-                    cost_i, tfm_i, tfm_inverse_i, theta_i = registration_cost_with_rotation(ds_cloud, new_xyz)
+                    try:
+                        cost_i, tfm_i, tfm_inverse_i, theta_i = registration_cost_with_rotation(ds_cloud, new_xyz)
+                    except Exception as exc:
+                        print exc
+                        import IPython; IPython.embed()
             else:
                 cost_i, tfm_i, tfm_inverse_i = registration_cost_and_tfm(ds_cloud, new_xyz)                    
             costs.append(cost_i)
@@ -747,6 +772,94 @@ def find_closest_auto_with_crossings(demofiles, new_xyz, init_tfm=None, n_jobs=3
     #for now, assume only one demotype at a time
     return (keys[choice_ind][1],keys[choice_ind][2]) , is_finalsegs[choice_ind], tfms[choice_ind]
 
+
+def segment_demo(sim_xyz, seg_group):
+    from knot_classifier import remove_last_crossing
+    sim_crossings, crossings_locations, crossings_inds = calculateCrossings(sim_xyz, True)
+    labeled_points = seg_group["labeled_points"][:]
+    depth_image = seg_group["depth"][:]
+
+    demo_crossings = []
+    for i in range(len(labeled_points)):
+        if seg_group["labeled_points"][i][2] != 0:
+            demo_crossings.append(seg_group["labeled_points"][i][2])
+
+    if len(sim_crossings) == 0:
+        demo_xyz = xy_to_XYZ_array(labeled_points, depth_image)
+        demo_xyz = rope_initialization.unif_resample(demo_xyz,len(sim_xyz)) #resample to smooth it out
+        return demo_xyz
+
+    if labeled_points[-1][2] != 0:
+        demo_xyz = xy_to_XYZ_array(labeled_points, depth_image)
+        demo_xyz = rope_initialization.unif_resample(demo_xyz,len(sim_xyz)) #resample to smooth it out
+        return demo_xyz
+
+    if (sim_crossings != demo_crossings and sim_crossings != demo_crossings[::-1]):
+        if len(sim_crossings) == len(demo_crossings)-2 and len(sim_crossings) >= 4:
+            print "remove last demo crossing"
+            labeled_points = remove_last_crossing(labeled_points)
+        elif len(sim_crossings) == len(demo_crossings)+2 and len(demo_crossings) >= 4:
+            print "remove last sim crossing"
+            ind1, ind2 = remove_last_crossing(crossings_locations, get_inds=True)
+            del crossings_inds[ind1]; del crossings_inds[ind2-1] #-1 because the previous index was deleted already
+            del sim_crossings[ind1]; del sim_crossings[ind2-1]
+
+    if (sim_crossings != demo_crossings) and sim_crossings != demo_crossings[::-1]:
+        if len(sim_crossings) == len(demo_crossings):
+            print "somethins up"
+            #import IPython; IPython.embed()
+        demo_xyz = xy_to_XYZ_array(labeled_points, depth_image)
+        demo_xyz = rope_initialization.unif_resample(demo_xyz,len(sim_xyz)) #resample to smooth it out
+        return demo_xyz
+
+    segs = get_rope_segments(labeled_points, depth_image)
+    if len(segs) != len(crossings_inds)+1:
+        print "\n\nwrong number of segments\n\n"
+        import IPython
+        IPython.embed()
+
+    new_segs = []
+    demo_xyz = rope_initialization.unif_resample(segs[0], crossings_inds[0])
+    new_segs.append(demo_xyz)
+    for i in range(1, len(segs)-1):
+        seg_xyz = rope_initialization.unif_resample(segs[i], crossings_inds[i]-crossings_inds[i-1]+1)
+        seg_xyz = seg_xyz[1:] #remove duplicate point
+        new_segs.append(seg_xyz)
+        demo_xyz = np.vstack([demo_xyz, seg_xyz])
+    try:
+        seg_xyz = rope_initialization.unif_resample(segs[-1], len(sim_xyz)-crossings_inds[-1]+1)
+    except Exception as exc:
+        print exc
+        import IPython; IPython.embed()
+    seg_xyz = seg_xyz[1:] #remove duplicate point
+    new_segs.append(seg_xyz)
+    demo_xyz = np.vstack([demo_xyz, seg_xyz])
+        
+    if len(demo_xyz) != len(sim_xyz):
+        print "\n\narray lengths do not match\n\n"
+    if not args.no_display:
+        plot_transform_mlab(sim_xyz, demo_xyz, demo_xyz, [np.array(seg) for seg in new_segs])
+    #import IPython; IPython.embed()
+
+    # if sim_crossings != demo_crossings:
+    #     demo_xyz = demo_xyz[::-1]
+    return np.array(demo_xyz)
+
+def get_rope_segments(labeled_points, depth_image):
+    segs = []; cur_seg = []
+    demo_xyz = xy_to_XYZ_array(labeled_points, depth_image)
+    for i in range(len(demo_xyz)):
+        cur_seg.append(demo_xyz[i])
+        if labeled_points[i][2] != 0: #point is a crossing
+            segs.append(cur_seg)
+            cur_seg = [demo_xyz[i]]
+        if i == len(demo_xyz)-1: #last point
+            segs.append(cur_seg)
+            if len(cur_seg) == 1:
+                import IPython; IPython.embed()
+    return segs
+
+
 def match_crossings(demofiles, keys, costs, tfms, tfm_invs, init_tfm, dclouds, crit_points, thetas, new_xyz):
     
     print "matching crossings"
@@ -755,55 +868,68 @@ def match_crossings(demofiles, keys, costs, tfms, tfm_invs, init_tfm, dclouds, c
     #^ avoid using downsampled cloud as points are "out of order".
     cost_inds = np.argsort(costs)
 
-    #if args.use_crits:
-    #    cost_inds = np.arange(len(costs)) #first few cost inds sorted by rotation cost (i.e. no critical points)
-
     for demofile in demofiles:
         equiv = calculateMdp(demofile)
         if tuple(sim_crossings) not in equiv and tuple(reversed(sim_crossings)) not in equiv:
             print sim_crossings, "not in equiv"
             return np.argmin(costs)
     for choice_ind in cost_inds: #check best TPS fit against crossings match
+        sim_crossings, crossings_locations = calculateCrossings(sim_xyz)
         demotype_num, demo, seg = keys[choice_ind]
+        print demo, seg, "\n"
         seg_group = demofiles[demotype_num][demo][seg]
         demo_pattern = []
-        for crossing in seg_group["crossings"]:
-            demo_pattern.append(crossing[2])
+        for point in seg_group["labeled_points"]:
+            if point[2] != 0:
+                demo_pattern.append(point[2])
 
         demo_pointcloud = dclouds[choice_ind]
         orig_demo = (dclouds[choice_ind] - init_tfm[:3,3][None,:]).dot(np.linalg.pinv(init_tfm[:3,:3]).T)
 
-        crit1 = get_critical_points_sim(sim_xyz) #crossings/ends of simulated rope
-        crit2 = get_critical_points_demo(seg_group) #crossings of original demonstration
-        crit3 = (tfm_invs[choice_ind].transform_points(crit1) - init_tfm[:3,3][None,:]).dot(np.linalg.pinv(init_tfm[:3,:3]).T)
-        crit4 = tfms[choice_ind].transform_points(crit2.dot(init_tfm[:3,:3].T)+init_tfm[:3,3][None,:])
-
+        try:
+            crit1 = get_critical_points_sim(sim_xyz) #crossings/ends of simulated rope
+            crit3 = (tfm_invs[choice_ind].transform_points(crit1) - init_tfm[:3,3][None,:]).dot(np.linalg.pinv(init_tfm[:3,:3]).T)
+            crit2 = get_critical_points_demo(seg_group) #crossings of original demonstration
+            if crit2 == None:
+                print "tried to match rope with no crossings"
+                plot_transform_mlab(demo_pointcloud, sim_xyz, orig_demo, [crit1, crit3, crit3])
+                continue
+            crit4 = tfms[choice_ind].transform_points(crit2.dot(init_tfm[:3,:3].T)+init_tfm[:3,3][None,:])
+        except Exception as exc:
+            import IPython
+            IPython.embed()
         flat_points = [clouds.XYZ_to_xy(*pt) for pt in crit3]
         xystart, xyfinish = flat_points[0], flat_points[1]
 
         if seg_group["ends"] and seg_group["ends"].shape[0] > 0:   #ends info exists and is not empty
             ends_cost = [np.linalg.norm(crit1[0] - crit4[0])+np.linalg.norm(crit1[-1] - crit4[-1]), np.linalg.norm(crit1[-1] - crit4[0])+np.linalg.norm(crit1[0] - crit4[-1])]
+            #ends_cost = [np.array([np.linalg.norm(sim_xyz[i]-demo_pointcloud[i]) for i in range(len(sim_xyz))]), np.array([np.linalg.norm(sim_xyz[i]-demo_pointcloud[-i-1]) for i in range(len(sim_xyz))])]
             points_cost = [0,0]
             if len(crit1) != len(crit2):
                 print "array of critical points in demonstration is different length from simulation"
-                continue
-            else:
-                for i in range(len(crit1)):
-                    points_cost[0] += np.linalg.norm(crit1[i] - crit4[i])
-                    points_cost[1] += np.linalg.norm(crit1[-1-i] - crit4[i])
+                if len(crit1) == len(crit2) + 2 and len(crit1) > 6:
+                    ind1, ind2 = remove_last_crossing(crossings_locations, get_inds=True)
+                    del sim_crossings[ind1]; del sim_crossings[ind2-1]
+                    crit1 = np.vstack([crit1[:ind1],crit1[ind1+1:]]); crit1 = np.vstack([crit1[:ind2-1],crit1[ind2:]])
+                else:
+                    continue
+            for i in range(len(crit1)):
+                points_cost[0] += np.linalg.norm(crit1[i] - crit4[i])
+                points_cost[1] += np.linalg.norm(crit1[-1-i] - crit4[i])
             if np.ma.min(ends_cost) > 100:
                 print "ends cost too high, abandon demo?"
             if np.ma.min(points_cost) > (len(crit1)*20):
                 print "points cost too high, abandon demo?"
             if np.argmin(ends_cost) != 0:
                 print "swapped ends to improve ends cost"
+                # import IPython; IPython.embed()
                 demo_pattern.reverse()
 
         if not args.no_display:
-            plot_transform_mlab(demo_pointcloud, sim_xyz, orig_demo, crit1, crit2, crit3)
+            plot_transform_mlab(demo_pointcloud, sim_xyz, orig_demo, [crit1, crit2, crit3])
             plot_crossings_2d(flat_points, seg_group)
-            import IPython
-            IPython.embed()
+            segment_demo(sim_xyz, seg_group)
+            import IPython; IPython.embed()
 
         if demo_pattern == sim_crossings:
             print "match found directly"
@@ -833,16 +959,17 @@ def match_crossings(demofiles, keys, costs, tfms, tfm_invs, init_tfm, dclouds, c
     return np.argmin(costs)
 
 
-def plot_transform_mlab(demo_pointcloud, sim_xyz, orig_demo,  critical_points, critical_points2, critical_points3):
+def plot_transform_mlab(demo_pointcloud, sim_xyz, orig_demo, critical_points_arrays=[], colors=[]):
     from mayavi import mlab; mlab.figure(0, size=(700,650)); mlab.clf()
     plt = mlab.points3d(demo_pointcloud[:,0], demo_pointcloud[:,1], demo_pointcloud[:,2], color=(0,1,0), scale_factor=0.005) #with true/good init tfm
     plt = mlab.points3d(sim_xyz[:,0], sim_xyz[:,1], sim_xyz[:,2], np.linspace(100,110,len(sim_xyz)), scale_factor=0.0001)
     plt = mlab.points3d(orig_demo[:,0], orig_demo[:,1], orig_demo[:,2], np.linspace(100,110,len(orig_demo)), scale_factor=0.00005)
-    plt = mlab.points3d(sim_xyz[0,0], sim_xyz[0,1], sim_xyz[0,2], color=(0,1,1), scale_factor=0.02)   #endpoint of the simulated rope
-    plt = mlab.points3d(critical_points[:,0], critical_points[:,1], critical_points[:,2], color=(0,1,0), scale_factor=0.015)
-    plt = mlab.points3d(critical_points2[:,0], critical_points2[:,1], critical_points2[:,2], color=(1,1,0), scale_factor=0.02)
-    plt = mlab.points3d(critical_points3[:,0], critical_points3[:,1], critical_points3[:,2], color=(1,0,0), scale_factor=0.015)
-
+    plt = mlab.points3d(sim_xyz[0,0], sim_xyz[0,1], sim_xyz[0,2], color=(0,1,1), scale_factor=0.02)   #start point of the simulated rope
+    color_ind = 0
+    for array in critical_points_arrays:
+        if colors == []: colors = [(1,0,0), (0,1,0), (0,0,1), (1,1,0), (0,1,1), (1,0,1), (1,1,1), (0,0,0)]
+        plt = mlab.points3d(array[:,0], array[:,1], array[:,2], color=colors[color_ind], scale_factor=0.015)
+        color_ind += 1
 
 def plot_crossings_2d(critical_points, seg_group):
     from matplotlib import pyplot as plt
@@ -1256,6 +1383,7 @@ def main():
 
             # if the first step in rope simulation
             rope_nodes = rope_initialization.find_path_through_point_cloud(fake_xyz)
+
             Globals.sim.create(rope_nodes)
             fake_xyz = Globals.sim.observe_cloud(3)
             fake_xyz = clouds.downsample(fake_xyz, args.cloud_downsample)

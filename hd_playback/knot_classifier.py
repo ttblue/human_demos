@@ -52,13 +52,14 @@ def calculateIntersections(rope_nodes):
                 intersections[j_node, i_node] = intersect[1]
     return intersections
 
-def calculateCrossings(rope_nodes):
+def calculateCrossings(rope_nodes, get_inds=False):
     """
     Returns a list of crossing patterns by following the rope nodes; +1 for overcrossings and -1 for undercrossings.
     """
     intersections = calculateIntersections(rope_nodes)
     crossings = []
     points = []
+    inds = []
     #links_to_cross_info = {}
     #curr_cross_id = 1
     for i_link in range(intersections.shape[0]):
@@ -70,6 +71,7 @@ def calculateCrossings(rope_nodes):
             i_over_j = 1 if i_link_z > j_link_z else -1
             crossings.append(i_over_j)
             points.append(rope_nodes[i_link])
+            inds.append(i_link)
 #             link_pair_id = (min(i_link,j_link), max(i_link,j_link))
 #             if link_pair_id not in links_to_cross_info:
 #                 links_to_cross_info[link_pair_id] = []
@@ -82,6 +84,8 @@ def calculateCrossings(rope_nodes):
 #             dt_code[cross_info[1][0]/2] = i_over_j * cross_info[0][0]
 #         else:
 #             dt_code[cross_info[0][0]/2] = i_over_j * cross_info[1][0]
+    if get_inds:
+        return crossings, np.array(points), inds
     return crossings, np.array(points)
 
 def crossingsToString(crossings):
@@ -93,8 +97,8 @@ def crossingsToString(crossings):
             s += 'u'
     return s
 
-#returns a dictionary indexed by location, returns the corresponding point at that location
-def cluster_points(points):
+#returns a dictionary indexed by location, which stores the corresponding point at that location
+def cluster_points(points): #points is an array of coordinates in any-dimensional space
     pairs = {}
     for i in range(len(points)):
         if i not in pairs:
@@ -114,6 +118,21 @@ def cluster_points2(points):
     from scipy import cluster
     new_points = cluster.vq.kmeans(points, len(points)/2)[0]
     return new_points #order not guaranteed!
+
+
+def remove_last_crossing(labeled_points, get_inds=False): 
+    """
+    labeled_points is a numpy array of the form [[x0,y0,c0], [x1,y1,c1]... [xn,yn,cn]]
+    where ci={-1,1} signifies a crossing and ci=0 indicates no crossing at that point.
+    get_inds means return the indices of the crossing which was removed
+    """
+    crossings_inds = [i for i in range(len(labeled_points)) if labeled_points[i][2] != 0]
+    pairs = cluster_points(labeled_points[:,:-1])
+    if get_inds:
+        return pairs[crossings_inds[-1]], crossings_inds[-1] #always in order earlier, later
+    labeled_points[pairs[crossings_inds[-1]]][-1] = 0
+    labeled_points[crossings_inds[-1]][-1] = 0
+    return labeled_points
 
 
 #rope_nodes is an nx3 numpy array of the points of n control points of the rope

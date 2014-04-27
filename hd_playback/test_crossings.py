@@ -29,17 +29,17 @@ def main():
     for i in range(int(args.demo_start), int(args.demo_end)):
         demo = hdf.keys()[i]
         fake_data_demo = "--fake_data_demo="+demo
-        non_cross_call = "python do_task_floating.py --demo_type="+args.demo_type+" --fake_data_demo="+demo+" --fake_data_segment=seg00 --use_ar_init --select=auto --test_success --no_display --step=100"
-        cross_call = "python do_task_floating.py --demo_type="+args.demo_type+" --fake_data_demo="+demo+" --fake_data_segment=seg00 --use_ar_init --select=auto --use_crossings --use_rotation --use_crits --test_success --no_display --step=100"
-        # try:
-        #     ncs = subprocess.call(non_cross_call.split())
-        # except:
-        #     ncs = 1
+        non_cross_call = "python do_task_floating.py --demo_type="+args.demo_type+" --fake_data_demo="+demo+" --fake_data_segment=seg00 --use_ar_init --select=auto --use_crossings --use_rotation --use_crits --test_success --no_display --step=100"
+        cross_call = "python do_task_floating.py --demo_type="+args.demo_type+" --fake_data_demo="+demo+" --fake_data_segment=seg00 --use_ar_init --select=auto --use_crossings --use_rotation --test_success --no_display --step=100"
+        try:
+            ncs = subprocess.call(non_cross_call.split())
+        except:
+            ncs = 1
         savefile = open(args.name, 'a')
-        # if ncs != 0:
-        #     baseline_failures.append(demo)
-        #     savefile.write("Baseline failure: " + demo +"\n")
-        #     print "baseline version failed"
+        if ncs != 0:
+            baseline_failures.append(demo)
+            savefile.write("Baseline failure: " + demo +"\n")
+            print "baseline version failed"
         try:
             cs = subprocess.call(cross_call.split())
         except:

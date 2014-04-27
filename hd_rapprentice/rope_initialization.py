@@ -21,10 +21,7 @@ def find_path_through_point_cloud(xyzs, plotting=False, perturb_peak_dist=None, 
         mlab.figure(1); mlab.clf()
         plot_graph_3d(S)
 
-    #import pdb; pdb.set_trace()
-
     S,segs = prune_skeleton(S, segs)
-    #reshape_skeleton(S)
 
     if plotting: 
         from mayavi import mlab
@@ -107,6 +104,7 @@ def find_path_through_point_cloud(xyzs, plotting=False, perturb_peak_dist=None, 
 
     return total_path_3d
     
+    
 def prune_skeleton(S, segs):
     bad_segs = []
     bad_nodes = []
@@ -118,46 +116,6 @@ def prune_skeleton(S, segs):
     for seg in bad_segs: segs.remove(seg)
     for node in bad_nodes: S.remove_node(node)
     return S, segs
-
-def reshape_skeleton(S):
-    import copy
-    for node in S.node:
-        if S.node[node]['crit'] and S.degree(node) != 4:
-            neighbors = copy.deepcopy(S.adj[node])
-            for nei in neighbors:
-                if S.degree(nei) == 3:
-                    #relink nodes to have even degree
-                    closest_neighbor = None
-                    min_dist = float('inf')
-                    for nei2 in S.adj[nei]:
-                        if nei2 == node: continue
-                        dist = np.linalg.norm(S.node[nei2]['xyz']-S.node[node]['xyz'])
-                        if dist < min_dist:
-                            min_dist = dist
-                            closest_neighbor = nei2
-                    S.remove_edge(nei, closest_neighbor)
-                    S.add_edge(node, closest_neighbor)
-    for node in S.node:
-        for nei in S.adj[node]:
-            if S.degree(nei) == S.degree(node) == 3:
-                #relink nodes to have even degree
-                if S.node[node]['crit']:
-                    other_node = nei
-                    critnode = node
-                elif S.node[nei]['crit']:
-                    other_node = node
-                    critnode = nei
-                closest_neighbor = None
-                min_dist = float('inf')
-                for nei2 in S.adj[other_node]:
-                    if nei2 == critnode: continue
-                    dist = np.linalg.norm(S.node[nei2]['xyz']-S.node[critnode]['xyz'])
-                    if dist < min_dist:
-                        min_dist = dist
-                        closest_neighbor = nei2
-                S.remove_edge(other_node, closest_neighbor)
-                S.add_edge(critnode, closest_neighbor)
-
 
 
 def get_skeleton_points(xyzs):
@@ -213,7 +171,7 @@ def points_to_graph(xyzs, max_dist):
 def skeletonize_graph(G, resolution, crits=[]):
     #G = largest_connected_component(G)
     partitions = []
-    for SG in nx.connected_component_subgraphs(G): #most ropes will have only 1 CC
+    for SG in nx.connected_component_subgraphs(G): #ropes should have only 1 CC
         calc_distances(SG)
         partitions.extend(calc_reeb_partitions(SG,resolution)) #divide into partitions
     node2part = {}
