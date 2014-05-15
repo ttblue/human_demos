@@ -52,7 +52,7 @@ def calculateIntersections(rope_nodes):
                 intersections[j_node, i_node] = intersect[1]
     return intersections
 
-def calculateCrossings(rope_nodes, get_inds=False):
+def calculateCrossings(rope_nodes, get_points=False, get_inds=False):
     """
     Returns a list of crossing patterns by following the rope nodes; +1 for overcrossings and -1 for undercrossings.
     """
@@ -60,8 +60,8 @@ def calculateCrossings(rope_nodes, get_inds=False):
     crossings = []
     points = []
     inds = []
-    #links_to_cross_info = {}
-    #curr_cross_id = 1
+    links_to_cross_info = {} # Contains under-over crossing and crossing id info
+    curr_cross_id = 1
     for i_link in range(intersections.shape[0]):
         j_links = sorted(range(intersections.shape[1]), key=lambda j_link: intersections[i_link,j_link])
         j_links = [j_link for j_link in j_links if intersections[i_link,j_link] != -1]
@@ -72,21 +72,30 @@ def calculateCrossings(rope_nodes, get_inds=False):
             crossings.append(i_over_j)
             points.append(rope_nodes[i_link])
             inds.append(i_link)
-#             link_pair_id = (min(i_link,j_link), max(i_link,j_link))
-#             if link_pair_id not in links_to_cross_info:
-#                 links_to_cross_info[link_pair_id] = []
-#             links_to_cross_info[link_pair_id].append((curr_cross_id, i_over_j))
-#             curr_cross_id += 1
-#     # make sure rope is closed
-#     dt_code = [0]*len(links_to_cross_info)
-#     for cross_info in links_to_cross_info.values():
-#         if cross_info[0][0]%2 == 0:
-#             dt_code[cross_info[1][0]/2] = i_over_j * cross_info[0][0]
-#         else:
-#             dt_code[cross_info[0][0]/2] = i_over_j * cross_info[1][0]
+            link_pair_id = (min(i_link,j_link), max(i_link,j_link))
+            if link_pair_id not in links_to_cross_info:
+                links_to_cross_info[link_pair_id] = []
+            links_to_cross_info[link_pair_id].append((curr_cross_id, i_over_j))
+            curr_cross_id += 1
+    # make sure rope is closed -- each crossing should have an odd and even code
+    rope_closed = True
+    cross_pairs = set() # Set of tuples (a,b) where a and b are the indices of
+                         # the over and under crossing-pair corresponding to the same crossing
+    for cross_info in links_to_cross_info.values():
+        if cross_info[0][0]%2 == cross_info[1][0]%2:
+            rope_closed = False
+        cross_pairs.add((cross_info[0][0], cross_info[1][0]))
+    # dt_code = [0]*len(links_to_cross_info)
+    # for cross_info in links_to_cross_info.values():
+    # if cross_info[0][0]%2 == 0:
+    # dt_code[cross_info[1][0]/2] = i_over_j * cross_info[0][0]
+    # else:
+    # dt_code[cross_info[0][0]/2] = i_over_j * cross_info[1][0]
+    if get_points:
+        return (crossings, points)
     if get_inds:
-        return crossings, np.array(points), inds
-    return crossings, np.array(points)
+        return (crossings, inds)
+    return (crossings, cross_pairs, rope_closed)
 
 def crossingsToString(crossings):
     s = ''
@@ -97,81 +106,76 @@ def crossingsToString(crossings):
             s += 'u'
     return s
 
-#returns a dictionary indexed by location, which stores the corresponding point at that location
-def cluster_points(points): #points is an array of coordinates in any-dimensional space
-    pairs = {}
-    for i in range(len(points)):
-        if i not in pairs:
-            min_dist = 50
-            min_ind = None
-            for j in range(len(points)):
-                dist = np.linalg.norm(points[i]-points[j])
-                if dist < min_dist and j != i:
-                    min_dist = dist
-                    min_ind = j
-            pairs[i] = min_ind
-            pairs[min_ind] = i
-    return pairs
+def crossings_match(cross_pairs, top, s):
+    # cross_pairs: Set of tuples (a,b) where a and b are the indices of
+    # the over and under crossing-pair corresponding to the same crossing
+    i = s.find(top) + 1 # Add 1, since the crossing pairs are 1-indexed
+    if len(top) == 6:
+        return (i,i+3) in cross_pairs and (i+1,i+4) in cross_pairs and \
+               (i+2,i+5) in cross_pairs
+    if len(top) == 8:
+        return (i,i+5) in cross_pairs and (i+1,i+4) in cross_pairs and \
+               (i+2,i+7) in cross_pairs and (i+3,i+6) in cross_pairs
 
-
-def cluster_points2(points):
-    from scipy import cluster
-    new_points = cluster.vq.kmeans(points, len(points)/2)[0]
-    return new_points #order not guaranteed!
-
-
-def remove_last_crossing(labeled_points, get_inds=False): 
-    """
-    labeled_points is a numpy array of the form [[x0,y0,c0], [x1,y1,c1]... [xn,yn,cn]]
-    where ci={-1,1} signifies a crossing and ci=0 indicates no crossing at that point.
-    get_inds means return the indices of the crossing which was removed
-    """
-    crossings_inds = [i for i in range(len(labeled_points)) if labeled_points[i][2] != 0]
-    pairs = cluster_points(labeled_points[:,:-1])
-    if get_inds:
-        return pairs[crossings_inds[-1]], crossings_inds[-1] #always in order earlier, later
-    labeled_points[pairs[crossings_inds[-1]]][-1] = 0
-    labeled_points[crossings_inds[-1]][-1] = 0
-    return labeled_points
-
+def crossings_var_match(cross_pairs, top, s):
+    i = s.find(top) + 1
+    if len(top) == 8:
+        return (i,i+4) in cross_pairs and (i+1,i+5) in cross_pairs and \
+               (i+2,i+6) in cross_pairs and (i+3,i+7) in cross_pairs
 
 #rope_nodes is an nx3 numpy array of the points of n control points of the rope
-def isKnot(rope_nodes, rdm1=False):
-    crossings, coords = calculateCrossings(rope_nodes)
+def isKnot(rope_nodes, rdm1=True):
+    (crossings, cross_pairs, rope_closed) = calculateCrossings(rope_nodes)
     if rdm1: #apply Reidemeister move 1 where possible
-        pairs = cluster_points(coords)
-        for i in pairs:
-            if i == pairs[i]-1:
-                crossings[i] = "x"
-                crossings[i+1] = "x"
+        inds = np.sort(np.array(list(cross_pairs)).flatten())
+        position = {}
+        for i in inds:
+            position[i] = np.where(inds==i)[0][0]
+        for (o,u) in cross_pairs:
+            if position[o] == position[u]-1:
+                crossings[position[o]] = 'x'
+                crossings[position[u]] = 'x'
         crossings = [i for i in crossings if i != "x"]
     s = crossingsToString(crossings)
-    #knot_topologies = ['uououo', 'uoouuoou']
-    knot_topologies = ['uououo']
+    knot_topologies = ['uououo', 'uoouuoou']
     for top in knot_topologies:
-        if top in s:
-            return True
-        if top[::-1] in s:
-            return True
         flipped_top = top.replace('u','t').replace('o','u').replace('t','o')
-        if flipped_top in s:
+        if top in s and crossings_match(cross_pairs, top, s):
             return True
-        if flipped_top[::-1] in s:
+        if top[::-1] in s and crossings_match(cross_pairs, top[::-1], s):
             return True
+        if flipped_top in s and crossings_match(cross_pairs, flipped_top, s):
+            return True
+        if flipped_top[::-1] in s and crossings_match(cross_pairs, flipped_top[::-1], s):
+            return True
+
+    if rope_closed:
+        return False # There is no chance of it being a knot with one end
+                      # of the rope crossing the knot accidentally
+
+    # knot_topology_variations = ['ououuouo', 'ouoououu']
+    # for top in knot_topology_variations:
+    #     flipped_top = top.replace('u','t').replace('o','u').replace('t','o')
+    #     if top in s and crossings_var_match(cross_pairs, top, s):
+    #         return True
+    #     if top[::-1] in s and crossings_var_match(cross_pairs, top[::-1], s):
+    #         return True
+    #     if flipped_top in s and crossings_var_match(cross_pairs, flipped_top, s):
+    #         return True
+    #     if flipped_top[::-1] in s and crossings_match(cross_pairs, flipped_top[::-1], s):
+    #         return True
+
     return False
 
 
-def matchTopology(rope_nodes, topology, demo_type):
-    crossings, x = calculateCrossings(rope_nodes)
-    s = crossingsToString(crossings)
-    topologies = getTopologies(demo_type)
-    h5filename = osp.join("/Users/George/Downloads", demo_type + '.h5')
-    hdf = h5py.File(h5filename, 'r+')
-    equiv = calculate_mdp(hdf);
-    if s in equiv[topology]:
+def matchTopology(xyz0, xyz1):
+    (crossings0, cross_pairs0, _) = calculateCrossings(xyz0, get_points=True)
+    (crossings1, cross_pairs1, _) = calculateCrossings(xyz1, get_points=True)
+    if cross_pairs1 == cross_pairs0:
         return True
-    else: return False
-
+    else:
+        print cross_pairs1, cross_pairs0
+        return False
 
 def getTopologies(demo_type):
     topologies = []
@@ -189,6 +193,41 @@ def getTopologies(demo_type):
         topologies2.append(crossingsToString(topo))
     return topologies2
 
+
+#returns a dictionary indexed by location, which stores the corresponding point at that location
+def cluster_points(points, subset=None): 
+#points is an array of coordinates in any-dimensional space
+#subset is a subset of indices for points which must be matched to each other
+    if subset == None:
+        subset = range(len(points))
+    pairs = {}
+    for i in subset:
+        if i not in pairs:
+            min_dist = 50
+            min_ind = None
+            for j in subset:
+                dist = np.linalg.norm(points[i]-points[j])
+                if dist < min_dist and j != i:
+                    min_dist = dist
+                    min_ind = j
+            pairs[i] = min_ind
+            pairs[min_ind] = i
+    return pairs
+
+
+def remove_crossing(labeled_points, index): 
+    """
+    labeled_points is a numpy array of the form [[x0,y0,(z0),c0], [x1,y1,(z1),c1]... [xn,yn,(zn),cn]]
+    where ci={-1,1} signifies a crossing and ci=0 indicates no crossing at that point.
+    unlabel the index-th crossing and return the array with those labels set to 0.
+    """
+    import copy
+    new_points = copy.copy(labeled_points)
+    crossings_inds = [i for i in range(len(labeled_points)) if labeled_points[i][-1] != 0]
+    pairs = cluster_points(new_points[:,:-1], crossings_inds)
+    new_points[pairs[crossings_inds[index]]][-1] = 0
+    new_points[crossings_inds[index]][-1] = 0
+    return new_points
 
 """
 Creates a dictionary of equivalent states.

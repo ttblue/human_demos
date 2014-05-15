@@ -30,7 +30,7 @@ def main():
         demo = hdf.keys()[i]
         fake_data_demo = "--fake_data_demo="+demo
         non_cross_call = "python do_task_floating.py --demo_type="+args.demo_type+" --fake_data_demo="+demo+" --fake_data_segment=seg00 --use_ar_init --select=auto --use_crossings --use_rotation --use_crits --test_success --no_display --step=100"
-        cross_call = "python do_task_floating.py --demo_type="+args.demo_type+" --fake_data_demo="+demo+" --fake_data_segment=seg00 --use_ar_init --select=auto --use_crossings --use_rotation --test_success --no_display --step=100"
+        cross_call = "python do_task_floating.py --demo_type="+args.demo_type+" --fake_data_demo="+demo+" --fake_data_segment=seg00 --use_ar_init --select=auto --use_crossings --use_rotation --use_crits --test_success --no_display --step=100 --force_points"
         try:
             ncs = subprocess.call(non_cross_call.split())
         except:
