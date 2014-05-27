@@ -86,7 +86,7 @@ class FloatingGripper(object):
             return False
     
         # check that pt is within the finger width
-        if abs(pt_local[0]) > .01 + tol:
+        if abs(pt_local[0]) > .009 + tol:
             return False
     
         # check that pt is between the fingers

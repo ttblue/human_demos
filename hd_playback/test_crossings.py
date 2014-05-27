@@ -31,27 +31,44 @@ def main():
         fake_data_demo = "--fake_data_demo="+demo
         non_cross_call = "python do_task_floating.py --demo_type="+args.demo_type+" --fake_data_demo="+demo+" --fake_data_segment=seg00 --use_ar_init --select=auto --use_crossings --use_rotation --use_crits --test_success --no_display --step=100"
         cross_call = "python do_task_floating.py --demo_type="+args.demo_type+" --fake_data_demo="+demo+" --fake_data_segment=seg00 --use_ar_init --select=auto --use_crossings --use_rotation --use_crits --test_success --no_display --step=100 --force_points"
+        #import IPython; IPython.embed()
+        savefile = open(osp.join("test_results", args.name), 'a')
         try:
-            ncs = subprocess.call(non_cross_call.split())
-        except:
-            ncs = 1
-        savefile = open(args.name, 'a')
-        if ncs != 0:
+            out = subprocess.check_output(non_cross_call.split())
+        except Exception as exc:
+            err_msg = exc.output.split("\n")[-2]
             baseline_failures.append(demo)
-            savefile.write("Baseline failure: " + demo +"\n")
-            print "baseline version failed"
+            savefile.write("Baseline failure: " + demo + ": " + err_msg + "\n")
+            print "Baseline failure: " + demo + ": " + err_msg + "\n"
+            savefile.flush()
         try:
-            cs = subprocess.call(cross_call.split())
-        except:
-            cs = 1
-        if cs != 0:
+            out = subprocess.check_output(cross_call.split())
+        except Exception as exc:
+            err_msg = exc.output.split("\n")[-2]
             crossings_failures.append(demo)
-            savefile.write("Crossings failure: " + demo +"\n")
-            print "crossings version failed"
+            savefile.write("Crossings failure: " + demo + ": " + err_msg + "\n")
+            print "Crossings failure: " + demo + ": " + err_msg + "\n"
+        # try:
+        #     ncs = subprocess.call(non_cross_call.split())
+        # except:
+        #     ncs = 1
+        # savefile = open(osp.join("test_results", args.name), 'a')
+        # if ncs != 0:
+        #     baseline_failures.append(demo)
+        #     savefile.write("Baseline failure: " + demo +"\n")
+        #     print "baseline version failed"
+        # try:
+        #     cs = subprocess.call(cross_call.split())
+        # except:
+        #     cs = 1
+        # if cs != 0:
+        #     crossings_failures.append(demo)
+        #     savefile.write("Crossings failure: " + demo +"\n")
+        #     print "crossings version failed"
         savefile.close()
         #IPython.embed()
     print "crossings failures:", crossings_failures, "\nbaseline failures:", baseline_failures
-    savefile = open(args.name, 'a')
+    savefile = open(osp.join("test_results", args.name), 'a')
     savefile.write("Crossings_failures: " + str(len(crossings_failures)) + "\n")
     for item in crossings_failures:
         savefile.write("   " + str(item)+"\n")
@@ -64,3 +81,5 @@ def main():
 
 if __name__=="__main__":
     main()
+
+

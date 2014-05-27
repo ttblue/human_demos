@@ -3,7 +3,7 @@ import cv2, argparse, h5py
 import os.path as osp
 
 #from hd_utils.defaults import demo_files_dir
-demo_files_dir = '/Users/George/Downloads'
+demo_files_dir = '/home/george/human_demos_DATA/demos'
 
 usage = """
 To view and label all demos of a certain task type:
@@ -285,7 +285,8 @@ if __name__ == "__main__":
     should_label_ends = args.label_ends
     demo_name = args.demo_name
     verify = args.verify
-    h5filename = osp.join(demo_files_dir, demo_type + '.h5')
+    h5filename = osp.join(demo_files_dir, demo_type, demo_type + '.h5')
+    print h5filename
     hdf = h5py.File(h5filename, 'r+')
     #refactor(hdf)
 

@@ -271,6 +271,12 @@ def tps_rpm_bij(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_in
             prob_nm[:,-(j+1)] = 0
             prob_nm[-(j+1), -(j+1)] = 1
 
+        if i == 0 and len(x_nd) == len(y_md) and critical_points != len(x_nd): #initialize correspondence
+            for j in range(len(x_nd)):
+                prob_nm[-(j+1),:] = 0
+                prob_nm[:,-(j+1)] = 0
+                prob_nm[-(j+1), -(j+1)] = 1
+
         corr_nm, r_N, _ =  balance_matrix3(prob_nm, 10, 1e-1, 2e-1)
         corr_nm += 1e-9
         
