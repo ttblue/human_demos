@@ -38,16 +38,16 @@ def main():
         except Exception as exc:
             err_msg = exc.output.split("\n")[-2]
             baseline_failures.append(demo)
-            savefile.write("Baseline failure: " + demo + ": " + err_msg + "\n")
-            print "Baseline failure: " + demo + ": " + err_msg + "\n"
+            savefile.write("Initialization failure: " + demo + ": " + err_msg + "\n")
+            print "Initialization failure: " + demo + ": " + err_msg + "\n"
             savefile.flush()
         try:
             out = subprocess.check_output(cross_call.split())
         except Exception as exc:
             err_msg = exc.output.split("\n")[-2]
             crossings_failures.append(demo)
-            savefile.write("Crossings failure: " + demo + ": " + err_msg + "\n")
-            print "Crossings failure: " + demo + ": " + err_msg + "\n"
+            savefile.write("Forced crossing match failure: " + demo + ": " + err_msg + "\n")
+            print "Forced crossing match failure: " + demo + ": " + err_msg + "\n"
         # try:
         #     ncs = subprocess.call(non_cross_call.split())
         # except:
@@ -66,13 +66,14 @@ def main():
         #     savefile.write("Crossings failure: " + demo +"\n")
         #     print "crossings version failed"
         savefile.close()
+        print "finished demo", demo
         #IPython.embed()
-    print "crossings failures:", crossings_failures, "\nbaseline failures:", baseline_failures
+    print "Forced crossing match failures:", crossings_failures, "\nInitialization failures:", baseline_failures
     savefile = open(osp.join("test_results", args.name), 'a')
-    savefile.write("Crossings_failures: " + str(len(crossings_failures)) + "\n")
+    savefile.write("Forced crossing match_failures: " + str(len(crossings_failures)) + "\n")
     for item in crossings_failures:
         savefile.write("   " + str(item)+"\n")
-    savefile.write("Baseline failures: " + str(len(baseline_failures)) + "\n")
+    savefile.write("Initialization failures: " + str(len(baseline_failures)) + "\n")
     for item in baseline_failures:
         savefile.write("   " + str(item)+"\n")
     savefile.close()

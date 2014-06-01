@@ -177,23 +177,6 @@ def matchTopology(xyz0, xyz1):
         print cross_pairs1, cross_pairs0
         return False
 
-def getTopologies(demo_type):
-    topologies = []
-    h5filename = osp.join("/Users/George/Downloads", demo_type + '.h5')
-    hdf = h5py.File(h5filename, 'r+')
-    for demo in hdf.keys():
-        for seg in hdf[demo].keys():
-            topo = []
-            for crossing in hdf[demo][seg]['crossings']:
-                topo.append(crossing[2])
-            if topo not in topologies:
-                topologies.append(topo)
-    topologies2 = []
-    for topo in topologies:
-        topologies2.append(crossingsToString(topo))
-    return topologies2
-
-
 #returns a dictionary indexed by location, which stores the corresponding point at that location
 def cluster_points(points, subset=None): 
 #points is an array of coordinates in any-dimensional space
@@ -269,6 +252,64 @@ def calculateMdp(hdf):
             elif state1 not in equiv:
                 equiv[state1] = [state2]
     return equiv
+
+"""
+Creates a dictionary of equivalent states, using labeled_points info if it exists.
+equiv[cross_state] returns a list of all states equivalent to cross_state.
+Two states (crossings patterns) A and B are equivalent if a segment with A
+can transition into a state C that B can also transition into.
+"""
+def calculateMdp2(hdf):
+    from do_task_floating import get_labeled_rope_demo
+    stf = {}
+    equiv = {}
+    last = []
+    for demo in hdf.keys():
+        preceding = ()
+        for seg in hdf[demo].keys():
+            _, pattern = get_labeled_rope_demo(hdf[demo][seg], get_pattern=True)
+            points = tuple(pattern)
+            if preceding and preceding != points:
+                if points in stf and preceding not in stf[points]:
+                    stf[tuple(points)].append(preceding)
+                elif points not in stf:
+                    stf[tuple(points)] = [preceding]
+            if seg == hdf[demo].keys()[-1]:
+                last.append(tuple(points))
+            preceding = points
+
+    for state1 in stf.keys():
+        for state2 in stf[state1]:
+            for state in stf[state1]:
+                if tuple(state2) in equiv:
+                    equiv[tuple(state2)].append(state)
+                else:
+                    equiv[tuple(state2)] = [state]
+    for state1 in last:
+        for state2 in last:
+            if state1 in equiv and state2 not in equiv[state1]:
+                equiv[state1].append(state2)
+            elif state1 not in equiv:
+                equiv[state1] = [state2]
+    return equiv
+
+
+"""
+Gives dictionary of topologies and corresponding demo/segments.
+"""
+def get_topology_dict(hdf):
+    topos = {}
+    for demo in hdf.keys():
+        preceding = ()
+        for seg in hdf[demo].keys():
+            if hdf[demo][seg]['crossings'].shape[0] == 0:
+                continue
+            pattern = tuple([c[2] for c in hdf[demo][seg]['crossings'][:]])
+            if pattern in topos.keys():
+                topos[pattern].append((demo,seg))
+            else:
+                topos[pattern] = [(demo,seg)]
+    return topos
 
 """
     todo:

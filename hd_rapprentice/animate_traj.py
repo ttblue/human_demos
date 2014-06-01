@@ -33,8 +33,8 @@ def animate_floating_traj_angs(lhmats, rhmats, ljoints, rjoints, sim, pause=True
         sim.grippers['r'].set_toolframe_transform(rhmats[i])
         if ljoints!=None and rjoints!=None:
             sim.grippers['l'].set_gripper_joint_value(ljoints[i])
-            print "l: ", ljoints[i]
+            #print "l: ", ljoints[i]
             sim.grippers['r'].set_gripper_joint_value(rjoints[i])
-            print "r: ", rjoints[i]
+            #print "r: ", rjoints[i]
         if pause: viewer.Idle()
         elif step_viewer and not i%step: viewer.Step()
