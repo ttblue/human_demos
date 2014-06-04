@@ -54,9 +54,9 @@ parser.add_argument("--no_display",action="store_true", default=False)
 parser.add_argument("--friction", help="friction value in bullet", type=float, default=1.0)
 
 parser.add_argument("--max_steps_before_failure", type=int, default=-1)
-parser.add_argument("--tps_bend_cost_init", type=float, default=1)
+parser.add_argument("--tps_bend_cost_init", type=float, default=1)#1)
 parser.add_argument("--tps_bend_cost_final", type=float, default=.001) #.001
-parser.add_argument("--tps_bend_cost_final_search", type=float, default=.00001) #.00001
+parser.add_argument("--tps_bend_cost_final_search", type=float, default=.0001) #.00001
 parser.add_argument("--tps_n_iter", type=int, default=50)
 
 parser.add_argument("--closest_rope_hack", action="store_true", default=False)
@@ -225,7 +225,7 @@ def split_trajectory_by_gripper(seg_info, pot_angle_threshold, ms_thresh=2):
 
 
 def fuzz_cloud(xyz):
-    return np.vstack([xyz, xyz+[0.003,0,0], xyz+[-0.003,0,0], xyz+[0,0.003,0], xyz+[0,-0.003,0], xyz+[0,0,0.003]])
+    return xyz #np.vstack([xyz, xyz+[0.003,0,0], xyz+[-0.003,0,0], xyz+[0,0.003,0], xyz+[0,-0.003,0], xyz+[0,0,0.003]])
 
 def rotate_about_median(xyz, theta, median=None):
     """
@@ -292,12 +292,6 @@ def get_crossings(rope_points):
     return crossings_pattern, crossings_locations
 
 def get_critical_points_sim(rope_points):
-    # crossings, crossings_locations = get_crossings(rope_points)
-    # if crossings_locations.size == 0:
-    #     crit_pts = np.vstack([rope_points[0,:], rope_points[-1,:]])
-    # else:
-    #     crit_pts = np.vstack([rope_points[0,:], crossings_locations, rope_points[-1,:]])
-    # return crit_pts
     sim_xyzc = get_labeled_rope_sim(rope_points)
     if sim_xyzc[-1][-1] != 0:
         print "remove last sim crossing (from end)"
@@ -310,19 +304,7 @@ def get_critical_points_sim(rope_points):
 
 
 def get_critical_points_demo(seg_group):
-    # crit_pts = np.empty((len(seg_group["crossings"])+2,3))
-    # depth_xyz = clouds.depth_to_xyz(seg_group['depth'][:,:])
-    # crossings_inds = np.zeros((len(crit_pts),1))
-    # for i in range(len(seg_group["crossings"])):
-    #     (x,y,_) = seg_group["crossings"][i,:]
-    #     crit_pts[i+1,:] = depth_xyz[y,x]
-    # if seg_group["ends"].shape == (0,):
-    #     return None
-    # end1, end2 = seg_group["ends"]
-    # crit_pts[0,:] = depth_xyz[end1[1], end1[0]]; crit_pts[-1,:] = depth_xyz[end2[1], end2[0]]
-    # return crit_pts
     demo_xyzc = get_labeled_rope_demo(seg_group)
-
     if demo_xyzc[-1][-1] != 0: #last point of demo is a crossing
         print "remove last demo crossing (from end)"
         demo_xyzc = remove_crossing(demo_xyzc,-1)
@@ -513,41 +495,51 @@ def get_finger_trajs(lr, traj, is_open=False):
     elif old_val > 0.2:
         print "gripper is already open"
     tt_tfm = Globals.sim.grippers[lr].get_toolframe_transform() # == robot.GetLink(lr+"_gripper_tool_frame").GetTransform()
-    l_finger_tfm = robot.GetLink("l_gripper_l_finger_tip_link").GetTransform()
-    r_finger_tfm = robot.GetLink("l_gripper_r_finger_tip_link").GetTransform()
-    Globals.sim.grippers[lr].set_gripper_joint_value(old_val)
+    # l_finger_tfm = robot.GetLink("l_gripper_l_finger_tip_link").GetTransform()
+    # r_finger_tfm = robot.GetLink("l_gripper_r_finger_tip_link").GetTransform()
+    # Globals.sim.grippers[lr].set_gripper_joint_value(old_val)
 
-    tt_to_lfinger_shift = np.linalg.inv(tt_tfm).dot(l_finger_tfm)
-    tt_to_rfinger_shift = np.linalg.inv(tt_tfm).dot(r_finger_tfm)
+    # tt_to_lfinger_shift = np.linalg.inv(tt_tfm).dot(l_finger_tfm)
+    # tt_to_rfinger_shift = np.linalg.inv(tt_tfm).dot(r_finger_tfm)
+    # # tt_to_lfinger_shift = Globals.sim.grippers[lr].tt_to_lfinger_shift
+    # # tt_to_rfinger_shift = Globals.sim.grippers[lr].tt_to_rfinger_shift
 
-    ltip_tfm = np.eye(4); ltip_tfm[:3,3] = Globals.sim.grippers[lr].link2finger['l']
-    rtip_tfm = np.eye(4); rtip_tfm[:3,3] = Globals.sim.grippers[lr].link2finger['r']
+    # ltip_tfm = np.eye(4); ltip_tfm[:3,3] = Globals.sim.grippers[lr].link2finger['l']
+    # rtip_tfm = np.eye(4); rtip_tfm[:3,3] = Globals.sim.grippers[lr].link2finger['r']
 
-    ltraj = np.array([traj[i].dot(tt_to_lfinger_shift).dot(ltip_tfm) for i in range(len(traj))])
-    rtraj = np.array([traj[i].dot(tt_to_rfinger_shift).dot(rtip_tfm) for i in range(len(traj))])
+    # ltraj = np.array([traj[i].dot(tt_to_lfinger_shift).dot(ltip_tfm) for i in range(len(traj))])
+    # rtraj = np.array([traj[i].dot(tt_to_rfinger_shift).dot(rtip_tfm) for i in range(len(traj))])
+
+    ltraj, rtraj = np.zeros((len(traj), 4, 4)), np.zeros((len(traj), 4, 4))
+    for i in range(len(traj)):
+        ltraj[i], rtraj[i] = Globals.sim.grippers[lr].get_fingertip_transforms(traj[i], Globals.sim.grippers[lr].get_gripper_joint_value())
 
     return ltraj, rtraj
 
 
-def tooltip_from_fingers(lr, avg, lhmat, rhmat):
+def tooltip_from_fingers(lr, avg, lhmat, rhmat, joint_val):
 
     robot = Globals.sim.grippers[lr].robot
 
     tt_tfm = avg
 
-    tt_to_lfinger_shift = Globals.sim.grippers[lr].tt_to_lfinger_shift
-    tt_to_rfinger_shift = Globals.sim.grippers[lr].tt_to_rfinger_shift
+    # tt_to_lfinger_shift = Globals.sim.grippers[lr].tt_to_lfinger_shift
+    # tt_to_rfinger_shift = Globals.sim.grippers[lr].tt_to_rfinger_shift
 
-    ltip_tfm = np.eye(4); ltip_tfm[:3,3] = Globals.sim.grippers[lr].link2finger['l']
-    rtip_tfm = np.eye(4); rtip_tfm[:3,3] = Globals.sim.grippers[lr].link2finger['r']
+    # ltip_tfm = np.eye(4); ltip_tfm[:3,3] = Globals.sim.grippers[lr].link2finger['l']
+    # rtip_tfm = np.eye(4); rtip_tfm[:3,3] = Globals.sim.grippers[lr].link2finger['r']
 
-    ltip = tt_tfm.dot(tt_to_lfinger_shift).dot(ltip_tfm)
-    rtip = tt_tfm.dot(tt_to_rfinger_shift).dot(rtip_tfm)
-    midtip = resampling.interp_hmats([1],[0,2], np.vstack([np.array([ltip]), np.array([rtip])]))[0]
+    # ltip = tt_tfm.dot(tt_to_lfinger_shift).dot(ltip_tfm)
+    # rtip = tt_tfm.dot(tt_to_rfinger_shift).dot(rtip_tfm)
+    # midtip = resampling.interp_hmats([1],[0,2], np.vstack([np.array([ltip]), np.array([rtip])]))[0]
 
-    shift_midtip2tt = np.linalg.inv(midtip).dot(tt_tfm)
-    ltip = ltip.dot(shift_midtip2tt)
-    rtip = rtip.dot(shift_midtip2tt)
+    # shift_midtip2tt = np.linalg.inv(midtip).dot(tt_tfm)
+    # ltip = ltip.dot(shift_midtip2tt)
+    # rtip = rtip.dot(shift_midtip2tt)
+
+    ###
+    ltip, rtip = Globals.sim.grippers[lr].get_fingertip_transforms(tt_tfm, joint_val)
+    ###
 
     y0 = rtip[:3,3]-ltip[:3,3]; y0 /= np.linalg.norm(y0)
     y1 = rhmat[:3,3]-lhmat[:3,3]; y1 /= np.linalg.norm(y1)
@@ -578,7 +570,7 @@ def joint_angles_from_fingers(ltraj, rtraj, is_open=False):
         dist = np.linalg.norm(ltraj[i,:3,3]-rtraj[i,:3,3])
         closest_dist = DIST_ANGS.keys()[np.argmin([abs(d-dist) for d in DIST_ANGS.keys()])]
         joint_angles.append(max(DIST_ANGS[closest_dist], min_val))
-        print dist, closest_dist, DIST_ANGS[closest_dist]
+        #print dist, closest_dist, DIST_ANGS[closest_dist]
     return joint_angles
 
 
@@ -651,10 +643,11 @@ def registration_cost(xyz0, xyz1, num_iters=30, critical_points=0):
     return cost
 
 def registration_cost_and_tfm(xyz0, xyz1, num_iters=30, critical_points=0):
+    #from tn_rapprentice import registration as tn_registration #tkl
     scaled_xyz0, src_params = registration.unit_boxify(xyz0)
     scaled_xyz1, targ_params = registration.unit_boxify(xyz1)
     f,g = registration.tps_rpm_bij(scaled_xyz0, scaled_xyz1, reg_init=args.tps_bend_cost_init, reg_final = args.tps_bend_cost_final_search, 
-                                                            rot_reg=np.r_[1e-4,1e-4,1e-1], n_iter=num_iters, critical_points=critical_points)
+                                                            rot_reg=np.r_[1e-4,1e-4,1e-1], n_iter=num_iters, critical_points=critical_points) #tkl
     cost = registration.tps_reg_cost(f) + registration.tps_reg_cost(g)
     g = registration.unscale_tps_3d(g, targ_params, src_params)
     f = registration.unscale_tps_3d(f, src_params, targ_params)
@@ -667,7 +660,7 @@ def registration_cost_with_rotation(xyz0, xyz1, critical_points=0):
     costs = np.zeros(len(rad_angs))
     for i in range(len(rad_angs)):
         rotated_demo = rotate_about_median(xyz0, rad_angs[i])
-        costs[i] = registration_cost(rotated_demo, xyz1, 3, critical_points=critical_points)#critical_points)
+        costs[i] = registration_cost(rotated_demo, xyz1, 3, critical_points=critical_points)
     theta = rad_angs[np.argmin(costs)]
     rotated_demo = rotate_about_median(xyz0, theta)
     cost, f, g = registration_cost_and_tfm(rotated_demo, xyz1, critical_points=critical_points)
@@ -678,14 +671,14 @@ def registration_cost_with_rotation(xyz0, xyz1, critical_points=0):
 
     return (cost, f, g, theta)
 
-def registration_cost_with_pca_rotation(xyz0, xyz1):
+def registration_cost_with_pca_rotation(xyz0, xyz1, critical_points=0):
     costs = []; tfms = []
     pca_demo = rotate_by_pca(xyz0, xyz1)
     ptclouds = [pca_demo, reflect_across_median(pca_demo, 1), rotate_about_median(pca_demo, np.pi)]
     for ptcloud in ptclouds:
-        costs.append(registration_cost(ptcloud, xyz1, 3))
+        costs.append(registration_cost(ptcloud, xyz1, 3, critical_points))
     ptcloud = ptclouds[np.argmin(costs)]
-    cost,f,g = registration_cost_and_tfm(ptcloud, xyz1)
+    cost,f,g = registration_cost_and_tfm(ptcloud, xyz1, critical_points=critical_points)
     pca0,_,_ = np.linalg.svd(np.cov(xyz0.T)); pca1,_,_ = np.linalg.svd(np.cov(xyz1.T))
     rmat = pca0.dot(np.linalg.inv(pca1))
     if np.argmin(costs) == 2:
@@ -870,8 +863,8 @@ def find_closest_auto_with_crossings(demofiles, new_xyz, init_tfm=None, n_jobs=3
         for demo_name in demofile:
             if demo_name == "demo00041":
                 break
-            if demo_name == "demo00030" or demo_name == "demo00039":
-                continue
+            if demo_name == "demo00030" or demo_name == "demo00039": continue
+            if demo_name != "demo00033": continue
             if demo_name != "ar_demo":                    
                 if 'done' in demofile[demo_name].keys():
                     final_seg_id = len(demofile[demo_name].keys()) - 2
@@ -879,16 +872,8 @@ def find_closest_auto_with_crossings(demofiles, new_xyz, init_tfm=None, n_jobs=3
                     final_seg_id = len(demofile[demo_name].keys()) - 1
 
                 for seg_name in demofile[demo_name]:
-
-                    # keys[seg_num] = (demotype_num, demo_name, seg_name)
-
-                    # if seg_name == "seg%02d"%(final_seg_id):
-                    #     is_finalsegs[seg_num] = True
-                    # else:
-                    #     is_finalsegs[seg_num] = False
-
-                    # seg_num += 1
-
+                    if demo_name == "demo00010" and seg_name == "seg02": continue
+                    if seg_name != "seg00": continue
                     seg_group = demofile[demo_name][seg_name]
                     if 'labeled_points' in seg_group.keys():
                         sim_xyzc, sim_pattern = get_labeled_rope_sim(new_xyz, get_pattern=True)
@@ -906,7 +891,7 @@ def find_closest_auto_with_crossings(demofiles, new_xyz, init_tfm=None, n_jobs=3
                             demo_xyz1 = demo_xyz1.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
                             crit_pts_demo1 = demo_xyz1[sim_crossings_inds] 
                             demo_clouds.append(demo_xyz1)
-                            crit_pts.append(crit_pts_demo1)
+                            crit_points.append(crit_pts_demo1)
 
                             seg_num += 1
                             keys[seg_num] = (demotype_num, demo_name, seg_name)
@@ -918,7 +903,7 @@ def find_closest_auto_with_crossings(demofiles, new_xyz, init_tfm=None, n_jobs=3
                             demo_xyz2 = demo_xyz2.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
                             crit_pts_demo2 = demo_xyz2[sim_crossings_inds] #hack
                             demo_clouds.append(demo_xyz2) #tkl
-                            crit_pts.append(crit_pts_demo2)
+                            crit_points.append(crit_pts_demo2)
                             seg_num += 1
 
                         else:
@@ -943,11 +928,6 @@ def find_closest_auto_with_crossings(demofiles, new_xyz, init_tfm=None, n_jobs=3
                             except Exception as exc:
                                 print exc
                                 import IPython; IPython.embed()
-                    
-                    #demo_clouds.append(demo_xyz) #tkl
-
-                    #crit_pts_demo = demo_xyz[sim_crossings_inds]
-                    #crit_points.append(crit_pts_demo)
 
         demotype_num +=1
     if args.parallel:
@@ -978,8 +958,8 @@ def find_closest_auto_with_crossings(demofiles, new_xyz, init_tfm=None, n_jobs=3
                     (demotype_num, demo_name, seg_name) = keys[i]
                     try:
                         seg_group = demofiles[0][demo_name][seg_name]
-                    except:
-                        import IPython; IPython.embed()
+                    except Exception as exc:
+                        import IPython#; IPython.embed()
                     cost_i, tfm_i, tfm_inverse_i, theta_i = registration_cost_crit(demo_clouds[i], new_xyz, crit_points[i], crit_pts_sim)
                     thetas.append(theta_i)
                 else:
@@ -1007,16 +987,6 @@ def find_closest_auto_with_crossings(demofiles, new_xyz, init_tfm=None, n_jobs=3
 
     #for now, assume only one demotype at a time
     return (keys[choice_ind][1],keys[choice_ind][2]) , is_finalsegs[choice_ind], tfm, (new_xyz, demo_clouds[choice_ind])
-
-def reorder_by_end_matching(xyz0, xyz1):
-    """
-    returns xyz1 reversed if necessary
-    """
-    ends_cost = [np.linalg.norm(xyz0[0] - xyz1[0])+np.linalg.norm(xyz0[-1] - xyz1[-1]), 
-                 np.linalg.norm(xyz0[-1] - xyz1[0])+np.linalg.norm(xyz0[0] - xyz1[-1])]
-    if np.argmin(ends_cost) != 0: 
-        xyz1 = xyz1[::-1]
-    return xyz1
 
 def segment_demo(sim_xyz, seg_group, demofile, reverse=False):
     sim_xyzc, sim_pattern = get_labeled_rope_sim(sim_xyz, get_pattern=True)
@@ -1125,7 +1095,7 @@ def match_crossings(demofiles, keys, costs, tfms, tfm_invs, init_tfm, dclouds, c
 
         sim_xyzc, sim_pattern = get_labeled_rope_sim(sim_xyz, get_pattern=True)
         demo_xyzc, demo_pattern = get_labeled_rope_demo(seg_group, get_pattern=True)
-        
+
         if 1 not in sim_xyzc[:,-1] or 1 not in demo_xyzc[:,-1]: #no crossings in simulation
             print "tried to match rope with no crossings: choice ind was", choice_ind
             continue
@@ -1159,7 +1129,7 @@ def match_crossings(demofiles, keys, costs, tfms, tfm_invs, init_tfm, dclouds, c
             plot_transform_mlab(demo_pointcloud, sim_xyz, orig_demo, [crit1, crit2, crit3])
             #segment_demo(sim_xyz, seg_group, demofiles[0])
             #plot_crossings_2d(flat_points, seg_group)
-            import IPython; IPython.embed()
+            #import IPython; IPython.embed()
 
         if demo_pattern == sim_pattern or demo_pattern == sim_pattern[::-1]:
             if wrong_topo:
@@ -1780,7 +1750,7 @@ def main():
                     #pickle_dump(old_sim_xyz, "test_results/grab_failed_"+str(file_inc))
                     print "Grab failed. Saved preceding state as test_results/grab_failed_"+str(file_inc)
                     #raise Exception("grab failed")
-                    import IPython; IPython.embed()
+                    #import IPython; IPython.embed()
 
             print "about to calculate"
 
@@ -1803,7 +1773,7 @@ def main():
                 for i in xrange(i_start,i_end+1):
                     try:
                         avg = resampling.interp_hmats([1],[0,2], np.vstack([new_ltraj[i-i_start:i-i_start+1], new_rtraj[i-i_start:i-i_start+1]]))[0]
-                        eetraj[lr][i] = tooltip_from_fingers(lr, avg, new_ltraj[i-i_start], new_rtraj[i-i_start])
+                        eetraj[lr][i] = tooltip_from_fingers(lr, avg, new_ltraj[i-i_start], new_rtraj[i-i_start], joint_angles[lr][i-i_start])
                     except Exception as exc:
                         print exc
                         import IPython; IPython.embed()
@@ -1833,7 +1803,7 @@ def main():
                 
                 if next_gripper_open and not gripper_open:
                     tfm = miniseg_traj[lr][-1]
-                    if tfm[2,3] > Globals.table_height + 0.1:
+                    if tfm[2,3] > Globals.table_height + 0.10:
                         safe_drop[lr] = False
                            
             if not (safe_drop['l'] and safe_drop['r']):
@@ -1842,14 +1812,14 @@ def main():
                         tfm = miniseg_traj[lr][-1]
                         for i in range(1, 8):
                             safe_drop_tfm = tfm
-                            safe_drop_tfm[2,3] = tfm[2,3] - i / 10. * (tfm[2,3] - Globals.table_height - 0.1)
+                            safe_drop_tfm[2,3] = tfm[2,3] - i / 10. * (tfm[2,3] - Globals.table_height - 0.10)
                             miniseg_traj[lr].append(safe_drop_tfm)
                     else:
                         for i in range(1, 8):
                             miniseg_traj[lr].append(miniseg_traj[lr][-1])
 
             #len_miniseg = len(adaptive_times)
-            #import IPython; IPython.embed()
+            import IPython; IPython.embed()
 
             redprint("Executing joint trajectory for demo %s segment %s, part %i using arms '%s'"%(demo_name, seg_name, i_miniseg, miniseg_traj.keys()))
 

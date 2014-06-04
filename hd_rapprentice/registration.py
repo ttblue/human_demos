@@ -89,9 +89,13 @@ class ThinPlateSpline(Transformation):
         self.lin_ag = np.eye(d)
         self.trans_g = np.zeros(d)
         self.w_ng = np.zeros((0,d))
+        self.z_scale = 1
 
     def transform_points(self, x_ma):
+        #import IPython; IPython.embed()
+        x_ma[:,-1] = x_ma[:,-1]*self.z_scale
         y_ng = tps.tps_eval(x_ma, self.lin_ag, self.trans_g, self.w_ng, self.x_na)
+        y_ng[:,-1] = y_ng[:,-1]/self.z_scale
         return y_ng
     def compute_jacobian(self, x_ma):
         grad_mga = tps.tps_grad(x_ma, self.lin_ag, self.trans_g, self.w_ng, self.x_na)
@@ -124,7 +128,7 @@ class Composition(Transformation):
             totalgrad = (grad[:,:,:,None] * totalgrad[:,None,:,:]).sum(axis=-2)
         return totalgrad
 
-def fit_ThinPlateSpline(x_na, y_ng, bend_coef=.1, rot_coef = 1e-5, wt_n=None):
+def fit_ThinPlateSpline(x_na, y_ng, bend_coef=.1, rot_coef = 1e-5, wt_n=None, use_cvx=False):
     """
     x_na: source cloud
     y_nd: target cloud
@@ -132,10 +136,21 @@ def fit_ThinPlateSpline(x_na, y_ng, bend_coef=.1, rot_coef = 1e-5, wt_n=None):
     angular_spring: penalize rotation
     wt_n: weight the points        
     """
+    from tn_rapprentice import tps as tn_tps
+    if wt_n != None:
+        wt_n = np.array(wt_n, dtype='float64') #
+    x_na = np.array(x_na, dtype='float64') #
+    y_ng = np.array(y_ng, dtype='float64') #
+
     f = ThinPlateSpline()
+    # if use_cvx:
+    #     import pdb; pdb.set_trace()
+    #     f.lin_ag, f.trans_g, f.w_ng = tn_tps.tps_fit3_cvx(x_na, y_ng, bend_coef, rot_coef, wt_n)
+    # else:
+    rot_coef = [rot_coef, rot_coef, rot_coef]
     f.lin_ag, f.trans_g, f.w_ng = tps.tps_fit3(x_na, y_ng, bend_coef, rot_coef, wt_n)
     f.x_na = x_na
-    return f        
+    return f      
 
 def fit_ThinPlateSpline_RotReg(x_na, y_ng, bend_coef = .1, rot_coefs = (0.01,0.01,0.0025),scale_coef=.01):
     import fastrapp
@@ -145,13 +160,11 @@ def fit_ThinPlateSpline_RotReg(x_na, y_ng, bend_coef = .1, rot_coefs = (0.01,0.0
     f.lin_ag, f.trans_g, f.w_ng = tps.tps_fit_regrot(x_na, y_ng, bend_coef, rfunc)
     f.x_na = x_na
     return f        
-    
 
 
 def loglinspace(a,b,n):
     "n numbers between a to b (inclusive) with constant ratio between consecutive numbers"
     return np.exp(np.linspace(np.log(a),np.log(b),n))    
-    
 
 
 def unit_boxify(x_na):    
@@ -230,7 +243,7 @@ def tps_rpm(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_init =
     return f
 
 def tps_rpm_bij(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_init = .1, rad_final = .005, rot_reg = 1e-3, 
-                plotting = False, plot_cb = None, critical_points=0):
+                plotting = False, plot_cb = None, critical_points=0 , cvx=False):
     """
     tps-rpm algorithm mostly as described by chui and rangaran
     reg_init/reg_final: regularization on curvature
@@ -238,11 +251,15 @@ def tps_rpm_bij(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_in
     plotting: 0 means don't plot. integer n means plot every n iterations
     """
     import traceback
+
+    # x_nd = x_nd*np.array([1,1,10])
+    # y_md = y_md*np.array([1,1,10])
+
     #adjust for duplicate points to prevent singular matrix errors
     for i in range(len(x_nd)):
         for j in range(len(x_nd)):
             if i!=j and np.all(x_nd[i]==x_nd[j]):
-                x_nd[j][0] += 0.0001
+                x_nd[j][0] += 0.00001
 
     _,d=x_nd.shape
     regs = loglinspace(reg_init, reg_final, n_iter)
@@ -289,15 +306,18 @@ def tps_rpm_bij(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_in
         # if plotting and i%plotting==0:
         #     plot_cb(x_nd, y_md, xtarg_nd, corr_nm, wt_n, f)
         try:
-            f = fit_ThinPlateSpline(x_nd, xtarg_nd, bend_coef = regs[i], wt_n=wt_n, rot_coef = rot_reg)
-            g = fit_ThinPlateSpline(y_md, ytarg_md, bend_coef = regs[i], wt_n=wt_m, rot_coef = rot_reg)
+            f = fit_ThinPlateSpline(x_nd, xtarg_nd, bend_coef = regs[i], wt_n=wt_n, rot_coef = rot_reg, use_cvx=cvx)
+            g = fit_ThinPlateSpline(y_md, ytarg_md, bend_coef = regs[i], wt_n=wt_m, rot_coef = rot_reg, use_cvx=cvx)
         except:
             tb = traceback.format_exc()
             print "error in tps_rpm_bij"
-            import IPython
-            IPython.embed()
+            import pdb; pdb.set_trace() #import IPython; IPython.embed()
     f._cost = tps.tps_cost(f.lin_ag, f.trans_g, f.w_ng, f.x_na, xtarg_nd, regs[i], wt_n=wt_n)/wt_n.mean()
     g._cost = tps.tps_cost(g.lin_ag, g.trans_g, g.w_ng, g.x_na, ytarg_md, regs[i], wt_n=wt_m)/wt_m.mean()
+
+    f.z_scale = 1
+    g.z_scale = 1
+
     return f,g
 
 def tps_reg_cost(f):

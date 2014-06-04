@@ -128,7 +128,11 @@ def tps_cost(lin_ag, trans_g, w_ng, x_na, y_ng, bend_coef, K_nn=None, return_tup
     D = lin_ag.shape[0]
     if K_nn is None: K_nn = tps_kernel_matrix(x_na)
     if wt_n is None: wt_n = np.ones(len(x_na))
-    ypred_ng = np.dot(K_nn, w_ng) + np.dot(x_na, lin_ag) + trans_g[None,:]
+    try:
+        ypred_ng = np.dot(K_nn, w_ng) + np.dot(x_na, lin_ag) + trans_g[None,:]
+    except Exception as exc:
+        print exc
+        import pdb; pdb.set_trace()
     res_cost = (wt_n[:,None] * (ypred_ng - y_ng)**2).sum()
     bend_cost = bend_coef * sum(np.dot(w_ng[:,g], np.dot(K_nn, w_ng[:,g])) for g in xrange(D))
     if return_tuple:
@@ -208,7 +212,7 @@ def solve_eqp1(H, f, A):
     """solve equality-constrained qp
     min tr(x'Hx) + sum(f'x)
     s.t. Ax = 0
-    """    
+    """
     n_vars = H.shape[0]
     assert H.shape[1] == n_vars
     assert f.shape[0] == n_vars
@@ -228,9 +232,11 @@ def solve_eqp1(H, f, A):
     return x
     
 def tps_fit3(x_na, y_ng, bend_coef, rot_coef, wt_n):
-#     import traceback
-#     try:
+
     if wt_n is None: wt_n = np.ones(len(x_na))
+    x_na = np.array(x_na, dtype='float64') #
+    y_ng = np.array(y_ng, dtype='float64') #
+
     n,d = x_na.shape
 
     K_nn = tps_kernel_matrix(x_na)
@@ -249,10 +255,6 @@ def tps_fit3(x_na, y_ng, bend_coef, rot_coef, wt_n):
 
     Theta = solve_eqp1(H,f,A)
     return Theta[1:d+1], Theta[0], Theta[d+1:]    
-    # except:    
-    #     tb = traceback.format_exc()
-    #     import IPython
-    #     IPython.embed()
 
 
 def tps_fit2(x_na, y_ng, bend_coef, rot_coef, wt_n=None):
