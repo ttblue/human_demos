@@ -34,7 +34,19 @@ def downsample(xyz, v):
     xyz1[:,:3] = xyz
     cloud.from2dArray(xyz1)
     cloud = cloudprocpy.downsampleCloud(cloud, v)
-    return cloud.to2dArray()[:,:3]
+    return cloud.to2dArray()[:,:3]    
+
+def downsample_colored(xyzrgb, v):
+    import cloudprocpy
+    cloud = cloudprocpy.CloudXYZ()
+    xyz1 = np.ones((len(xyzrgb),4),'float')
+    xyz1[:,:3] = xyzrgb[:,:3]
+    cloud.from2dArray(xyz1)
+    
+    cloud_downsampled = cloudprocpy.downsampleCloud(cloud, v)
+    indices = cloudprocpy.getNearestNeighborIndices(cloud_downsampled, cloud)
+    
+    return np.hstack((cloud_downsampled.to2dArray()[:,:3], xyzrgb[indices,3:]))    
 
 def median_filter(xyz, window_size, max_allowed_movement):
     import cloudprocpy
