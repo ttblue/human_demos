@@ -225,7 +225,31 @@ def split_trajectory_by_gripper(seg_info, pot_angle_threshold, ms_thresh=2):
 
 
 def fuzz_cloud(xyz):
-    return xyz #np.vstack([xyz, xyz+[0.003,0,0], xyz+[-0.003,0,0], xyz+[0,0.003,0], xyz+[0,-0.003,0], xyz+[0,0,0.003]])
+    return np.vstack([xyz, xyz+[0.005,0,0], xyz+[-0.005,0,0], xyz+[0,0.005,0], xyz+[0,-0.005,0], xyz+[0,0,0.005]])
+
+def get_fuzzed_rope(xyz=None):
+    """
+    
+    """
+    if xyz == None: #get ponts for the bulletsim rope
+        hmats = np.array([np.eye(4) for i in Globals.sim.rope.GetNodes()])
+        hmats[:,:3, 3] = Globals.sim.rope.GetNodes()
+        rotations = Globals.sim.rope.GetRotations()
+    else:  #get points for the provided array (assumed to be in-order)
+        hmats = np.array([np.eye(4) for i in range(len(xyz))])
+        hmats[:,:3, 3] = np.array([(xyz[i]+xyz[i+1])/2 for i in range(len(xyz))])
+        rotations = np.array([xyz[i]-xyz[i+1] for i in range(len(xyz))])
+    new_hmats = np.array([np.eye(4) for i in range(4*len(hmats))])
+    for i in range(len(hmats)):
+        y = np.cross(rotations[i,:,0], [0,0,1])
+        z = np.cross(rotations[i,:,0], y) #np.array([0,0,0.005,1]) #
+        z1 = np.hstack([z*0.005,1])
+        z2 = np.hstack([z*-0.005,1])
+        y1 = np.hstack([y*0.005,1]); #z = np.hstack([z*0.005,1])
+        y2 = np.hstack([y*-0.005,1])
+        new_hmats[4*i:4*(i+1),:,3] = np.array([hmats[i].dot(vec) for vec in [z1,z2,y1,y2]])
+    return new_hmats
+
 
 def rotate_about_median(xyz, theta, median=None):
     """
@@ -863,8 +887,6 @@ def find_closest_auto_with_crossings(demofiles, new_xyz, init_tfm=None, n_jobs=3
         for demo_name in demofile:
             if demo_name == "demo00041":
                 break
-            if demo_name == "demo00030" or demo_name == "demo00039": continue
-            if demo_name != "demo00033": continue
             if demo_name != "ar_demo":                    
                 if 'done' in demofile[demo_name].keys():
                     final_seg_id = len(demofile[demo_name].keys()) - 2
@@ -873,7 +895,10 @@ def find_closest_auto_with_crossings(demofiles, new_xyz, init_tfm=None, n_jobs=3
 
                 for seg_name in demofile[demo_name]:
                     if demo_name == "demo00010" and seg_name == "seg02": continue
-                    if seg_name != "seg00": continue
+                    if demo_name == "demo00026" and seg_name == "seg02": continue
+                    if demo_name == "demo00028" and seg_name == "seg02": continue
+                    if demo_name == "demo00030" and seg_name == "seg02": continue
+                    if demo_name == "demo00039" and seg_name == "seg02": continue
                     seg_group = demofile[demo_name][seg_name]
                     if 'labeled_points' in seg_group.keys():
                         sim_xyzc, sim_pattern = get_labeled_rope_sim(new_xyz, get_pattern=True)
@@ -1129,12 +1154,13 @@ def match_crossings(demofiles, keys, costs, tfms, tfm_invs, init_tfm, dclouds, c
             plot_transform_mlab(demo_pointcloud, sim_xyz, orig_demo, [crit1, crit2, crit3])
             #segment_demo(sim_xyz, seg_group, demofiles[0])
             #plot_crossings_2d(flat_points, seg_group)
-            #import IPython; IPython.embed()
+            import IPython; IPython.embed()
 
         if demo_pattern == sim_pattern or demo_pattern == sim_pattern[::-1]:
             if wrong_topo:
                 print "Wrong topology"
-                raise Exception("Wrong topology") 
+                import IPython; IPython.embed()
+                #raise Exception("Wrong topology") 
             print "match found directly"
             return choice_ind
         else:
@@ -1750,7 +1776,7 @@ def main():
                     #pickle_dump(old_sim_xyz, "test_results/grab_failed_"+str(file_inc))
                     print "Grab failed. Saved preceding state as test_results/grab_failed_"+str(file_inc)
                     #raise Exception("grab failed")
-                    #import IPython; IPython.embed()
+                    import IPython; IPython.embed()
 
             print "about to calculate"
 
@@ -1773,7 +1799,7 @@ def main():
                 for i in xrange(i_start,i_end+1):
                     try:
                         avg = resampling.interp_hmats([1],[0,2], np.vstack([new_ltraj[i-i_start:i-i_start+1], new_rtraj[i-i_start:i-i_start+1]]))[0]
-                        eetraj[lr][i] = tooltip_from_fingers(lr, avg, new_ltraj[i-i_start], new_rtraj[i-i_start], joint_angles[lr][i-i_start])
+                        eetraj[lr][i] = tooltip_from_fingers(lr, avg, new_ltraj[i-i_start], new_rtraj[i-i_start], joint_angles[lr][i-i_start]) #rework to find tt_tfm that minimizes distance from tips to tfmd pts
                     except Exception as exc:
                         print exc
                         import IPython; IPython.embed()
