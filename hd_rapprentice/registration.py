@@ -409,7 +409,7 @@ def tps_rpm_bij_orig(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, r
         
         if plotting and i%plotting==0 and plot_cb is not None:
             plot_cb(x_nd, y_md, xtarg_nd, corr_nm, wt_n, f)
-        
+
         f = fit_ThinPlateSpline(x_nd, xtarg_nd, bend_coef = regs[i], wt_n=wt_n, rot_coef = rot_reg)
         g = fit_ThinPlateSpline(y_md, ytarg_md, bend_coef = regs[i], wt_n=wt_m, rot_coef = rot_reg)
 

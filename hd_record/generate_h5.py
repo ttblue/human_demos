@@ -18,7 +18,18 @@ import argparse
 from hd_utils.defaults import demo_files_dir, demo_names, master_name, verify_name
 from hd_utils.extraction_utils import get_video_frames
 from hd_utils import clouds, color_match
+from hd_utils.extraction_utils import track_video_frames_offline, track_video_frames_online
+from hd_utils.defaults import demo_files_dir, hd_data_dir,\
+        ar_init_dir, ar_init_demo_name, ar_init_playback_name, \
+        tfm_head_dof, tfm_bf_head, cad_files_dir
+import cPickle
+from hd_utils.utils import avg_transform
+import openravepy
 
+from hd_utils.cloud_proc_funcs import extract_green 
+
+import rospy
+rospy.init_node('generate_h5')
 
 
 parser = argparse.ArgumentParser()
@@ -33,6 +44,8 @@ parser.add_argument("--prompt", action="store_true", default=False)
 parser.add_argument("--has_hitch", action="store_true")
 parser.add_argument("--start_at", default="demo00001", type=str)
 parser.add_argument("--ref_image", default="", type=str)
+parser.add_argument("--offline", action="store_true")
+
 args = parser.parse_args()
 
 if not args.no_clouds:
@@ -67,6 +80,7 @@ def add_rgbd_to_hdf(video_dir, annotation, hdfroot, demo_name):
         
         seg_group["depth"] = depth_imgs[i_seg]
         
+                
         
 def add_traj_to_hdf_full_demo(traj, annotation, hdfroot, demo_name):
     '''
@@ -141,11 +155,10 @@ h5path = osp.join(task_dir, task_info["h5path"].strip())
 
 
 demo_type = args.demo_type # should be same as task_info['name']
-
 if args.ref_image == "":
     ref_image = None
 else:
-    ref_image = cv2.imread(args.ref_image)
+    ref_image = cv2.imread(osp.join(task_dir, args.ref_image))
     
 if not args.clouds_only:
     if osp.exists(h5path):
@@ -173,6 +186,45 @@ if not args.clouds_only:
     
         # assumes the first camera contains the rgbd info        
         add_rgbd_to_hdf(rgbd_dir, annotations, hdf, demo_name)
+        
+        
+        # test tracking
+        init_tfm = None
+        # Get ar marker from demo:
+        ar_demo_file = osp.join(hd_data_dir, ar_init_dir, ar_init_demo_name)
+        with open(ar_demo_file,'r') as fh: ar_demo_tfms = cPickle.load(fh)
+        # use camera 1 as default
+        ar_marker_cameras = [1]
+        ar_demo_tfm = avg_transform([ar_demo_tfms['tfms'][c] for c in ar_demo_tfms['tfms'] if c in ar_marker_cameras])
+
+        # Get ar marker for PR2:
+        # default demo_file
+        ar_run_file = osp.join(hd_data_dir, ar_init_dir, ar_init_playback_name)
+        with open(ar_run_file,'r') as fh: ar_run_tfms = cPickle.load(fh)
+        ar_run_tfm = ar_run_tfms['tfm']
+
+        # transform to move the demo points approximately into PR2's frame
+        # Basically a rough transform from head kinect to demo_camera, given the tables are the same.
+        init_tfm = ar_run_tfm.dot(np.linalg.inv(ar_demo_tfm))
+        init_tfm = tfm_bf_head.dot(tfm_head_dof).dot(init_tfm)
+        
+        
+        seg_info = hdf[demo_name][annotations[0]["name"]]
+        if ref_image is None:
+            rgb_image = np.asarray(seg_info["rgb"])
+        else:
+            rgb_image = color_match.match(ref_image, np.asarray(seg_info["rgb"]))
+        
+        #table_cloud0, table_plane0 = cloud_proc_mod.extract_table_ransac(rgb_image, np.asarray(seg_info["depth"]), np.eye(4))
+        table_cloud, table_plane = cloud_proc_mod.extract_table_pca(rgb_image, np.asarray(seg_info["depth"]), np.eye(4))
+                        
+        
+        if args.offline:
+            track_video_frames_offline(rgbd_dir, np.eye(4), init_tfm, ref_image, None) #offline
+        else:
+            track_video_frames_online(rgbd_dir, np.eye(4), init_tfm, table_plane, ref_image, None) #online
+
+        
 else:
     hdf = h5py.File(h5path, "r+")
 
@@ -186,7 +238,7 @@ started = False
 if not args.no_clouds:
     
     del_fields = ["cloud_xyz", "cloud_proc_func", "cloud_proc_mod", "cloud_proc_code",\
-                  "full_cloud_xyz","full_hitch","full_object","hitch","object","hitch_pos","cloud_xyz"]
+                  "full_cloud_xyz","full_hitch","full_object","hitch","object","hitch_pos","cloud_xyz", "table_plane"]
     
     table_cloud = None
     
@@ -278,6 +330,8 @@ if not args.no_clouds:
             print "Changing."
             for field in del_fields:
                 try:
+                    print "1",  seg_info.keys()
+                    print "2", del_fields
                     if field in seg_info: del seg_info[field]
                 except Exception as e:
                     import IPython
@@ -304,6 +358,8 @@ if not args.no_clouds:
             
             if table_cloud is None:
                 table_cloud, table_plane = cloud_proc_mod.extract_table_ransac(rgb_image, np.asarray(seg_info["depth"]), np.eye(4))
+            
+
             seg_info["table_plane"] = table_plane
             print table_plane
                 
