@@ -35,7 +35,8 @@ parser.add_argument("--fake_data_segment",type=str)
 parser.add_argument("--fake_data_transform", type=float, nargs=6, metavar=("tx","ty","tz","rx","ry","rz"),
     default=[0,0,0,0,0,0], help="translation=(tx,ty,tz), axis-angle rotation=(rx,ry,rz)")
 parser.add_argument("--fake_rope", type=str)
-
+parser.add_argument("--choose_demo", type=str)
+parser.add_argument("--choose_seg", type=str)
 
 parser.add_argument("--pot_threshold",type=float, default=15)
 
@@ -224,31 +225,43 @@ def split_trajectory_by_gripper(seg_info, pot_angle_threshold, ms_thresh=2):
     return new_seg_starts, new_seg_ends, lr_open
 
 
-def fuzz_cloud(xyz):
-    return np.vstack([xyz, xyz+[0.005,0,0], xyz+[-0.005,0,0], xyz+[0,0.005,0], xyz+[0,-0.005,0], xyz+[0,0,0.005]])
+def fuzz_cloud(xyz, sim=False):
+    if sim:
+        return np.vstack([xyz, get_fuzzed_rope()])
+    else:
+        return np.vstack([xyz, get_fuzzed_rope(xyz)])
 
 def get_fuzzed_rope(xyz=None):
+    # vecs = np.array([[0,0,0.005,1],[0,0,-0.005,1],[0,0.005,0,1],[0,-0.005,0,1],[0.005,0,0,1],[-0.005,0,0,1],[0.005,0,0.005,1],[0.005,0,-0.005,1],[-0.005,0,0.005,1],[-0.005,0,-0.005,1],[0.005,0.005,0,1],[0.005,-0.005,0,1],[-0.005,0.005,0,1],[-0.005,-0.005,0,1],[0,0.005,0.005,1],[0,0.005,-0.005,1],[0,-0.005,0.005,1],[0,-0.005,-0.005,1]])
+    # nv = len(vecs)
     """
-    
+    Adds points to the pointcloud shifted by the radius of simulated rope, providing a cross-
+    section of the rope at each of the given points.
+    If no points are passed in, finds points for the bulletsim rope.
     """
-    if xyz == None: #get ponts for the bulletsim rope
+    if xyz == None: #get points for the bulletsim rope
         hmats = np.array([np.eye(4) for i in Globals.sim.rope.GetNodes()])
         hmats[:,:3, 3] = Globals.sim.rope.GetNodes()
-        rotations = Globals.sim.rope.GetRotations()
+        rotations = Globals.sim.rope.GetRotations()[:,:,0]
     else:  #get points for the provided array (assumed to be in-order)
-        hmats = np.array([np.eye(4) for i in range(len(xyz))])
-        hmats[:,:3, 3] = np.array([(xyz[i]+xyz[i+1])/2 for i in range(len(xyz))])
-        rotations = np.array([xyz[i]-xyz[i+1] for i in range(len(xyz))])
-    new_hmats = np.array([np.eye(4) for i in range(4*len(hmats))])
+        hmats = np.array([np.eye(4) for i in range(len(xyz)-1)])
+        hmats[:,:3, 3] = np.array([(xyz[i]+xyz[i+1])/2 for i in range(len(xyz)-1)])
+        rotations = np.array([(xyz[i]-xyz[i+1])/np.linalg.norm(xyz[i]-xyz[i+1]) for i in range(len(xyz)-1)])
+    new_hmats = np.array([np.eye(4) for i in range(2*len(hmats))])
+    radius = 0.005
     for i in range(len(hmats)):
-        y = np.cross(rotations[i,:,0], [0,0,1])
-        z = np.cross(rotations[i,:,0], y) #np.array([0,0,0.005,1]) #
-        z1 = np.hstack([z*0.005,1])
-        z2 = np.hstack([z*-0.005,1])
-        y1 = np.hstack([y*0.005,1]); #z = np.hstack([z*0.005,1])
-        y2 = np.hstack([y*-0.005,1])
-        new_hmats[4*i:4*(i+1),:,3] = np.array([hmats[i].dot(vec) for vec in [z1,z2,y1,y2]])
-    return new_hmats
+        y = np.cross(rotations[i,:], [0,0,1])
+        z = np.cross(rotations[i,:], y)
+        z1 = np.hstack([z*radius,1])
+        z2 = np.hstack([z*-radius,1])
+        y1 = np.hstack([y*radius,1])
+        y2 = np.hstack([y*-radius,1])
+        y3 = np.hstack([rotations[i,:]*radius+y*radius, 1])
+        y4 = np.hstack([rotations[i,:]*-radius+y*radius, 1])
+        y5 = np.hstack([rotations[i,:]*radius+-y*radius, 1])
+        y6 = np.hstack([rotations[i,:]*-radius+-y*radius, 1])
+        new_hmats[2*i:2*(i+1),:,3] = np.array([hmats[i].dot(vec) for vec in [y1,y2]])
+    return new_hmats[:,:3,3]
 
 
 def rotate_about_median(xyz, theta, median=None):
@@ -508,10 +521,6 @@ def exec_traj_sim(lr_traj, animate=True, ljoints=None, rjoints=None):
 
 def get_finger_trajs(lr, traj, is_open=False):
     robot = Globals.sim.grippers[lr].robot
-
-    """
-    HACK OF ALL HACKS
-    """
     old_val = Globals.sim.grippers[lr].get_gripper_joint_value()
     if is_open:
         Globals.sim.grippers[lr].set_gripper_joint_value(.4)
@@ -519,65 +528,36 @@ def get_finger_trajs(lr, traj, is_open=False):
     elif old_val > 0.2:
         print "gripper is already open"
     tt_tfm = Globals.sim.grippers[lr].get_toolframe_transform() # == robot.GetLink(lr+"_gripper_tool_frame").GetTransform()
-    # l_finger_tfm = robot.GetLink("l_gripper_l_finger_tip_link").GetTransform()
-    # r_finger_tfm = robot.GetLink("l_gripper_r_finger_tip_link").GetTransform()
-    # Globals.sim.grippers[lr].set_gripper_joint_value(old_val)
-
-    # tt_to_lfinger_shift = np.linalg.inv(tt_tfm).dot(l_finger_tfm)
-    # tt_to_rfinger_shift = np.linalg.inv(tt_tfm).dot(r_finger_tfm)
-    # # tt_to_lfinger_shift = Globals.sim.grippers[lr].tt_to_lfinger_shift
-    # # tt_to_rfinger_shift = Globals.sim.grippers[lr].tt_to_rfinger_shift
-
-    # ltip_tfm = np.eye(4); ltip_tfm[:3,3] = Globals.sim.grippers[lr].link2finger['l']
-    # rtip_tfm = np.eye(4); rtip_tfm[:3,3] = Globals.sim.grippers[lr].link2finger['r']
-
-    # ltraj = np.array([traj[i].dot(tt_to_lfinger_shift).dot(ltip_tfm) for i in range(len(traj))])
-    # rtraj = np.array([traj[i].dot(tt_to_rfinger_shift).dot(rtip_tfm) for i in range(len(traj))])
 
     ltraj, rtraj = np.zeros((len(traj), 4, 4)), np.zeros((len(traj), 4, 4))
     for i in range(len(traj)):
-        ltraj[i], rtraj[i] = Globals.sim.grippers[lr].get_fingertip_transforms(traj[i], Globals.sim.grippers[lr].get_gripper_joint_value())
-
+        tt2ltip, tt2rtip = Globals.sim.grippers[lr].get_tt2ftips(Globals.sim.grippers[lr].get_gripper_joint_value())
+        ltraj[i], rtraj[i] = traj[i].dot(tt2ltip), traj[i].dot(tt2rtip)
     return ltraj, rtraj
 
 
-def tooltip_from_fingers(lr, avg, lhmat, rhmat, joint_val):
-
+def tooltip_from_fingers(lr, prev, lhmat, rhmat, joint_val):
     robot = Globals.sim.grippers[lr].robot
 
-    tt_tfm = avg
+    tt_tfm = prev
 
-    # tt_to_lfinger_shift = Globals.sim.grippers[lr].tt_to_lfinger_shift
-    # tt_to_rfinger_shift = Globals.sim.grippers[lr].tt_to_rfinger_shift
-
-    # ltip_tfm = np.eye(4); ltip_tfm[:3,3] = Globals.sim.grippers[lr].link2finger['l']
-    # rtip_tfm = np.eye(4); rtip_tfm[:3,3] = Globals.sim.grippers[lr].link2finger['r']
-
-    # ltip = tt_tfm.dot(tt_to_lfinger_shift).dot(ltip_tfm)
-    # rtip = tt_tfm.dot(tt_to_rfinger_shift).dot(rtip_tfm)
-    # midtip = resampling.interp_hmats([1],[0,2], np.vstack([np.array([ltip]), np.array([rtip])]))[0]
-
-    # shift_midtip2tt = np.linalg.inv(midtip).dot(tt_tfm)
-    # ltip = ltip.dot(shift_midtip2tt)
-    # rtip = rtip.dot(shift_midtip2tt)
-
-    ###
-    ltip, rtip = Globals.sim.grippers[lr].get_fingertip_transforms(tt_tfm, joint_val)
-    ###
-
-    y0 = rtip[:3,3]-ltip[:3,3]; y0 /= np.linalg.norm(y0)
-    y1 = rhmat[:3,3]-lhmat[:3,3]; y1 /= np.linalg.norm(y1)
-
-    y_direction = np.cross(y0,y1); y_direction /= np.linalg.norm(y_direction)
-    y_ang = np.arccos(y0.dot(y1))
-    if y_ang > np.pi/2: y_ang -=np.pi
-
-    rmat = openravepy.matrixFromAxisAngle(y_direction, y_ang)
-    rmat[:3,3] = tt_tfm[:3,3] - rmat[:3,:3].dot(tt_tfm[:3,3])
-    tt_tfm = rmat.dot(tt_tfm)
-
-    return tt_tfm
-
+    tt2ltip, tt2rtip = Globals.sim.grippers[lr].get_tt2ftips(joint_val)
+    pts = np.vstack([[0.015,0,0,1],[-0.015,0,0,1], [0,0,0,1]]).T
+    pts1 = np.vstack([tt_tfm.dot(tt2ltip).dot(pts)[:-1].T, tt_tfm.dot(tt2rtip).dot(pts)[:-1].T])
+    pts2 = np.vstack([lhmat.dot(pts)[:-1].T, rhmat.dot(pts)[:-1].T])
+    c1 = pts1 - pts1.mean(0)
+    c2 = pts2 - pts2.mean(0)
+    H = c1.T.dot(c2)
+    U,S,Vt = np.linalg.svd(H)
+    R = Vt.T.dot(U.T)
+    if np.linalg.det(R) < 0: 
+        Vt[2,:] *= -1
+        R = Vt.T.dot(U.T)
+    rot_tfm = np.eye(4)
+    rot_tfm[:3,:3] = R
+    rot_tfm[:3,3] = -R.dot(pts1.mean(0)) + pts2.mean(0)
+    return rot_tfm.dot(tt_tfm)
+    
 
 def joint_angles_from_fingers(ltraj, rtraj, is_open=False):
     if is_open:
@@ -600,15 +580,11 @@ def joint_angles_from_fingers(ltraj, rtraj, is_open=False):
 
 def get_finger_dist(lr):
     robot = Globals.sim.grippers[lr].robot
-
     ltip_tfm = np.eye(4); ltip_tfm[:3,3] = Globals.sim.grippers[lr].link2finger['l']
     rtip_tfm = np.eye(4); rtip_tfm[:3,3] = Globals.sim.grippers[lr].link2finger['r']
-
     l_finger_tfm = robot.GetLink("l_gripper_l_finger_tip_link").GetTransform().dot(ltip_tfm)
     r_finger_tfm = robot.GetLink("l_gripper_r_finger_tip_link").GetTransform().dot(rtip_tfm)
-
     dist = np.linalg.norm(l_finger_tfm[:3,3]-r_finger_tfm[:3,3])
-    #print dist
     return dist
 
 def resample_joint_angs(joints, new_len):
@@ -658,36 +634,35 @@ def find_closest_manual(demofiles):
         return keys[choice_ind], is_finalsegs[choice_ind]
 
 
-def registration_cost(xyz0, xyz1, num_iters=30, critical_points=0):
+def registration_cost(xyz0, xyz1, num_iters=30, critical_points=0, added_pts=0):
     scaled_xyz0, _ = registration.unit_boxify(xyz0)
     scaled_xyz1, _ = registration.unit_boxify(xyz1)
     f,g = registration.tps_rpm_bij(scaled_xyz0, scaled_xyz1, reg_init=args.tps_bend_cost_init, reg_final = args.tps_bend_cost_final_search, 
-                                                            rot_reg=np.r_[1e-4,1e-4,1e-1], n_iter=num_iters, critical_points=critical_points)
+                                    rot_reg=np.r_[1e-4,1e-4,1e-1], n_iter=num_iters, critical_points=critical_points, added_pts=added_pts)
     cost = registration.tps_reg_cost(f) + registration.tps_reg_cost(g)
     return cost
 
-def registration_cost_and_tfm(xyz0, xyz1, num_iters=30, critical_points=0):
-    #from tn_rapprentice import registration as tn_registration #tkl
+def registration_cost_and_tfm(xyz0, xyz1, num_iters=30, critical_points=0, added_pts=0):
     scaled_xyz0, src_params = registration.unit_boxify(xyz0)
     scaled_xyz1, targ_params = registration.unit_boxify(xyz1)
     f,g = registration.tps_rpm_bij(scaled_xyz0, scaled_xyz1, reg_init=args.tps_bend_cost_init, reg_final = args.tps_bend_cost_final_search, 
-                                                            rot_reg=np.r_[1e-4,1e-4,1e-1], n_iter=num_iters, critical_points=critical_points) #tkl
+                                    rot_reg=np.r_[1e-4,1e-4,1e-1], n_iter=num_iters, plotting=True, critical_points=critical_points, added_pts=added_pts)
     cost = registration.tps_reg_cost(f) + registration.tps_reg_cost(g)
     g = registration.unscale_tps_3d(g, targ_params, src_params)
     f = registration.unscale_tps_3d(f, src_params, targ_params)
     return (cost, f, g)
 
-def registration_cost_with_rotation(xyz0, xyz1, critical_points=0):
+def registration_cost_with_rotation(xyz0, xyz1, critical_points=0, added_pts=0):
     #rad_angs = np.linspace(-np.pi+np.pi*(float(10)/180), np.pi,36)
     rad_angs = np.linspace(-np.pi+np.pi*(float(30)/180), np.pi,12)
     #rad_angs = np.linspace(-np.pi+np.pi*(float(45)/180), np.pi,8)
     costs = np.zeros(len(rad_angs))
     for i in range(len(rad_angs)):
         rotated_demo = rotate_about_median(xyz0, rad_angs[i])
-        costs[i] = registration_cost(rotated_demo, xyz1, 3, critical_points=critical_points)
+        costs[i] = registration_cost(rotated_demo, xyz1, 3, critical_points=critical_points, added_pts=added_pts)
     theta = rad_angs[np.argmin(costs)]
     rotated_demo = rotate_about_median(xyz0, theta)
-    cost, f, g = registration_cost_and_tfm(rotated_demo, xyz1, critical_points=critical_points)
+    cost, f, g = registration_cost_and_tfm(rotated_demo, xyz1, critical_points=critical_points, added_pts=added_pts)
 
     rotate, unrotate = rotations_from_ang(theta,np.median(xyz0, axis=0))
     f = Composition([rotate, f])
@@ -726,47 +701,30 @@ def registration_cost_with_pca_rotation(xyz0, xyz1, critical_points=0):
 
     return (np.min(costs), f, g, rmat)
 
-def remove_dups(arr):
-    seen = set()
-    for i in xrange(len(arr)-1,-1,-1):
-        if tuple(arr[i]) in seen:
-            #arr = np.delete(arr, i, axis=0)
-            arr[i][2] += 0.001
-        else:
-            seen.add(tuple(arr[i]))
-    return arr
-
-def remove_dups2(arr, arr2):
-    seen = set()
-    for i in range(len(arr2)):
-        seen.add(tuple(arr2[i,:]))
-    for i in xrange(len(arr)-1,-1,-1):
-        if tuple(arr[i]) in seen:
-            arr = np.delete(arr, i, axis=0)
-    return arr
-
-def registration_cost_crit(xyz0, xyz1, crit_demo, crit_sim):
-    crit_num = len(xyz0)
-    palindrome = False
-    if crit_demo == None or len(crit_demo)==0:# or palindrome:
-        cost1, f1, g1, theta1, = registration_cost_with_rotation(xyz0, xyz1, critical_points=len(xyz0))
-        cost2, f2, g2, theta2 = registration_cost_with_rotation(xyz0[::-1], xyz1, critical_points=len(xyz0))
+def registration_cost_crit(xyz0, xyz1, crit_demo, crit_sim, added_pts=0):
+    crit_num = len(xyz0)-added_pts
+    if crit_demo == None or len(crit_demo)==0:
+        cost1, f1, g1, theta1, = registration_cost_with_rotation(xyz0, xyz1, critical_points=crit_num, added_pts=added_pts)
+        xyz0 = np.vstack([xyz0[:crit_num][::-1], xyz0[crit_num:][::-1]])
+        cost2, f2, g2, theta2 = registration_cost_with_rotation(xyz0[::-1], xyz1, critical_points=crit_num, added_pts=added_pts)
         if cost2 < cost1:
             return cost2, f2, g2, theta2
         else:
             return cost1, f1, g1, theta1
     elif not args.force_points:
         if len(crit_sim) == len(crit_demo):
-            pattern, inds = calculateCrossings(xyz1, get_inds=True)
-            xyz0 = sort_to_end(xyz0, inds)
-            xyz1 = sort_to_end(xyz1, inds)
-        cost1, f1, g1, theta1 = registration_cost_with_rotation(xyz0, xyz1, critical_points=crit_num)
+            pattern, inds = calculateCrossings(xyz1[:crit_num], get_inds=True)
+            xyz0_new = sort_to_start(xyz0, inds)
+            xyz1_new = sort_to_start(xyz1, inds)
+            crit_num = len(inds)
+        cost1, f1, g1, theta1 = registration_cost_with_rotation(xyz0_new, xyz1_new, critical_points=crit_num, added_pts=added_pts)
         return (cost1, f1, g1, theta1)
     else:
-        cost1, f1, g1, theta1, = registration_cost_with_rotation(xyz0, xyz1, critical_points=len(xyz0))
+        cost1, f1, g1, theta1, = registration_cost_with_rotation(xyz0, xyz1, critical_points=crit_num, added_pts=added_pts)
         return cost1, f1, g1, theta1
 
-def sort_to_end(array, inds):
+
+def sort_to_start(array, inds):
     non_crit_pts = []
     crit_pts = []
     for i in range(len(array)):
@@ -774,7 +732,7 @@ def sort_to_end(array, inds):
             crit_pts.append(array[i])
         else:
             non_crit_pts.append(array[i])
-    return np.vstack([np.array(non_crit_pts), np.array(crit_pts)])
+    return np.vstack([np.array(crit_pts), np.array(non_crit_pts)])
 
 def find_closest_auto(demofiles, new_xyz, init_tfm=None, n_jobs=3, seg_proximity=2, DS_LEAF_SIZE=0.02):
     """
@@ -887,7 +845,7 @@ def find_closest_auto_with_crossings(demofiles, new_xyz, init_tfm=None, n_jobs=3
         for demo_name in demofile:
             if demo_name == "demo00041":
                 break
-            if demo_name != "ar_demo":                    
+            if demo_name != "ar_demo":
                 if 'done' in demofile[demo_name].keys():
                     final_seg_id = len(demofile[demo_name].keys()) - 2
                 else:
@@ -898,7 +856,12 @@ def find_closest_auto_with_crossings(demofiles, new_xyz, init_tfm=None, n_jobs=3
                     if demo_name == "demo00026" and seg_name == "seg02": continue
                     if demo_name == "demo00028" and seg_name == "seg02": continue
                     if demo_name == "demo00030" and seg_name == "seg02": continue
+                    if demo_name == "demo00035" and seg_name == "seg01": continue
                     if demo_name == "demo00039" and seg_name == "seg02": continue
+
+                    if args.choose_demo and demo_name != args.choose_demo: continue
+                    if args.choose_seg and seg_name != args.choose_seg: continue #tkl
+
                     seg_group = demofile[demo_name][seg_name]
                     if 'labeled_points' in seg_group.keys():
                         sim_xyzc, sim_pattern = get_labeled_rope_sim(new_xyz, get_pattern=True)
@@ -917,8 +880,8 @@ def find_closest_auto_with_crossings(demofiles, new_xyz, init_tfm=None, n_jobs=3
                             crit_pts_demo1 = demo_xyz1[sim_crossings_inds] 
                             demo_clouds.append(demo_xyz1)
                             crit_points.append(crit_pts_demo1)
-
                             seg_num += 1
+
                             keys[seg_num] = (demotype_num, demo_name, seg_name)
                             if seg_name == "seg%02d"%(final_seg_id):
                                 is_finalsegs[seg_num] = True
@@ -1008,7 +971,19 @@ def find_closest_auto_with_crossings(demofiles, new_xyz, init_tfm=None, n_jobs=3
     crit_pts_sim = get_critical_points_sim(new_xyz)
     (demotype_num, demo_name, seg_name) = keys[choice_ind]
     seg_group = demofiles[0][demo_name][seg_name]
-    cost, tfm, tfm_inverse, theta = registration_cost_crit(fuzz_cloud(demo_clouds[choice_ind]), fuzz_cloud(new_xyz), crit_points[choice_ind], crit_pts_sim)
+    
+    # demo_xyz = fuzz_cloud(demo_clouds[choice_ind])
+    # sim_xyz = fuzz_cloud(new_xyz)
+    # cost, tfm, tfm_inverse, theta = registration_cost_crit(demo_xyz, sim_xyz, crit_points[choice_ind], crit_pts_sim, len(sim_xyz)-len(new_xyz))
+
+    demo_xyz1 = pickle_load("center_pts")
+    sim_xyz1 = pickle_load("center_pts2")
+    demo_xyz = np.vstack([demo_xyz1+[0,-i,0] for i in np.linspace(0,.5,30)])
+    sim_xyz = np.vstack([sim_xyz1+[-.4,-i,0] for i in np.linspace(0,.5,30)])
+    demo_xyz = np.vstack([demo_xyz, np.vstack([demo_xyz1+[0.015,-i,0] for i in np.linspace(0,.5,30)])])
+    sim_xyz = np.vstack([sim_xyz, np.vstack([sim_xyz1+[-.4+ .015,-i,0] for i in np.linspace(0,.5,30)])])
+    #np.random.shuffle(demo_xyz); np.random.shuffle(sim_xyz)
+    cost, tfm, tfm_inv = registration_cost_and_tfm(demo_xyz, sim_xyz)
 
     #for now, assume only one demotype at a time
     return (keys[choice_ind][1],keys[choice_ind][2]) , is_finalsegs[choice_ind], tfm, (new_xyz, demo_clouds[choice_ind])
@@ -1087,7 +1062,7 @@ def get_rope_segments(demo_xyzc, depth_image):
         cur_seg.append(demo_xyz[i])
         if demo_xyzc[i][-1] != 0: #point is a crossing
             segs.append(cur_seg)
-            cur_seg = [demo_xyz[i]+[0, 0, 0.01*demo_xyzc[i][-1]]]
+            cur_seg = [demo_xyz[i]+[0, 0, -0.01*demo_xyzc[i][-1]]]
         if i == len(demo_xyz)-1: #last point
             segs.append(cur_seg)
             if len(cur_seg) == 1:
@@ -1154,13 +1129,13 @@ def match_crossings(demofiles, keys, costs, tfms, tfm_invs, init_tfm, dclouds, c
             plot_transform_mlab(demo_pointcloud, sim_xyz, orig_demo, [crit1, crit2, crit3])
             #segment_demo(sim_xyz, seg_group, demofiles[0])
             #plot_crossings_2d(flat_points, seg_group)
-            import IPython; IPython.embed()
+            #import IPython; IPython.embed()
 
         if demo_pattern == sim_pattern or demo_pattern == sim_pattern[::-1]:
             if wrong_topo:
                 print "Wrong topology"
-                import IPython; IPython.embed()
-                #raise Exception("Wrong topology") 
+                #import IPython; IPython.embed()
+                raise Exception("Wrong topology") 
             print "match found directly"
             return choice_ind
         else:
@@ -1476,6 +1451,8 @@ use_diff_length = args.use_diff_length
 
 
 def main():
+    np.set_printoptions(precision=5, suppress=True)
+
     global use_diff_length
 
     if use_diff_length:
@@ -1775,8 +1752,8 @@ def main():
                         file_inc += 1
                     #pickle_dump(old_sim_xyz, "test_results/grab_failed_"+str(file_inc))
                     print "Grab failed. Saved preceding state as test_results/grab_failed_"+str(file_inc)
+                    #import IPython; IPython.embed()
                     #raise Exception("grab failed")
-                    import IPython; IPython.embed()
 
             print "about to calculate"
 
@@ -1798,8 +1775,12 @@ def main():
 
                 for i in xrange(i_start,i_end+1):
                     try:
+                        if i==0:
+                            prev = resampling.interp_hmats([1],[0,2], np.vstack([new_ltraj[i-i_start:i-i_start+1], new_rtraj[i-i_start:i-i_start+1]]))[0]
+                        else:
+                            prev = eetraj[lr][i-1]
                         avg = resampling.interp_hmats([1],[0,2], np.vstack([new_ltraj[i-i_start:i-i_start+1], new_rtraj[i-i_start:i-i_start+1]]))[0]
-                        eetraj[lr][i] = tooltip_from_fingers(lr, avg, new_ltraj[i-i_start], new_rtraj[i-i_start], joint_angles[lr][i-i_start]) #rework to find tt_tfm that minimizes distance from tips to tfmd pts
+                        eetraj[lr][i] = tooltip_from_fingers(lr, prev, new_ltraj[i-i_start], new_rtraj[i-i_start], joint_angles[lr][i-i_start]) #rework to find tt_tfm that minimizes distance from tips to tfmd pts
                     except Exception as exc:
                         print exc
                         import IPython; IPython.embed()
@@ -1845,6 +1826,7 @@ def main():
                             miniseg_traj[lr].append(miniseg_traj[lr][-1])
 
             #len_miniseg = len(adaptive_times)
+            
             import IPython; IPython.embed()
 
             redprint("Executing joint trajectory for demo %s segment %s, part %i using arms '%s'"%(demo_name, seg_name, i_miniseg, miniseg_traj.keys()))

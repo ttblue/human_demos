@@ -46,25 +46,16 @@ class FloatingGripper(object):
         oldval = self.get_gripper_joint_value()
         self.set_gripper_joint_value(0.0)
 
-        # fwd_shift = np.eye(4); fwd_shift[0,3] = 0.005
-        lfwd_shift = np.eye(4); lfwd_shift[0,3] = 0.006; lfwd_shift[1,3] = 0.001 #
-        rfwd_shift = np.eye(4); rfwd_shift[0,3] = 0.006; rfwd_shift[1,3] = -0.001 #
-        # finger_tfm = self.tt_link.GetTransform().dot(fwd_shift)[:3,3]
+        lfwd_shift = np.eye(4); lfwd_shift[0,3] = 0.006; lfwd_shift[1,3] = -0.001 #
+        rfwd_shift = np.eye(4); rfwd_shift[0,3] = 0.006; rfwd_shift[1,3] = 0.001 #
         self.link2finger = {'l': self.tt_link.GetTransform().dot(lfwd_shift)[:3,3] - self.robot.GetLink('l_gripper_l_finger_tip_link').GetTransform()[:3,3],
                             'r': self.tt_link.GetTransform().dot(rfwd_shift)[:3,3] - self.robot.GetLink('l_gripper_r_finger_tip_link').GetTransform()[:3,3]}
-        # self.link2finger = {'l': finger_tfm +[0,-0.009,0]- self.robot.GetLink('l_gripper_l_finger_tip_link').GetTransform()[:3,3],
-        #                     'r': finger_tfm +[0,0.009,0]- self.robot.GetLink('l_gripper_r_finger_tip_link').GetTransform()[:3,3]}
 
         self.set_gripper_joint_value(oldval)
 
-        l_finger_tfm = self.robot.GetLink("l_gripper_l_finger_tip_link").GetTransform()
-        r_finger_tfm = self.robot.GetLink("l_gripper_r_finger_tip_link").GetTransform()
-        self.tt_to_lfinger_shift = np.linalg.inv(self.tt_link.GetTransform()).dot(l_finger_tfm)
-        self.tt_to_rfinger_shift = np.linalg.inv(self.tt_link.GetTransform()).dot(r_finger_tfm)
-
         # new finger stuff
-        l_center = self.robot.GetLink('l_gripper_l_finger_link').GetTransform()
-        r_center = self.robot.GetLink('l_gripper_r_finger_link').GetTransform()
+        l_center = self.robot.GetLink('l_gripper_r_finger_link').GetTransform() #this is backwards, because openrave is evil
+        r_center = self.robot.GetLink('l_gripper_l_finger_link').GetTransform()
         self.tt_to_l_center_shift = np.linalg.inv(self.tt_link.GetTransform()).dot(l_center)
         self.tt_to_r_center_shift = np.linalg.inv(self.tt_link.GetTransform()).dot(r_center)
         oldval = self.get_gripper_joint_value()
@@ -75,20 +66,16 @@ class FloatingGripper(object):
         l2 = np.linalg.inv(l_center).dot(self.robot.GetLink('l_gripper_l_finger_tip_link').GetTransform())[:3,3]; l2 /= np.linalg.norm(l2)
         r2 = np.linalg.inv(r_center).dot(self.robot.GetLink('l_gripper_r_finger_tip_link').GetTransform())[:3,3]; r2 /= np.linalg.norm(r2)
         self.set_gripper_joint_value(oldval)
-        self.l_axis = np.cross(l1,l2)
-        self.r_axis = np.cross(r1,r2)
+        self.l_axis = np.cross(l2,l1)
+        self.r_axis = np.cross(r2,r1)
 
-    def get_fingertip_transforms(self, tt_tfm, ang):
+    def get_tt2ftips(self, ang):
         import openravepy
         lfinger_rmat = openravepy.matrixFromAxisAngle(self.l_axis, ang)
         rfinger_rmat = openravepy.matrixFromAxisAngle(self.r_axis, ang)
-        lfwd_shift = np.eye(4); lfwd_shift[0,3] = 0.006; lfwd_shift[1,3] = 0.001
-        rfwd_shift = np.eye(4); rfwd_shift[0,3] = 0.006; rfwd_shift[1,3] = -0.001
-        l_center = tt_tfm.dot(self.tt_to_l_center_shift)
-        r_center = tt_tfm.dot(self.tt_to_r_center_shift)
-        ltip_new = l_center.dot(lfinger_rmat).dot(np.linalg.inv(l_center)).dot(tt_tfm)
-        rtip_new = r_center.dot(rfinger_rmat).dot(np.linalg.inv(r_center)).dot(tt_tfm)
-        return ltip_new.dot(lfwd_shift), rtip_new.dot(rfwd_shift)
+        tt2ltip_new = self.tt_to_l_center_shift.dot(lfinger_rmat).dot(np.linalg.inv(self.tt_to_l_center_shift))
+        tt2rtip_new = self.tt_to_r_center_shift.dot(rfinger_rmat).dot(np.linalg.inv(self.tt_to_r_center_shift))
+        return tt2ltip_new, tt2rtip_new
 
     def set_toolframe_transform(self, tf_ee):
         tf_base = tf_ee.dot(self.tf_tt2base)
