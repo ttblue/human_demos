@@ -137,17 +137,12 @@ def fit_ThinPlateSpline(x_na, y_ng, bend_coef=.1, rot_coef = 1e-5, wt_n=None, us
     angular_spring: penalize rotation
     wt_n: weight the points        
     """
-    from tn_rapprentice import tps as tn_tps
     if wt_n != None:
         wt_n = np.array(wt_n, dtype='float64') #
     x_na = np.array(x_na, dtype='float64') #
     y_ng = np.array(y_ng, dtype='float64') #
 
     f = ThinPlateSpline()
-    # if use_cvx:
-    #     import pdb; pdb.set_trace()
-    #     f.lin_ag, f.trans_g, f.w_ng = tn_tps.tps_fit3_cvx(x_na, y_ng, bend_coef, rot_coef, wt_n)
-    # else:
     rot_coef = [rot_coef, rot_coef, rot_coef]
     f.lin_ag, f.trans_g, f.w_ng = tps.tps_fit3(x_na, y_ng, bend_coef, rot_coef, wt_n)
     f.x_na = x_na
@@ -245,7 +240,7 @@ def tps_rpm(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_init =
 
     return f
 
-def tps_rpm_bij(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_init = .1, rad_final = .005, rot_reg = 1e-3, 
+def tps_rpm_bij_new(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_init = .1, rad_final = .005, rot_reg = 1e-3, 
                 plotting = False, plot_cb = None, critical_points=0 , added_pts=0):
     """
     tps-rpm algorithm mostly as described by chui and rangaran
@@ -272,6 +267,7 @@ def tps_rpm_bij(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_in
 
     f = ThinPlateSpline(d)
     f.trans_g = np.median(y_md,axis=0) - np.median(x_nd,axis=0)
+
     
     g = ThinPlateSpline(d)
     g.trans_g = -f.trans_g
@@ -367,7 +363,7 @@ def assert_rigid(ptc1, ptc2, tol):
     return True
 
 
-def tps_rpm_bij_orig(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_init = .1, rad_final = .005, rot_reg = 1e-3, 
+def tps_rpm_bij(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_init = .1, rad_final = .005, rot_reg = 1e-3, 
                 plotting = False, plot_cb = None, critical_points=0 , added_pts=0):
     """
     tps-rpm algorithm mostly as described by chui and rangaran

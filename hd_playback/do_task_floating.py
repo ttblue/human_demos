@@ -972,18 +972,9 @@ def find_closest_auto_with_crossings(demofiles, new_xyz, init_tfm=None, n_jobs=3
     (demotype_num, demo_name, seg_name) = keys[choice_ind]
     seg_group = demofiles[0][demo_name][seg_name]
     
-    # demo_xyz = fuzz_cloud(demo_clouds[choice_ind])
-    # sim_xyz = fuzz_cloud(new_xyz)
-    # cost, tfm, tfm_inverse, theta = registration_cost_crit(demo_xyz, sim_xyz, crit_points[choice_ind], crit_pts_sim, len(sim_xyz)-len(new_xyz))
-
-    demo_xyz1 = pickle_load("center_pts")
-    sim_xyz1 = pickle_load("center_pts2")
-    demo_xyz = np.vstack([demo_xyz1+[0,-i,0] for i in np.linspace(0,.5,30)])
-    sim_xyz = np.vstack([sim_xyz1+[-.4,-i,0] for i in np.linspace(0,.5,30)])
-    demo_xyz = np.vstack([demo_xyz, np.vstack([demo_xyz1+[0.015,-i,0] for i in np.linspace(0,.5,30)])])
-    sim_xyz = np.vstack([sim_xyz, np.vstack([sim_xyz1+[-.4+ .015,-i,0] for i in np.linspace(0,.5,30)])])
-    #np.random.shuffle(demo_xyz); np.random.shuffle(sim_xyz)
-    cost, tfm, tfm_inv = registration_cost_and_tfm(demo_xyz, sim_xyz)
+    demo_xyz = fuzz_cloud(demo_clouds[choice_ind])
+    sim_xyz = fuzz_cloud(new_xyz)
+    cost, tfm, tfm_inverse, theta = registration_cost_crit(demo_xyz, sim_xyz, crit_points[choice_ind], crit_pts_sim, len(sim_xyz)-len(new_xyz))
 
     #for now, assume only one demotype at a time
     return (keys[choice_ind][1],keys[choice_ind][2]) , is_finalsegs[choice_ind], tfm, (new_xyz, demo_clouds[choice_ind])
