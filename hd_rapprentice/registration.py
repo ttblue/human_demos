@@ -267,7 +267,6 @@ def tps_rpm_bij_new(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, ra
 
     f = ThinPlateSpline(d)
     f.trans_g = np.median(y_md,axis=0) - np.median(x_nd,axis=0)
-
     
     g = ThinPlateSpline(d)
     g.trans_g = -f.trans_g

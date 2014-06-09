@@ -24,7 +24,7 @@ class Globals:
 def registration_cost_and_tfm(xyz0, xyz1, num_iters=30, critical_points=0, added_pts=0):
 	scaled_xyz0, src_params = registration.unit_boxify(xyz0)
 	scaled_xyz1, targ_params = registration.unit_boxify(xyz1)
-	f,g = registration.tps_rpm_bij(scaled_xyz0, scaled_xyz1, reg_init=1, reg_final = .0001, 
+	f,g = registration.tps_rpm_bij(scaled_xyz0, scaled_xyz1, reg_init=1, reg_final = .0001, rad_init = .1, rad_final = .00005,
 				rot_reg=np.r_[1e-4,1e-4,1e-1], n_iter=num_iters, plotting=True, Globals=Globals)
 	cost = registration.tps_reg_cost(f) + registration.tps_reg_cost(g)
 	g = registration.unscale_tps_3d(g, targ_params, src_params)
@@ -80,7 +80,7 @@ def main():
 	import IPython; IPython.embed()
 
 	# using only translation component of f
-	plot_fake4 = Globals.env.plot3(source_xyz+f.trans_g, 10, np.array([(1,0,1,1) for i in range(len(source_xyz))]))
+	plot_fake4 = Globals.env.plot3(source_xyz+f.trans_g, 11, np.array([(1,0,1,1) for i in range(len(source_xyz))]))
 
 	# using translation and rotation components of f
 	rigid_tfm = np.dot(source_xyz, f.lin_ag) + f.trans_g[None,:]
