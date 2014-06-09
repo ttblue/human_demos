@@ -362,9 +362,18 @@ def assert_rigid(ptc1, ptc2, tol):
                 return False
     return True
 
+def assert_equal(ptc1, ptc2, tol):
+    if len(ptc1) != len(ptc2):
+        return False
+    for i in range(len(ptc1)):
+        if np.any(abs(ptc1[i]-ptc2[i]) > tol):
+            print i, j, ptc1[i], ptc1[j]
+            return False
+    return True
+
 
 def tps_rpm_bij(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_init = .1, rad_final = .005, rot_reg = 1e-3, 
-                plotting = False, plot_cb = None, critical_points=0 , added_pts=0):
+                plotting = False, plot_cb = None, critical_points=0 , added_pts=0, Globals=None):
     """
     tps-rpm algorithm mostly as described by chui and rangaran
     reg_init/reg_final: regularization on curvature
@@ -382,7 +391,9 @@ def tps_rpm_bij(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_in
     g = ThinPlateSpline(d)
     g.trans_g = -f.trans_g
 
-
+    #"stopping in tps_rpm_bij"
+    #import IPython; IPython.embed()
+    
     # r_N = None
     
     for i in xrange(n_iter):
@@ -413,6 +424,7 @@ def tps_rpm_bij(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_in
     g._cost = tps.tps_cost(g.lin_ag, g.trans_g, g.w_ng, g.x_na, ytarg_md, regs[i], wt_n=wt_m)/wt_m.mean()
     f.corr_nm = corr_nm
     return f,g
+
 
 def tps_reg_cost(f):
     K_nn = tps.tps_kernel_matrix(f.x_na)
