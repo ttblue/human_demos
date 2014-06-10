@@ -32,9 +32,9 @@ def registration_cost_and_tfm(xyz0, xyz1, num_iters=30, critical_points=0, added
 	return (cost, f, g)
 
 
-def plot_arrows(handle, xyz0, xyz1, max_num=100, step=10, size=0.0002, color=(1,0,0,1)):
+def plot_arrows(handles, xyz0, xyz1, max_num=100, step=10, size=0.0002, color=(1,0,0,1)):
 	for i in range(max_num):
-		handles[handle] = Globals.env.drawarrow(xyz0[i*step], xyz1[i*step], 0.0002, (1,0,0,1))
+		handles.append(Globals.env.drawarrow(xyz0[i*step], xyz1[i*step], 0.0002, (1,0,0,1))
 
 
 def pickle_dump(xyz,filename):
@@ -47,6 +47,7 @@ def pickle_load(filename):
     xyz = pickle.load(file1)
     return xyz
 
+
 def assert_equal(ptc1, ptc2, tol):
     if len(ptc1) != len(ptc2):
         return False
@@ -55,6 +56,14 @@ def assert_equal(ptc1, ptc2, tol):
             print i, ptc1[i], ptc2[i]
             return False
     return True
+
+
+def plot_diff(i,j, old_xyz):
+	orig_diff = np.array([(i/10.)*old_xyz[-2]+(1-i/10.)*old_xyz[34] for i in range(11)])
+	plot_orig_diff = Globals.env.plot3(orig_diff, 10, np.array([(1,0,1,1) for i in orig_diff]))
+	tfmd_diff = f.transform_points(orig_diff); plot_tfmd_diff = Globals.env.plot3(tfmd_diff, 10, np.array([(1,0,1,1) for i in orig_diff]))
+	plot_tfmd_strip = Globals.env.drawlinestrip(tfmd_diff,5,(1,1,0,1))
+
 
 def main():
 	np.set_printoptions(precision=5, suppress=True)
@@ -74,7 +83,7 @@ def main():
 
 	plot_fake = Globals.env.plot3(source_xyz, 10, np.array([(0,1,0,1) for i in range(len(source_xyz))]))
 	plot_fake2 = Globals.env.plot3(target_xyz, 10, np.array([(0,1,1,1) for i in range(len(target_xyz))]))
-	plot_fake3 = Globals.env.plot3(f.transform_points(source_xyz), 10, np.array([(1,1,0,1) for i in range(len(source_xyz))]))
+	plot_fake3 = Globals.env.plot3(f.transform_points(source_xyz), 11, np.array([(1,0,0,1) for i in range(len(source_xyz))]))
 
 	Globals.viewer.Idle()
 	import IPython; IPython.embed()

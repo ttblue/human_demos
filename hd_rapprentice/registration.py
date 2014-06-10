@@ -240,7 +240,7 @@ def tps_rpm(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_init =
 
     return f
 
-def tps_rpm_bij_new(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_init = .1, rad_final = .005, rot_reg = 1e-3, 
+def tps_rpm_bij(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_init = .1, rad_final = .005, rot_reg = 1e-3, 
                 plotting = False, plot_cb = None, critical_points=0 , added_pts=0):
     """
     tps-rpm algorithm mostly as described by chui and rangaran
@@ -371,7 +371,7 @@ def assert_equal(ptc1, ptc2, tol):
     return True
 
 
-def tps_rpm_bij(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_init = .1, rad_final = .005, rot_reg = 1e-3, 
+def tps_rpm_bij_orig(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_init = .1, rad_final = .005, rot_reg = 1e-3, 
                 plotting = False, plot_cb = None, critical_points=0 , added_pts=0, Globals=None):
     """
     tps-rpm algorithm mostly as described by chui and rangaran
