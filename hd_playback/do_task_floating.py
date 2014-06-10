@@ -247,7 +247,7 @@ def get_fuzzed_rope(xyz=None):
         hmats = np.array([np.eye(4) for i in range(len(xyz)-1)])
         hmats[:,:3, 3] = np.array([(xyz[i]+xyz[i+1])/2 for i in range(len(xyz)-1)])
         rotations = np.array([(xyz[i]-xyz[i+1])/np.linalg.norm(xyz[i]-xyz[i+1]) for i in range(len(xyz)-1)])
-    new_hmats = np.array([np.eye(4) for i in range(6*len(hmats))])
+    new_hmats = np.array([np.eye(4) for i in range(2*len(hmats))])
     radius = 0.005
     for i in range(len(hmats)):
         y = np.cross(rotations[i,:], [0,0,1])
@@ -260,7 +260,7 @@ def get_fuzzed_rope(xyz=None):
         y4 = np.hstack([rotations[i,:]*-radius+y*radius, 1])
         y5 = np.hstack([rotations[i,:]*radius+-y*radius, 1])
         y6 = np.hstack([rotations[i,:]*-radius+-y*radius, 1])
-        new_hmats[6*i:6*(i+1),:,3] = np.array([hmats[i].dot(vec) for vec in [y1,y2,y3,y4,y5,y6]])
+        new_hmats[2*i:2*(i+1),:,3] = np.array([hmats[i].dot(vec) for vec in [y1,y2]])
     return new_hmats[:,:3,3]
 
 

@@ -34,7 +34,7 @@ def registration_cost_and_tfm(xyz0, xyz1, num_iters=30, critical_points=0, added
 
 def plot_arrows(handles, xyz0, xyz1, max_num=100, step=10, size=0.0002, color=(1,0,0,1)):
 	for i in range(max_num):
-		handles.append(Globals.env.drawarrow(xyz0[i*step], xyz1[i*step], 0.0002, (1,0,0,1))
+		handles.append(Globals.env.drawarrow(xyz0[i*step], xyz1[i*step], 0.0002, (1,0,0,1)))
 
 
 def pickle_dump(xyz,filename):
@@ -58,8 +58,8 @@ def assert_equal(ptc1, ptc2, tol):
     return True
 
 
-def plot_diff(i,j, old_xyz):
-	orig_diff = np.array([(i/10.)*old_xyz[-2]+(1-i/10.)*old_xyz[34] for i in range(11)])
+def plot_diff(pt_i,pt_j, old_xyz):
+	orig_diff = np.array([(i/10.)*pt_i+(1-i/10.)*pt_j for i in range(11)])
 	plot_orig_diff = Globals.env.plot3(orig_diff, 10, np.array([(1,0,1,1) for i in orig_diff]))
 	tfmd_diff = f.transform_points(orig_diff); plot_tfmd_diff = Globals.env.plot3(tfmd_diff, 10, np.array([(1,0,1,1) for i in orig_diff]))
 	plot_tfmd_strip = Globals.env.drawlinestrip(tfmd_diff,5,(1,1,0,1))
