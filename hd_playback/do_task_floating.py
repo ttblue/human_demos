@@ -247,7 +247,7 @@ def get_fuzzed_rope(xyz=None):
         hmats = np.array([np.eye(4) for i in range(len(xyz)-1)])
         hmats[:,:3, 3] = np.array([(xyz[i]+xyz[i+1])/2 for i in range(len(xyz)-1)])
         rotations = np.array([(xyz[i]-xyz[i+1])/np.linalg.norm(xyz[i]-xyz[i+1]) for i in range(len(xyz)-1)])
-    new_hmats = np.array([np.eye(4) for i in range(2*len(hmats))])
+    new_hmats = np.array([np.eye(4) for i in range(6*len(hmats))])
     radius = 0.005
     for i in range(len(hmats)):
         y = np.cross(rotations[i,:], [0,0,1])
@@ -260,7 +260,7 @@ def get_fuzzed_rope(xyz=None):
         y4 = np.hstack([rotations[i,:]*-radius+y*radius, 1])
         y5 = np.hstack([rotations[i,:]*radius+-y*radius, 1])
         y6 = np.hstack([rotations[i,:]*-radius+-y*radius, 1])
-        new_hmats[2*i:2*(i+1),:,3] = np.array([hmats[i].dot(vec) for vec in [y1,y2]])
+        new_hmats[6*i:6*(i+1),:,3] = np.array([hmats[i].dot(vec) for vec in [y1,y2,y3,y4,y5,y6]])
     return new_hmats[:,:3,3]
 
 
@@ -646,7 +646,7 @@ def registration_cost_and_tfm(xyz0, xyz1, num_iters=30, critical_points=0, added
     scaled_xyz0, src_params = registration.unit_boxify(xyz0)
     scaled_xyz1, targ_params = registration.unit_boxify(xyz1)
     f,g = registration.tps_rpm_bij(scaled_xyz0, scaled_xyz1, reg_init=args.tps_bend_cost_init, reg_final = args.tps_bend_cost_final_search, 
-                                    rot_reg=np.r_[1e-4,1e-4,1e-1], n_iter=num_iters, plotting=True, critical_points=critical_points, added_pts=added_pts)
+            rad_init = .1, rad_final = .00005, rot_reg=np.r_[1e-4,1e-4,1e-1], n_iter=num_iters, plotting=True, critical_points=critical_points, added_pts=added_pts)
     cost = registration.tps_reg_cost(f) + registration.tps_reg_cost(g)
     g = registration.unscale_tps_3d(g, targ_params, src_params)
     f = registration.unscale_tps_3d(f, src_params, targ_params)
@@ -856,7 +856,6 @@ def find_closest_auto_with_crossings(demofiles, new_xyz, init_tfm=None, n_jobs=3
                     if demo_name == "demo00026" and seg_name == "seg02": continue
                     if demo_name == "demo00028" and seg_name == "seg02": continue
                     if demo_name == "demo00030" and seg_name == "seg02": continue
-                    if demo_name == "demo00035" and seg_name == "seg01": continue
                     if demo_name == "demo00039" and seg_name == "seg02": continue
 
                     if args.choose_demo and demo_name != args.choose_demo: continue
@@ -975,7 +974,6 @@ def find_closest_auto_with_crossings(demofiles, new_xyz, init_tfm=None, n_jobs=3
     demo_xyz = fuzz_cloud(demo_clouds[choice_ind])
     sim_xyz = fuzz_cloud(new_xyz)
     cost, tfm, tfm_inverse, theta = registration_cost_crit(demo_xyz, sim_xyz, crit_points[choice_ind], crit_pts_sim, len(sim_xyz)-len(new_xyz))
-
     #for now, assume only one demotype at a time
     return (keys[choice_ind][1],keys[choice_ind][2]) , is_finalsegs[choice_ind], tfm, (new_xyz, demo_clouds[choice_ind])
 
