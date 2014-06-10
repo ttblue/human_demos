@@ -230,16 +230,13 @@ def solve_eqp1(H, f, A):
     x = N.dot(z)
     
     return x
-    
-def tps_fit3(x_na, y_ng, bend_coef, rot_coef, wt_n):
 
+
+def tps_fit3(x_na, y_ng, bend_coef, rot_coef, wt_n, K_nn=None):
     if wt_n is None: wt_n = np.ones(len(x_na))
-    x_na = np.array(x_na, dtype='float64') #
-    y_ng = np.array(y_ng, dtype='float64') #
-
     n,d = x_na.shape
 
-    K_nn = tps_kernel_matrix(x_na)
+    if K_nn is None: K_nn = tps_kernel_matrix(x_na)
     Q = np.c_[np.ones((n,1)), x_na, K_nn]
     WQ = wt_n[:,None] * Q
     QWQ = Q.T.dot(WQ)
@@ -247,15 +244,15 @@ def tps_fit3(x_na, y_ng, bend_coef, rot_coef, wt_n):
     H[d+1:,d+1:] += bend_coef * K_nn
     rot_coefs = np.ones(d) * rot_coef if np.isscalar(rot_coef) else rot_coef
     H[1:d+1, 1:d+1] += np.diag(rot_coefs)
-
+    
     f = -WQ.T.dot(y_ng)
     f[1:d+1,0:d] -= np.diag(rot_coefs)
-
+    
     A = np.r_[np.zeros((d+1,d+1)), np.c_[np.ones((n,1)), x_na]].T
-
+    
     Theta = solve_eqp1(H,f,A)
-    return Theta[1:d+1], Theta[0], Theta[d+1:]    
-
+    
+    return Theta[1:d+1], Theta[0], Theta[d+1:]
 
 def tps_fit2(x_na, y_ng, bend_coef, rot_coef, wt_n=None):
     if wt_n is not None: raise NotImplementedError
