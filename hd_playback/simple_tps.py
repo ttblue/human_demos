@@ -72,9 +72,11 @@ def main():
 
 	cost, f, g = registration_cost_and_tfm(source_xyz, target_xyz)
 
-	plot_fake = Globals.env.plot3(source_xyz, 10, np.array([(0,1,0,1) for i in range(len(source_xyz))]))
-	plot_fake2 = Globals.env.plot3(target_xyz, 10, np.array([(0,1,1,1) for i in range(len(target_xyz))]))
-	plot_fake3 = Globals.env.plot3(f.transform_points(source_xyz), 10, np.array([(1,1,0,1) for i in range(len(source_xyz))]))
+	plot_fake = Globals.env.plot3(source_xyz, 10, np.array([(0,1,0) for i in range(len(source_xyz))]))
+	plot_fake2 = Globals.env.plot3(target_xyz, 10, np.array([(0,1,1) for i in range(len(target_xyz))]))
+	plot_fake3 = Globals.env.plot3(f.transform_points(source_xyz), 10, np.array([(1,1,0) for i in range(len(source_xyz))]))
+	
+
 
 	Globals.viewer.Idle()
 	import IPython; IPython.embed()
