@@ -56,8 +56,22 @@ def tps_kernel_matrix2(x_na, y_ma):
     return tps_apply_kernel(distmat, dim)
 
 def tps_eval(x_ma, lin_ag, trans_g, w_ng, x_na):
-    K_mn = tps_kernel_matrix2(x_ma, x_na)
-    return np.dot(K_mn, w_ng) + np.dot(x_ma, lin_ag) + trans_g[None,:]
+    try:
+        K_mn = tps_kernel_matrix2(x_ma, x_na)
+        return np.dot(K_mn, w_ng) + np.dot(x_ma, lin_ag) + trans_g[None,:]
+    except Exception as exc:
+        print "exception in tps_eval_2d"
+        print exc
+        import IPython; IPython.embed() 
+
+def tps_eval_2d(x_ma, lin_ag, trans_g, w_ng, x_na):
+    try:
+        K_mn = tps_kernel_matrix2(x_ma[:,:2], x_na[:,:2])
+        return np.hstack([np.dot(K_mn, w_ng[:,:2]), np.zeros((len(K_mn),1))]) + np.dot(x_ma, lin_ag) + trans_g[None,:]
+    except Exception as exc:
+        print "exception in tps_eval_2d"
+        print exc
+        import IPython; IPython.embed() 
 
 def tps_grad(x_ma, lin_ag, _trans_g, w_ng, x_na):
     _N, D = x_na.shape
@@ -253,6 +267,7 @@ def tps_fit3(x_na, y_ng, bend_coef, rot_coef, wt_n, K_nn=None):
     Theta = solve_eqp1(H,f,A)
     
     return Theta[1:d+1], Theta[0], Theta[d+1:]
+
 
 def tps_fit2(x_na, y_ng, bend_coef, rot_coef, wt_n=None):
     if wt_n is not None: raise NotImplementedError

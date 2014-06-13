@@ -11,7 +11,7 @@ args = parser.parse_args()
 import numpy as np
 import pickle
 import openravepy, trajoptpy
-from hd_rapprentice import ropesim_floating, registration
+from hd_rapprentice import ropesim_floating, registration, plotting_openrave
 
 handles = {}
 
@@ -24,8 +24,8 @@ class Globals:
 def registration_cost_and_tfm(xyz0, xyz1, num_iters=30, critical_points=0, added_pts=0):
 	scaled_xyz0, src_params = registration.unit_boxify(xyz0)
 	scaled_xyz1, targ_params = registration.unit_boxify(xyz1)
-	f,g = registration.tps_rpm_bij(scaled_xyz0, scaled_xyz1, reg_init=1, reg_final = .0001, rad_init = .1, rad_final = .00005,
-				rot_reg=np.r_[1e-4,1e-4,1e-1], n_iter=num_iters, plotting=True, Globals=Globals)
+	f,g = registration.tps_rpm_bij(scaled_xyz0, scaled_xyz1, reg_init=1, reg_final = .0001, rad_init = .1, rad_final = .0005,
+				rot_reg=np.r_[1e-4,1e-4,1e-1], n_iter=num_iters, plotting=True)
 	cost = registration.tps_reg_cost(f) + registration.tps_reg_cost(g)
 	g = registration.unscale_tps_3d(g, targ_params, src_params)
 	f = registration.unscale_tps_3d(f, src_params, targ_params)
@@ -82,11 +82,12 @@ def main():
 	cost, f, g = registration_cost_and_tfm(source_xyz, target_xyz)
 
 
-	plot_fake = Globals.env.plot3(source_xyz, 10, np.array([(0,1,0) for i in range(len(source_xyz))]))
-	plot_fake2 = Globals.env.plot3(target_xyz, 10, np.array([(0,1,1) for i in range(len(target_xyz))]))
-	plot_fake3 = Globals.env.plot3(f.transform_points(source_xyz), 11, np.array([(1,1,0) for i in range(len(source_xyz))]))
-	
-
+	plot_fake = Globals.env.plot3(source_xyz, 10, np.array([(0,1,0,1) for i in range(len(source_xyz))]))
+	plot_fake2 = Globals.env.plot3(target_xyz, 10, np.array([(0,1,1,1) for i in range(len(target_xyz))]))
+	plot_fake3 = Globals.env.plot3(f.transform_points(source_xyz), 11, np.array([(1,1,0,1) for i in range(len(source_xyz))]))
+	handles = []
+	handles.extend(plotting_openrave.draw_grid(Globals.env, f.transform_points, source_xyz.min(axis=0)-np.r_[0,0,.1], 
+												source_xyz.max(axis=0)+np.r_[0,0,.1], xres = .1, yres = .1, zres = .04))
 	Globals.viewer.Idle()
 	import IPython; IPython.embed()
 

@@ -4,6 +4,7 @@ from hd_utils import math_utils
 from hd_rapprentice import retiming, resampling
 from hd_utils.defaults import models_dir
 import os.path as osp
+from openravepy import matrixFromAxisAngle
 
 def transform(hmat, p):
     return hmat[:3,:3].dot(p) + hmat[:3,3]
@@ -70,9 +71,8 @@ class FloatingGripper(object):
         self.r_axis = np.cross(r2,r1)
 
     def get_tt2ftips(self, ang):
-        import openravepy
-        lfinger_rmat = openravepy.matrixFromAxisAngle(self.l_axis, ang)
-        rfinger_rmat = openravepy.matrixFromAxisAngle(self.r_axis, ang)
+        lfinger_rmat = matrixFromAxisAngle(self.l_axis, ang)
+        rfinger_rmat = matrixFromAxisAngle(self.r_axis, ang)
         tt2ltip_new = self.tt_to_l_center_shift.dot(lfinger_rmat).dot(np.linalg.inv(self.tt_to_l_center_shift))
         tt2rtip_new = self.tt_to_r_center_shift.dot(rfinger_rmat).dot(np.linalg.inv(self.tt_to_r_center_shift))
         return tt2ltip_new, tt2rtip_new
@@ -120,7 +120,7 @@ class FloatingGripper(object):
             return False
     
         # check that pt is within the finger width
-        if abs(pt_local[0]) > .009 + tol:
+        if abs(pt_local[0]) > .009 + tol: #.009
             return False
     
         # check that pt is between the fingers
@@ -209,19 +209,39 @@ class FloatingGripperSimulation(object):
         self.env.UpdatePublishedBodies()
         print "settled in %d iterations" % (i+1)
 
-    def observe_cloud(self, upsample=0):
-        pts = self.rope.GetControlPoints()
-        if upsample == 0:
-            return pts
-        lengths = np.r_[0, self.rope.GetHalfHeights() * 2]
-        summed_lengths = np.cumsum(lengths)
-        assert len(lengths) == len(pts)
-        return math_utils.interp2d(np.linspace(0, summed_lengths[-1], upsample*len(pts)), summed_lengths, pts)
+    def observe_cloud(self, pts=None, radius=0.005, upsample=0, upsample_rad=1):
+        """
+        If upsample > 0, the number of points along the rope's backbone is resampled to be upsample points
+        If upsample_rad > 1, the number of points perpendicular to the backbone points is resampled to be upsample_rad points, around the rope's cross-section
+        The total number of points is then: (upsample if upsample > 0 else len(self.rope.GetControlPoints())) * upsample_rad
+        """
+        if pts == None: pts = self.rope.GetControlPoints()
+        half_heights = self.rope.GetHalfHeights()
+        if upsample > 0:
+            lengths = np.r_[0, half_heights * 2]
+            summed_lengths = np.cumsum(lengths)
+            assert len(lengths) == len(pts)
+            pts = math_utils.interp2d(np.linspace(0, summed_lengths[-1], upsample), summed_lengths, pts)
+        if upsample_rad > 1:
+            # add points perpendicular to the points in pts around the rope's cross-section
+            vs = np.diff(pts, axis=0) # vectors between the current and next points
+            vs /= np.apply_along_axis(np.linalg.norm, 1, vs)[:,None]
+            perp_vs = np.c_[-vs[:,1], vs[:,0], np.zeros(vs.shape[0])] # perpendicular vectors between the current and next points in the xy-plane
+            perp_vs /= np.apply_along_axis(np.linalg.norm, 1, perp_vs)[:,None]
+            vs = np.r_[vs, vs[-1,:][None,:]] # define the vector of the last point to be the same as the second to last one
+            perp_vs = np.r_[perp_vs, perp_vs[-1,:][None,:]] # define the perpendicular vector of the last point to be the same as the second to last one
+            perp_pts = []
+            for theta in np.linspace(0, 2*np.pi, upsample_rad, endpoint=False): # uniformly around the cross-section circumference
+                for (center, rot_axis, perp_v) in zip(pts, vs, perp_vs):
+                    rot = matrixFromAxisAngle(rot_axis, theta)[:3,:3]
+                    perp_pts.append(center + rot.T.dot(radius * perp_v))
+            pts = np.array(perp_pts)
+        return pts
 
     def grab_rope(self, lr):
         """Grab the rope with the gripper in simulation and return True if it grabbed it, else False."""
-        #GetNodes returns some sort of list of the positions of the centers of masses of the capsules.
-        #GetControlPoints seems to return some sort of list of the verticies (bend points) of the rope).
+        #GetNodes returns a list of the positions of the centers of masses of the capsules.
+        #GetControlPoints returns a list of the vertices (bend points) of the rope.
         nodes, ctl_pts = self.rope.GetNodes(), self.rope.GetControlPoints()
 
         graspable_nodes = np.array([self.grippers[lr].in_grasp_region(n) for n in nodes])

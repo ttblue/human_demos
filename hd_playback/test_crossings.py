@@ -30,7 +30,7 @@ def main():
         demo = hdf.keys()[i]
         fake_data_demo = "--fake_data_demo="+demo
         non_cross_call = "python do_task_floating.py --demo_type="+args.demo_type+" --fake_data_demo="+demo+" --fake_data_segment=seg00 --use_ar_init --select=auto --use_crossings --use_rotation --use_crits --test_success --no_display --step=100"
-        cross_call = "python do_task_floating.py --demo_type="+args.demo_type+" --fake_data_demo="+demo+" --fake_data_segment=seg00 --use_ar_init --select=auto --use_crossings --use_rotation --use_crits --test_success --no_display --step=100 --force_points"
+        cross_call = "python do_task_floating.py --demo_type="+args.demo_type+" --fake_data_demo="+demo+" --fake_data_segment=seg00 --use_ar_init --select=auto --use_crossings --use_rotation --use_crits --test_success --no_display --step=100 --init_perturb=1"
         #import IPython; IPython.embed()
         savefile = open(osp.join("test_results", args.name), 'a')
         try:
@@ -48,23 +48,6 @@ def main():
             crossings_failures.append(demo)
             savefile.write("Forced crossing match failure: " + demo + ": " + err_msg + "\n")
             print "Forced crossing match failure: " + demo + ": " + err_msg + "\n"
-        # try:
-        #     ncs = subprocess.call(non_cross_call.split())
-        # except:
-        #     ncs = 1
-        # savefile = open(osp.join("test_results", args.name), 'a')
-        # if ncs != 0:
-        #     baseline_failures.append(demo)
-        #     savefile.write("Baseline failure: " + demo +"\n")
-        #     print "baseline version failed"
-        # try:
-        #     cs = subprocess.call(cross_call.split())
-        # except:
-        #     cs = 1
-        # if cs != 0:
-        #     crossings_failures.append(demo)
-        #     savefile.write("Crossings failure: " + demo +"\n")
-        #     print "crossings version failed"
         savefile.close()
         print "finished demo", demo
         #IPython.embed()
