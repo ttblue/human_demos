@@ -59,7 +59,7 @@ parser.add_argument("--friction", help="friction value in bullet", type=float, d
 parser.add_argument("--max_steps_before_failure", type=int, default=-1)
 parser.add_argument("--tps_bend_cost_init", type=float, default=1)#1)
 parser.add_argument("--tps_bend_cost_final", type=float, default=.001) #.001
-parser.add_argument("--tps_bend_cost_final_search", type=float, default=.0001) #.00001
+parser.add_argument("--tps_bend_cost_final_search", type=float, default=.0001) # .0001 #.00001
 parser.add_argument("--tps_n_iter", type=int, default=50)
 
 parser.add_argument("--closest_rope_hack", action="store_true", default=False)
@@ -116,7 +116,7 @@ from hd_utils import transformations
 from hd_utils.defaults import demo_files_dir, hd_data_dir,\
         ar_init_dir, ar_init_demo_name, ar_init_playback_name, \
         tfm_head_dof, tfm_bf_head, cad_files_dir, init_state_perturbs_dir
-from knot_classifier import calculateCrossings, calculateMdp, calculateMdp2, isKnot, remove_crossing
+from knot_classifier import calculateCrossings, calculateMdp, calculateMdp2, isKnot, remove_crossing, pairs_to_dict
 
 
 
@@ -228,9 +228,18 @@ def split_trajectory_by_gripper(seg_info, pot_angle_threshold, ms_thresh=2):
 
 
 def fuzz_cloud(xyz, seg_group=None, init_tfm=None):
-    cross_section = observe_cloud(xyz, upsample_rad=4)
-    #table_pts = get_convex_hull(observe_cloud(xyz, radius = 0.025, upsample_rad=2), 100, seg_group, init_tfm)
-    table_pts = get_table_fuzz(observe_cloud(xyz, radius = 0.02, upsample_rad=2), 100, seg_group, init_tfm)
+    #return xyz, (len(xyz),0,0)
+    cross_section = observe_cloud(xyz, radius=0.005, upsample_rad=4)
+    # #return np.vstack([xyz, cross_section]), (len(xyz),len(cross_section),0)
+    # # table_pts = get_convex_hull(observe_cloud(xyz, radius = 0.025, upsample_rad=2), 100, seg_group, init_tfm)
+    table_pts = get_table_grid(xyz, 10, seg_group, init_tfm)
+    # # table_pts = get_interpolations(xyz, 3, seg_group, init_tfm)-[0,0,0.002]
+    # # table_pts = np.vstack([get_table_fuzz(observe_cloud(xyz, radius = 0.015, upsample_rad=2), 100, seg_group, init_tfm),
+    # #                        get_table_fuzz(observe_cloud(xyz, radius = 0.025, upsample_rad=2), 100, seg_group, init_tfm),
+    # #                        get_table_fuzz(observe_cloud(xyz, radius = 0.035, upsample_rad=2), 100, seg_group, init_tfm)])
+    # #table_pts = get_table_fuzz(observe_cloud(xyz, radius = 0.025, upsample_rad=2), 100, seg_group, init_tfm)
+    #table_pts = get_voronoi(xyz)
+    # #xyz[:,2] = Globals.table_height + 0.1; xyz[:,2] = Globals.table_height + 0.1; xyz[:,2] = Globals.table_height + 0.1 
     return np.vstack([xyz, cross_section, table_pts]), (len(xyz), len(cross_section), len(table_pts))
 
 
@@ -277,8 +286,57 @@ def get_table_fuzz(xyz, length=50, seg_group=None, init_tfm=None):
         return np.hstack([flat_points, np.ones((len(flat_points),1))*(Globals.table_height+0.1)])
     else:
         depth_xyz = clouds.depth_to_xyz(seg_group["depth"][:])
-        ret = [depth_xyz[int(round(pt[1])), int(round(pt[0]))] for pt in flat_points]
+        depth_projection = np.array([depth_xyz[int(round(pt[1])), int(round(pt[0]))] for pt in flat_points])
+        ret = depth_projection #flatten_cloud(depth_projection)
         return np.array(ret).dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
+
+
+def get_table_grid(xyz, size=25, seg_group=None, init_tfm=None):
+    if seg_group == None:
+        flat_points = xyz[:,:-1]
+    else:
+        orig_space_xyz = (xyz - init_tfm[:3,3][None,:]).dot(np.linalg.pinv(init_tfm[:3,:3]).T)
+        flat_points = np.array([clouds.XYZ_to_xy(*pt) for pt in orig_space_xyz])
+    x1 = np.max(flat_points[:,0])*1.01; x2 = np.min(flat_points[:,0])*.99
+    y1 = np.max(flat_points[:,1])*1.01; y2 = np.min(flat_points[:,1])*.99
+    grid = np.vstack([np.array([[i,j,0] for i in np.linspace(x1,x2,size)]) for j in np.linspace(y1,y2,size)])
+    if seg_group == None:
+        grid[:,2] = Globals.table_height+0.1
+        return grid
+    else:
+        depth_xyz = clouds.depth_to_xyz(seg_group["depth"][:])
+        depth_projection = np.array([depth_xyz[int(round(pt[1])), int(round(pt[0]))] for pt in grid])
+        ret = flatten_cloud(depth_projection)
+        return np.array(ret).dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
+
+
+def get_voronoi(xyz, seg_group=None, init_tfm=None):
+    if seg_group == None:
+        flat_points = xyz[:,:-1]
+    else:
+        orig_space_xyz = (xyz - init_tfm[:3,3][None,:]).dot(np.linalg.pinv(init_tfm[:3,:3]).T)
+        flat_points = np.array([clouds.XYZ_to_xy(*pt) for pt in orig_space_xyz])
+    x1 = np.max(flat_points[:,0])+.01; x2 = np.min(flat_points[:,0])-.01
+    y1 = np.max(flat_points[:,1])+.01; y2 = np.min(flat_points[:,1])-.01
+    vor = Voronoi(flat_points)
+    vertices = vor.vertices
+    vertices = vertices[(vertices[:,0] < x1) & (vertices[:,0] > x2) & (vertices[:,1] < y1) & (vertices[:,1] > y2)]
+    if seg_group == None:
+        vertices = np.hstack([vertices, np.ones((len(vertices),1))*(Globals.table_height+0.1)])
+        return vertices
+    else:
+        depth_xyz = clouds.depth_to_xyz(seg_group["depth"][:])
+        depth_projection = np.array([depth_xyz[int(round(pt[1])), int(round(pt[0]))] for pt in vertices])
+        ret = flatten_cloud(depth_projection)
+        return np.array(ret).dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
+
+
+def flatten_cloud(xyz):
+    U,S,Vt = np.linalg.svd(np.cov(xyz.T))
+    n = U[:,2]/np.linalg.norm(U[:,2])    #direction of least variance; normal to the best-fit plane
+    new_xyz = np.array([pt - pt.dot(n)*n for pt in xyz])  #project points onto best-fit plane
+    new_xyz = new_xyz - np.mean(new_xyz, axis=0) + np.mean(xyz, axis=0) #recenter
+    return new_xyz
 
 
 def get_convex_hull(xyz, length=50, seg_group=None, init_tfm=None):
@@ -298,25 +356,53 @@ def get_convex_hull(xyz, length=50, seg_group=None, init_tfm=None):
         return np.array(ret).dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
 
 
-def get_hull(xyz, length=100, seg_group=None, init_tfm=None):
-    fuzz = observe_cloud(xyz, radius = 0.025, upsample_rad=2)
+def get_interpolations(xyz, length=1, seg_group=None, init_tfm=None):
     if seg_group == None:
-        flat_core = xyz[:,:-1]
-        flat_fuzz = fuzz[:,:-1]
+        xyzc = get_labeled_rope_sim(xyz)
     else:
-        orig_space_core = (xyz - init_tfm[:3,3][None,:]).dot(np.linalg.pinv(init_tfm[:3,:3]).T)
-        flat_core = np.array([clouds.XYZ_to_xy(*pt) for pt in orig_space_core])
-        orig_space_fuzz = (fuzz - init_tfm[:3,3][None,:]).dot(np.linalg.pinv(init_tfm[:3,:3]).T)
-        flat_fuzz = np.array([clouds.XYZ_to_xy(*pt) for pt in orig_space_fuzz])
-    hull_inds = [i for i in range(len(flat_fuzz)) if min([np.linalg.norm(flat_fuzz[i]-flat_core[j]) for j in range(len(flat_core))]) >= 0.025]
-    hull_inds = np.append(hull_inds, hull_inds[0]) #to resample between last and first point (closed curve)
-    hull_pts = rope_initialization.unif_resample(flat_fuzz[hull_inds], length)
-    if seg_group == None:
-        return np.hstack([hull_pts, np.ones((length,1))*(Globals.table_height+0.1)])
-    else:
-        depth_xyz = clouds.depth_to_xyz(seg_group["depth"][:])
-        ret = [depth_xyz[int(round(pt[1])), int(round(pt[0]))] for pt in hull_pts]
-        return np.array(ret).dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
+        xyzc = get_labeled_rope_demo(seg_group)
+        xyzc[:,:3] = xyzc[:,:3].dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
+    pattern, pairs, inds = calculateCrossings(xyz, get_inds=True)
+    pair_dict = pairs_to_dict(pairs)
+    segs = get_rope_segments(xyzc)
+    seg_pairs = {}
+    for pair in pairs:  #no idea if this is even sort of right
+        if pair[0]+1 in pair_dict and pair_dict[pair[0]+1] == pair[1]+1 and pair_dict[pair[0]+1] != pair[0]:
+            seg_pairs[pair[0]] = pair[1]
+        if pair[0]+1 in pair_dict and pair_dict[pair[0]+1] == pair[1]-1 and pair_dict[pair[0]+1] != pair[0]:
+            seg_pairs[pair[0]] = pair[1]-1
+    # segs.append(np.vstack([segs[1], segs[5]])[::-1])
+    # seg_pairs[3] = 7
+    table_pts = np.zeros((0,3))
+    for s in seg_pairs.keys():
+        pair_len = max(len(segs[s]), len(segs[seg_pairs[s]]))
+        seg1 = rope_initialization.unif_resample(segs[s], pair_len+2)[1:-1]
+        seg2 = rope_initialization.unif_resample(segs[seg_pairs[s]], pair_len+2)[1:-1]
+        interp_pts = np.zeros((0,3))
+        for i in range(len(seg1)):
+            try:
+                interp_pts = np.vstack([interp_pts, rope_initialization.unif_resample(np.array([seg1[i], seg2[i]]), length+2)[1:-1]])
+            except Exception as err:
+                print err
+                import IPython; IPython.embed()
+        p1 = Globals.env.plot3(np.array(seg1), 5, np.array([(1,0,0,1) for i in range(pair_len)]))
+        p2 = Globals.env.plot3(np.array(seg2), 5, np.array([(1,0,1,1) for i in range(pair_len)]))
+        p3 = Globals.env.plot3(interp_pts, 5, np.array([(0,1,0,1) for i in interp_pts]))
+        table_pts = np.vstack([table_pts, interp_pts])
+        #Globals.viewer.Idle()
+        #import IPython; IPython.embed()
+    p1 = Globals.env.plot3(xyz, 5, np.array([(1,0,0,1) for i in xyz]))
+    if len(table_pts) > 0:
+        p2 = Globals.env.plot3(table_pts, 5, np.array([(0,1,0,1) for i in table_pts]))
+
+    #p3.Close()
+    Globals.viewer.Idle()
+
+    if len(table_pts) > 3:
+        table_pts = flatten_cloud(table_pts)
+
+    return table_pts
+    
 
 
 def rotate_about_median(xyz, theta, median=None):
@@ -364,6 +450,7 @@ def rotate_by_pca(xyz0, xyz1):
     new_xyz = aligned_xyz + median
     return new_xyz
 
+
 def rotations_from_ang(theta,median):
     if not np.shape(theta):
         rotation_matrix = np.eye(3)
@@ -380,10 +467,12 @@ def rotations_from_ang(theta,median):
     unrotate = Composition([shift_to_origin,unrotate,shift_from_origin])
     return rotate, unrotate
 
+
 def get_crossings(rope_points):
-    crossings_pattern, points = calculateCrossings(rope_points, get_points=True)
+    crossings_pattern, _, points = calculateCrossings(rope_points, get_points=True)
     crossings_locations = np.array(points) #np.array([rope_points[i] for i in np.sort(np.array(list(cross_pairs)).flatten())])
     return crossings_pattern, crossings_locations
+
 
 def get_critical_points_sim(rope_points):
     sim_xyzc = get_labeled_rope_sim(rope_points)
@@ -410,7 +499,7 @@ def get_critical_points_demo(seg_group):
 
 
 def get_labeled_rope_sim(rope_points, get_pattern=False):
-    pattern, inds = calculateCrossings(rope_points, get_inds=True)
+    pattern, _, inds = calculateCrossings(rope_points, get_inds=True)
     crossing_ind = 0
     labeled_rope = np.zeros((len(rope_points),4))
     for i in range(len(rope_points)):
@@ -429,6 +518,7 @@ def get_labeled_rope_sim(rope_points, get_pattern=False):
             labeled_rope = remove_crossing(labeled_rope,0)
         pattern = [pt[-1] for pt in labeled_rope if pt[-1]!=0]
         return labeled_rope, pattern
+
 
 def get_labeled_rope_demo(seg_group, get_pattern=False):
     labeled_points = seg_group["labeled_points"][:]
@@ -452,6 +542,7 @@ def get_labeled_rope_demo(seg_group, get_pattern=False):
         pattern = [pt[-1] for pt in labeled_rope if pt[-1]!=0]
         return labeled_rope, pattern
 
+
 def get_pattern_sim(rope_points):
     sim_xyzc = get_labeled_rope_sim(rope_points)
     if sim_xyzc[-1][-1] != 0:
@@ -462,6 +553,7 @@ def get_pattern_sim(rope_points):
         sim_xyzc = remove_crossing(sim_xyzc,0)
     sim_pattern = [pt[-1] for pt in sim_xyzc if pt[-1]!=0]
     return sim_pattern
+
 
 def get_pattern_demo(seg_group):
     demo_xyzc = get_labeled_rope_demo(seg_group)
@@ -475,6 +567,7 @@ def get_pattern_demo(seg_group):
     demo_pattern = [pt[-1] for pt in demo_xyzc if pt[-1]!=0]
     return demo_pattern
 
+
 def pickle_dump(xyz,filename):
     file1 = open(filename, 'wb')
     xyz = pickle.dump(xyz, file1)
@@ -484,6 +577,7 @@ def pickle_load(filename):
     file1 = open(filename, 'rb')
     xyz = pickle.load(file1)
     return xyz
+
 
 FEASIBLE_REGION = [[.3, -.5], [.8, .5]]# bounds on region robot can hope to tie rope in
 
@@ -521,10 +615,10 @@ def set_gripper_sim(lr, is_open, prev_is_open):
     for val in joint_traj:
         Globals.sim.grippers[lr].set_gripper_joint_value(val)
         dist = get_finger_dist(lr)
-        try:
-            Globals.dist_angs[dist] = val
-        except AttributeError as atterr:
-            Globals.dist_angs = {dist: val}
+        # try:
+        #     DIST_ANGS[dist] = val
+        # except AttributeError as atterr:
+        #     DIST_ANGS = {dist: val}
         Globals.sim.step()
         if Globals.viewer:
             Globals.viewer.Step()
@@ -613,8 +707,9 @@ def tooltip_from_fingers(lr, prev, lhmat, rhmat, joint_val):
     rot_tfm = np.eye(4)
     rot_tfm[:3,:3] = R
     rot_tfm[:3,3] = -R.dot(pts1.mean(0)) + pts2.mean(0)
-    return rot_tfm.dot(tt_tfm)
-    
+    new_tfm = rot_tfm.dot(tt_tfm)
+    return new_tfm
+
 
 def joint_angles_from_fingers(ltraj, rtraj, is_open=False):
     if is_open:
@@ -704,7 +799,7 @@ def registration_cost_and_tfm(xyz0, xyz1, num_iters=30, block_lengths=None):
     scaled_xyz0, src_params = registration.unit_boxify(xyz0)
     scaled_xyz1, targ_params = registration.unit_boxify(xyz1)
     f,g = registration.tps_rpm_bij(scaled_xyz0, scaled_xyz1, reg_init=args.tps_bend_cost_init, reg_final = args.tps_bend_cost_final_search, 
-            rad_init = .1, rad_final = .0005, rot_reg=np.r_[1e-4,1e-4,1e-1], n_iter=num_iters, plotting=True, block_lengths=block_lengths)
+            rad_init = .1, rad_final = .0005, rot_reg=np.r_[1e-4,1e-4,1e-1], n_iter=num_iters, plotting=True, block_lengths=block_lengths, Globals=Globals)
     cost = registration.tps_reg_cost(f) + registration.tps_reg_cost(g)
     g = registration.unscale_tps_3d(g, targ_params, src_params)
     f = registration.unscale_tps_3d(f, src_params, targ_params)
@@ -775,7 +870,7 @@ def registration_cost_crit(xyz0, xyz1, crit_demo, crit_sim, block_lengths=None):
             return cost1, f1, g1, theta1
     elif not args.force_points:
         if len(crit_sim) == len(crit_demo):
-            pattern, inds = calculateCrossings(xyz1[:crit_num], get_inds=True)
+            pattern, _, inds = calculateCrossings(xyz1[:crit_num], get_inds=True)
             xyz0_new = sort_to_start(xyz0, inds)
             xyz1_new = sort_to_start(xyz1, inds)
             crit_num = len(inds)
@@ -796,6 +891,7 @@ def sort_to_start(array, inds):
         else:
             non_crit_pts.append(array[i])
     return np.vstack([np.array(crit_pts), np.array(non_crit_pts)])
+
 
 def find_closest_auto(demofiles, new_xyz, init_tfm=None, n_jobs=3, seg_proximity=2, DS_LEAF_SIZE=0.02):
     """
@@ -916,12 +1012,14 @@ def find_closest_auto_with_crossings(demofiles, new_xyz, init_tfm=None, n_jobs=3
 
                 for seg_name in demofile[demo_name]:
                     # if demo_name == "demo00010" and seg_name == "seg02": continue
-                    # if demo_name == "demo00026" and seg_name == "seg02": continue
-                    # if demo_name == "demo00028" and seg_name == "seg02": continue
-                    # if demo_name == "demo00030" and seg_name == "seg02": continue
+                    if demo_name == "demo00026" and seg_name == "seg02": continue #tip brushes too close above rope
+                    if demo_name == "demo00028" and seg_name == "seg02": continue #grabs outside/past the end of the rope
+                    if demo_name == "demo00030" and seg_name == "seg02": continue #completely off, grabs way above rope (recording error?)
                     # if demo_name == "demo00039" and seg_name == "seg02": continue
-                    if demo_name == "demo00017" and seg_name == "seg00": continue
-
+                    if demo_name == "demo00017" and seg_name == "seg00": continue #extra grab
+                    if demo_name == "demo00025" and seg_name == "seg01": continue #non-grasping hand is on table, bumps rope
+                    if demo_name == "demo00039" and seg_name == "seg02": continue #extra grab
+                    #if demo_name != "demo00027" and demo_name != "demo00003": continue
 
                     if args.choose_demo and demo_name != args.choose_demo: continue
                     if args.choose_seg and seg_name != args.choose_seg: continue #tkl
@@ -1005,14 +1103,15 @@ def find_closest_auto_with_crossings(demofiles, new_xyz, init_tfm=None, n_jobs=3
         for (i,ds_cloud) in enumerate(demo_clouds):
             if args.use_rotation:
                 if args.use_crits:
-                    
                     crit_pts_sim = get_critical_points_sim(new_xyz)
                     (demotype_num, demo_name, seg_name) = keys[i]
-                    try:
-                        seg_group = demofiles[0][demo_name][seg_name]
-                    except Exception as exc:
-                        import IPython; IPython.embed()
+                    seg_group = demofiles[0][demo_name][seg_name]
+                    demo_xyz, demo_lens = fuzz_cloud(demo_clouds[i], seg_group, init_tfm)
+                    sim_xyz, sim_lens = fuzz_cloud(new_xyz)
+                    # cost_i, tfm_i, tfm_inverse_i, theta_i = registration_cost_crit(demo_xyz, sim_xyz, crit_points[i], crit_pts_sim, zip(demo_lens, sim_lens))
                     cost_i, tfm_i, tfm_inverse_i, theta_i = registration_cost_crit(demo_clouds[i], new_xyz, crit_points[i], crit_pts_sim)
+                    #if (demo_name == "demo00027" and seg_name == "seg00") or (demo_name == "demo00003" and seg_name == "seg01"):
+                    #    import IPython; IPython.embed()
                     thetas.append(theta_i)
                 else:
                     try:
@@ -1039,6 +1138,7 @@ def find_closest_auto_with_crossings(demofiles, new_xyz, init_tfm=None, n_jobs=3
     demo_xyz, demo_lens = fuzz_cloud(demo_clouds[choice_ind], seg_group, init_tfm)
     sim_xyz, sim_lens = fuzz_cloud(new_xyz)
     cost, tfm, tfm_inverse, theta = registration_cost_crit(demo_xyz, sim_xyz, crit_points[choice_ind], crit_pts_sim, zip(demo_lens, sim_lens))
+    print cost, theta
     #for now, assume only one demotype at a time
     return (keys[choice_ind][1],keys[choice_ind][2]) , is_finalsegs[choice_ind], tfm, (new_xyz, demo_clouds[choice_ind])
 
@@ -1074,8 +1174,7 @@ def segment_demo(sim_xyz, seg_group, demofile, reverse=False):
 
     print "found pattern match"
 
-    depth_image = seg_group["depth"][:]
-    segs = get_rope_segments(demo_xyzc, depth_image)
+    segs = get_rope_segments(demo_xyzc)
 
     if len(segs) != len(sim_pattern)+1:
         print "\n\nwrong number of segments\n\n"
@@ -1109,7 +1208,8 @@ def segment_demo(sim_xyz, seg_group, demofile, reverse=False):
 
     return np.array(demo_xyz)
 
-def get_rope_segments(demo_xyzc, depth_image):
+
+def get_rope_segments(demo_xyzc):
     segs = []; cur_seg = []
     demo_xyz = demo_xyzc[:,:-1]
     for i in range(len(demo_xyz)):
@@ -1127,7 +1227,6 @@ def get_rope_segments(demo_xyzc, depth_image):
 def match_crossings(demofiles, keys, costs, tfms, tfm_invs, init_tfm, dclouds, crit_points, thetas, new_xyz):
     from hd_visualization import mayavi_plotter as myp
 
-
     print "matching crossings"
     sim_xyz = Globals.sim.rope.GetControlPoints()
     sim_pattern, crossings_locations = get_crossings(sim_xyz)
@@ -1139,6 +1238,8 @@ def match_crossings(demofiles, keys, costs, tfms, tfm_invs, init_tfm, dclouds, c
         if tuple(sim_pattern) not in equiv and tuple(reversed(sim_pattern)) not in equiv:
             print sim_pattern, "not in equiv"
             #return np.argmin(costs)
+        if sim_pattern == []:
+            return np.argmin(costs)
 
     wrong_topo = False
     for choice_ind in cost_inds: #check best TPS fit against crossings match
@@ -1188,8 +1289,9 @@ def match_crossings(demofiles, keys, costs, tfms, tfm_invs, init_tfm, dclouds, c
         if demo_pattern == sim_pattern or demo_pattern == sim_pattern[::-1]:
             if wrong_topo:
                 print "Wrong topology:", seg_group
-                #import IPython; IPython.embed()
-                #raise Exception("Wrong topology") 
+                import IPython; IPython.embed()
+                #raise Exception("Wrong topology")
+                return np.argmin(costs)
             print "match found directly"
             return choice_ind
         else:
@@ -1818,10 +1920,10 @@ def main():
                     file_inc = 0
                     while os.path.isfile("test_results/grab_failed_"+str(file_inc)):
                         file_inc += 1
-                    #pickle_dump(old_sim_xyz, "test_results/grab_failed_"+str(file_inc))
+                    pickle_dump(old_sim_xyz, "test_results/grab_failed_"+str(file_inc))
                     print "Grab failed. Saved preceding state as test_results/grab_failed_"+str(file_inc)
-                    #import IPython; IPython.embed()
-                    raise Exception("grab failed")
+                    import IPython; IPython.embed()
+                    #raise Exception("grab failed")
 
             print "about to calculate"
 
@@ -1878,7 +1980,7 @@ def main():
                 
                 if next_gripper_open and not gripper_open:
                     tfm = miniseg_traj[lr][-1]
-                    if tfm[2,3] > Globals.table_height + 0.10:
+                    if tfm[2,3] > Globals.table_height + 0.15:
                         safe_drop[lr] = False
                            
             if not (safe_drop['l'] and safe_drop['r']):
@@ -1887,7 +1989,7 @@ def main():
                         tfm = miniseg_traj[lr][-1]
                         for i in range(1, 8):
                             safe_drop_tfm = tfm
-                            safe_drop_tfm[2,3] = tfm[2,3] - i / 10. * (tfm[2,3] - Globals.table_height - 0.10)
+                            safe_drop_tfm[2,3] = tfm[2,3] - i / 10. * (tfm[2,3] - Globals.table_height - 0.15)
                             miniseg_traj[lr].append(safe_drop_tfm)
                     else:
                         for i in range(1, 8):
@@ -1917,12 +2019,11 @@ def main():
                     success &= exec_traj_sim(miniseg_traj, ljoints=joint_angles['l'], rjoints=joint_angles['r'])
 
 
-        Globals.sim.settle(tol=0.0001, animate=True)
-        if Globals.viewer and args.interactive:
-            Globals.viewer.Idle()
-        Globals.sim.settle(tol=0.0001, animate=True)
-        Globals.sim.settle(tol=0.0001, animate=True)
-
+            Globals.sim.settle(tol=0.0001, animate=True)
+            if Globals.viewer and args.interactive:
+                Globals.viewer.Idle()
+            Globals.sim.settle(tol=0.0001, animate=True)
+            Globals.sim.settle(tol=0.0001, animate=True)
 
         redprint("Demo %s Segment %s result: %s"%(demo_name, seg_name, success))
         

@@ -92,9 +92,9 @@ def calculateCrossings(rope_nodes, get_points=False, get_inds=False):
     # else:
     # dt_code[cross_info[0][0]/2] = i_over_j * cross_info[1][0]
     if get_points:
-        return (crossings, points)
+        return (crossings, cross_pairs, points)
     if get_inds:
-        return (crossings, inds)
+        return (crossings, cross_pairs, inds)
     return (crossings, cross_pairs, rope_closed)
 
 def crossingsToString(crossings):
@@ -123,18 +123,21 @@ def crossings_var_match(cross_pairs, top, s):
         return (i,i+4) in cross_pairs and (i+1,i+5) in cross_pairs and \
                (i+2,i+6) in cross_pairs and (i+3,i+7) in cross_pairs
 
+def pairs_to_dict(cross_pairs):
+    pair_dict = {}
+    for pair in cross_pairs:
+        pair_dict[pair[0]] = pair[1]
+        pair_dict[pair[1]] = pair[0]
+    return pair_dict
+
 #rope_nodes is an nx3 numpy array of the points of n control points of the rope
 def isKnot(rope_nodes, rdm1=True):
     (crossings, cross_pairs, rope_closed) = calculateCrossings(rope_nodes)
     if rdm1: #apply Reidemeister move 1 where possible
-        inds = np.sort(np.array(list(cross_pairs)).flatten())
-        position = {}
-        for i in inds:
-            position[i] = np.where(inds==i)[0][0]
-        for (o,u) in cross_pairs:
-            if position[o] == position[u]-1:
-                crossings[position[o]] = 'x'
-                crossings[position[u]] = 'x'
+        for pair in cross_pairs:
+            if pair[1] == pair[0]+1 or pair[1] == pair[0]-1:
+                crossings[pair[0]-1] = 'x'
+                crossings[pair[1]-1] = 'x'
         crossings = [i for i in crossings if i != "x"]
     s = crossingsToString(crossings)
     knot_topologies = ['uououo', 'uoouuoou']

@@ -29,34 +29,34 @@ def main():
     for i in range(int(args.demo_start), int(args.demo_end)):
         demo = hdf.keys()[i]
         fake_data_demo = "--fake_data_demo="+demo
-        non_cross_call = "python do_task_floating.py --demo_type="+args.demo_type+" --fake_data_demo="+demo+" --fake_data_segment=seg00 --use_ar_init --select=auto --use_crossings --use_rotation --use_crits --test_success --no_display --step=100"
-        cross_call = "python do_task_floating.py --demo_type="+args.demo_type+" --fake_data_demo="+demo+" --fake_data_segment=seg00 --use_ar_init --select=auto --use_crossings --use_rotation --use_crits --test_success --no_display --step=100 --init_perturb=1"
+        call1 = "python do_task_floating.py --demo_type="+args.demo_type+" --fake_data_demo="+demo+" --fake_data_segment=seg00 --use_ar_init --select=auto --use_crossings --use_rotation --use_crits --test_success --no_display --step=100 --force_points" 
+        call2 = "python do_task_floating.py --demo_type="+args.demo_type+" --fake_data_demo="+demo+" --fake_data_segment=seg00 --use_ar_init --select=auto --use_crossings --use_rotation --use_crits --test_success --no_display --step=100 --force_points --init_perturb=1"
         #import IPython; IPython.embed()
         savefile = open(osp.join("test_results", args.name), 'a')
         try:
-            out = subprocess.check_output(non_cross_call.split())
+            out = subprocess.check_output(call1.split())
         except Exception as exc:
             err_msg = exc.output.split("\n")[-2]
             baseline_failures.append(demo)
-            savefile.write("Initialization failure: " + demo + ": " + err_msg + "\n")
-            print "Initialization failure: " + demo + ": " + err_msg + "\n"
+            savefile.write("Unperturbed failure: " + demo + ": " + err_msg + "\n")
+            print "Unperturbed failure: " + demo + ": " + err_msg + "\n"
             savefile.flush()
         try:
-            out = subprocess.check_output(cross_call.split())
+            out = subprocess.check_output(call2.split())
         except Exception as exc:
             err_msg = exc.output.split("\n")[-2]
             crossings_failures.append(demo)
-            savefile.write("Forced crossing match failure: " + demo + ": " + err_msg + "\n")
-            print "Forced crossing match failure: " + demo + ": " + err_msg + "\n"
+            savefile.write(" Perturbed failure: " + demo + ": " + err_msg + "\n")
+            print " Perturbed failure: " + demo + ": " + err_msg + "\n"
         savefile.close()
         print "finished demo", demo
         #IPython.embed()
-    print "Forced crossing match failures:", crossings_failures, "\nInitialization failures:", baseline_failures
+    print " Perturbed failures:", crossings_failures, "\nUnperturbed failures:", baseline_failures
     savefile = open(osp.join("test_results", args.name), 'a')
-    savefile.write("Forced crossing match_failures: " + str(len(crossings_failures)) + "\n")
+    savefile.write("Perturbed failures: " + str(len(crossings_failures)) + "\n")
     for item in crossings_failures:
         savefile.write("   " + str(item)+"\n")
-    savefile.write("Initialization failures: " + str(len(baseline_failures)) + "\n")
+    savefile.write("Unperturbed failures: " + str(len(baseline_failures)) + "\n")
     for item in baseline_failures:
         savefile.write("   " + str(item)+"\n")
     savefile.close()

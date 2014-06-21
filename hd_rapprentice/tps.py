@@ -185,6 +185,7 @@ def tps_nr_cost_eval_general(lin_ag, trans_g, w_eg, x_ea, y_ng, nr_ma, bend_coef
     else:
         return res_cost + bend_cost + nr_cost    
 
+
 def tps_fit(x_na, y_ng, bend_coef, rot_coef, wt_n=None, K_nn = None):
     N,D = x_na.shape
         
@@ -219,8 +220,6 @@ def tps_fit(x_na, y_ng, bend_coef, rot_coef, wt_n=None, K_nn = None):
     trans_g = X[N+D,:]
     return lin_ag, trans_g, w_ng
     
-
-
     
 def solve_eqp1(H, f, A):
     """solve equality-constrained qp
@@ -246,11 +245,11 @@ def solve_eqp1(H, f, A):
     return x
 
 
-def tps_fit3(x_na, y_ng, bend_coef, rot_coef, wt_n, K_nn=None):
+def tps_fit3_old(x_na, y_ng, bend_coef, rot_coef, wt_n):
     if wt_n is None: wt_n = np.ones(len(x_na))
     n,d = x_na.shape
 
-    if K_nn is None: K_nn = tps_kernel_matrix(x_na)
+    K_nn = tps_kernel_matrix(x_na)
     Q = np.c_[np.ones((n,1)), x_na, K_nn]
     WQ = wt_n[:,None] * Q
     QWQ = Q.T.dot(WQ)
@@ -266,6 +265,94 @@ def tps_fit3(x_na, y_ng, bend_coef, rot_coef, wt_n, K_nn=None):
     
     Theta = solve_eqp1(H,f,A)
     
+    return Theta[1:d+1], Theta[0], Theta[d+1:]
+    
+
+def tps_fit3(x_na, y_ng, bend_coef, rot_coef, wt_n):
+    if wt_n is None: wt_n = np.ones(len(x_na))
+    n,d = x_na.shape
+    
+    K_nn = tps_kernel_matrix(x_na)
+    Q = np.c_[np.ones((n,1)), x_na, K_nn]
+    rot_coefs = np.ones(d) * rot_coef if np.isscalar(rot_coef) else rot_coef
+    A = np.r_[np.zeros((d+1,d+1)), np.c_[np.ones((n,1)), x_na]].T
+    
+    solve_dim_separately = not np.isscalar(bend_coef) or (wt_n.ndim > 1 and wt_n.shape[1] > 1)
+    
+    obj = 0
+    if solve_dim_separately:
+        #print "solving dimensions separately"
+        bend_coefs = np.ones(d) * bend_coef if np.isscalar(bend_coef) else bend_coef
+        if wt_n.ndim == 1:
+            wt_n = wt_n[:,None]
+        if wt_n.shape[1] == 1:
+            wt_n = np.tile(wt_n, (1,d))
+        Theta = np.empty((1+d+n,d))
+        for i in range(d):
+            WQ = wt_n[:,i][:,None] * Q
+            QWQ = Q.T.dot(WQ)
+            H = QWQ
+            H[d+1:,d+1:] += bend_coefs[i] * K_nn
+            H[1:d+1, 1:d+1] += np.diag(rot_coefs)
+             
+            f = -WQ.T.dot(y_ng[:,i])
+            f[1+i] -= rot_coefs[i]
+
+            Theta[:,i] = solve_eqp1(H,f,A)
+            # if i == 2:
+            #    Theta[4:,i] = 0
+            obj += Theta[:,i].T.dot(H.dot(Theta[:,i])) + 2*f.T.dot(Theta[:,i])
+    else:
+        WQ = wt_n[:,None] * Q
+        QWQ = Q.T.dot(WQ)
+        H = QWQ
+        H[d+1:,d+1:] += bend_coef * K_nn
+        H[1:d+1, 1:d+1] += np.diag(rot_coefs)
+        
+        f = -WQ.T.dot(y_ng)
+        f[1:d+1,0:d] -= np.diag(rot_coefs)
+        
+        Theta = solve_eqp1(H,f,A)
+        obj += np.trace(Theta.T.dot(H.dot(Theta))) + 2*np.trace(f.T.dot(Theta))
+#     print obj
+    
+    # if solve_dim_separately:
+    #     import IPython as ipy
+    #     ipy.embed()
+    
+    # from rapprentice.registration import ThinPlateSpline
+    # f = ThinPlateSpline()
+    # f.lin_ag, f.trans_g, f.w_ng = Theta[1:d+1], Theta[0], Theta[d+1:]
+    # f.x_na = x_na
+    
+    # cost = 0
+    # # matching cost
+    # if solve_dim_separately:
+    #     matching_cost = np.linalg.norm((f.transform_points(x_na) - y_ng) * np.sqrt(wt_n))**2
+    #     # same as (np.square(f.transform_points(x_na) - y_ng) * wt_n).sum()
+    # else:
+    #     matching_cost = np.linalg.norm((f.transform_points(x_na) - y_ng) * np.sqrt(wt_n)[:,None])**2
+    #     # same as (np.square(np.apply_along_axis(np.linalg.norm, 1, f.transform_points(x_na) - y_ng)) * wt_n).sum()
+    # cost += matching_cost
+    # # bending cost
+    # if solve_dim_separately:
+    #     bending_cost = np.trace(np.diag(bend_coefs).dot(f.w_ng.T.dot(K_nn.dot(f.w_ng))))
+    # else:
+    #     bending_cost = bend_coef * np.trace(f.w_ng.T.dot(K_nn.dot(f.w_ng)))
+    # cost += bending_cost
+    # # rotation cost
+    # rotation_cost = np.trace((f.lin_ag.T - np.eye(d)).T.dot(np.diag(rot_coefs).dot((f.lin_ag.T - np.eye(d)))))
+    # cost += rotation_cost
+    # # constants
+    # if solve_dim_separately:
+    #     cost -= np.linalg.norm(y_ng * np.sqrt(wt_n))**2
+    # else:
+    #     cost -= np.linalg.norm(y_ng * np.sqrt(wt_n)[:,None])**2
+    # cost -= np.trace(np.diag(rot_coefs))
+
+    # print "matching_cost, rotation_cost, bending_cost:"
+    # print matching_cost, rotation_cost, bending_cost, "\n"
+
     return Theta[1:d+1], Theta[0], Theta[d+1:]
 
 
