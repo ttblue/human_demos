@@ -16,14 +16,24 @@ index name conventions:
 from __future__ import division
 import numpy as np
 import scipy.spatial.distance as ssd
+import scipy.spatial as sp_spat
+from hd_rapprentice import tps, svds
+from hd_utils import math_utils #moved from rapprentice to hd_utils
+from tps import tps_eval, tps_grad, tps_fit3, tps_fit_regrot, tps_cost, tps_kernel_matrix # ParallelPython can't handle functions from other modules
+from collections import defaultdict
+import IPython as ipy
+from pdb import pm
+# from svds import svds
+DISCRETIZATION_LEVEL = 40
+MAX_CP_DIST = .05
+rot_matrices = [np.matrix([[np.cos(theta), -1*np.sin(theta), 0], 
+                           [np.sin(theta), np.cos(theta), 0], 
+                           [0, 0, 1]]) 
+                for theta in np.linspace(-1*np.pi, np.pi, DISCRETIZATION_LEVEL)]
 
-from hd_utils import math_utils
-
-from hd_rapprentice import tps, svds 
 
 
-
-class Transformation(object):
+class Transformation(): # ParallelPython can only handle old-style classes (i.e. don't inherit Transformation from object)
     """
     Object oriented interface for transformations R^d -> R^d
     """
@@ -91,26 +101,19 @@ class ThinPlateSpline(Transformation):
         self.w_ng = np.zeros((0,d))
         self.z_scale = 1
         self.corr_nm = None
-        self.is_2d = False
 
     def transform_points(self, x_ma):
-        #import IPython; IPython.embed()
-        #x_ma[:,-1] = x_ma[:,-1]*self.z_scale
-        if not self.is_2d:
-            _,d = x_ma.shape
-            y_ng = tps.tps_eval(x_ma, self.lin_ag[:d,:d], self.trans_g[:d], self.w_ng[:,:d], self.x_na[:,:d])
-            y_ng[:,-1] = y_ng[:,-1]/self.z_scale
-        else:
-            print "transforming 3d points"
-            #import IPython; IPython.embed()
-            _,d = x_ma.shape
-            y_ng = tps.tps_eval_2d(x_ma, self.lin_ag[:d,:d], self.trans_g[:d], self.w_ng[:,:d], self.x_na[:,:d])
-            y_ng[:,-1] = y_ng[:,-1]/self.z_scale
+        y_ng = tps.tps_eval(x_ma, self.lin_ag, self.trans_g, self.w_ng, self.x_na)
         return y_ng
 
     def compute_jacobian(self, x_ma):
         grad_mga = tps.tps_grad(x_ma, self.lin_ag, self.trans_g, self.w_ng, self.x_na)
         return grad_mga
+
+    def __lt__(self, other):
+        return self._cost < other._cost
+    def __gt__(self, other):
+        return self._cost > other._cost
         
 class Affine(Transformation):
     def __init__(self, lin_ag, trans_g):
@@ -146,35 +149,19 @@ def fit_ThinPlateSpline(x_na, y_ng, bend_coef=.1, rot_coef = 1e-5, wt_n=None, K_
     smoothing: penalize non-affine part
     angular_spring: penalize rotation
     wt_n: weight the points
-    x_ta: penalize distance of these points in the z-axis
     """
-    #import tn_rapprentice.tps as tn_tps
     x_na = np.array(x_na, dtype='float64')
     y_ng = np.array(y_ng, dtype='float64')
     if wt_n != None:
         wt_n = np.array(wt_n, dtype='float64')
 
-    bend_coef = np.array([bend_coef*10e0, bend_coef*10e0, bend_coef*10e-1])
+    if np.isscalar(bend_coef):
+        bend_coef = np.array([bend_coef, bend_coef, bend_coef])
 
     f = ThinPlateSpline()
     f.lin_ag, f.trans_g, f.w_ng = tps.tps_fit3(x_na, y_ng, bend_coef, rot_coef, wt_n)
-    #f.lin_ag, f.trans_g, f.w_ng = tn_tps.tps_fit3_cvx(x_na, y_ng, bend_coef, rot_coef, wt_n)
     f.x_na = x_na
-    return f        
-   
-def fit_ThinPlateSpline2d(x_na, y_ng, bend_coef=.1, rot_coef = 1e-5, wt_n=None, K_nn=None):
-    """
-    x_na: source cloud
-    y_nd: target cloud
-    smoothing: penalize non-affine part
-    angular_spring: penalize rotation
-    wt_n: weight the points        
-    """
-    f = ThinPlateSpline()
-    f.lin_ag[:-1,:-1], f.trans_g[:-1], new_w_ng = tps.tps_fit3(x_na, y_ng, bend_coef, rot_coef, wt_n)
-    f.w_ng = np.hstack([new_w_ng, np.zeros((len(new_w_ng),1))])
-    f.x_na = np.hstack([x_na, np.zeros((len(x_na),1))])
-    return f   
+    return f  
 
 def fit_ThinPlateSpline_RotReg(x_na, y_ng, bend_coef = .1, rot_coefs = (0.01,0.01,0.0025),scale_coef=.01):
     import fastrapp
@@ -185,11 +172,9 @@ def fit_ThinPlateSpline_RotReg(x_na, y_ng, bend_coef = .1, rot_coefs = (0.01,0.0
     f.x_na = x_na
     return f        
 
-
 def loglinspace(a,b,n):
     "n numbers between a to b (inclusive) with constant ratio between consecutive numbers"
     return np.exp(np.linspace(np.log(a),np.log(b),n))    
-
 
 def unit_boxify(x_na):    
     ranges = x_na.ptp(axis=0)
@@ -201,21 +186,18 @@ def unit_boxify(x_na):
     
 def unscale_tps_3d(f, src_params, targ_params):
     """Only works in 3d!!"""
-    try:
-        assert len(f.trans_g) == 3
-        p,q = src_params
-        r,s = targ_params
-        #print p,q,r,s
-        fnew = ThinPlateSpline()
-        fnew.x_na = (f.x_na  - q[None,:])/p 
-        fnew.w_ng = f.w_ng * p / r
-        fnew.lin_ag = f.lin_ag * p / r
-        fnew.trans_g = (f.trans_g  + f.lin_ag.T.dot(q) - s)/r
+    assert len(f.trans_g) == 3
+    p,q = src_params
+    r,s = targ_params
+    #print p,q,r,s
+    fnew = ThinPlateSpline()
+    fnew.x_na = (f.x_na  - q[None,:])/p 
+    fnew.w_ng = f.w_ng * p / r
+    fnew.lin_ag = f.lin_ag * p / r
+    fnew.trans_g = (f.trans_g  + f.lin_ag.T.dot(q) - s)/r
+    fnew.corr_nm = f.corr_nm
+    fnew._cost = f._cost
 
-        fnew.is_2d = f.is_2d
-        fnew.corr_nm = f.corr_nm #tkl remove
-    except Exception as exc:
-        print exc; import IPython; IPython.embed()    
     return fnew
 
 def unscale_tps(f, src_params, targ_params):
@@ -236,6 +218,42 @@ def unscale_tps(f, src_params, targ_params):
     return Composition([aff_in, f, aff_out])
     
     
+def fit_rotation(tps_fn, src_pts, tgt_pts):
+    """
+    searches through several rotations of src
+
+    sets the linear transformation of tps_fn to be the 
+    one that minimizes icp between the two pt clouds
+
+    This works, but spends a lot of time querying. Not too sure
+    how we want to combat this. 
+    """
+    _, d = src_pts.shape
+    tps_local = ThinPlateSpline(d)
+    tps_local.trans_g = tps_fn.trans_g
+    src_median = np.median(src_pts, axis=0)
+    src_pts = src_pts - src_median # so we rotate around 0
+    tps_local.trans_g += src_median # this will translate the points back
+    tgt_kd = sp_spat.KDTree(tgt_pts)
+    results = []
+    for rot in rot_matrices:
+        tps_local.lin_ag = rot
+        rot_pts = tps_fn.transform_points(src_pts)
+        rot_kd = sp_spat.KDTree(rot_pts)
+        # compute bi_directional closest-point cost
+        dist_mat = rot_kd.sparse_distance_matrix(tgt_kd, MAX_CP_DIST)
+        min_tgt_dists = MAX_CP_DIST*np.ones(len(tgt_kd.data))
+        min_rot_dists = MAX_CP_DIST*np.ones(len(rot_kd.data))        
+        for (rot_pt, tgt_pt), dist in dist_mat.iteritems():
+            min_rot_dists[rot_pt] = min(min_rot_dists[rot_pt], dist)
+            min_tgt_dists[tgt_pt] = min(min_tgt_dists[tgt_pt], dist)
+        cost = np.linalg.norm(np.r_[min_tgt_dists, min_rot_dists])
+        results.append(cost)
+    tps_fn.lin_ag = rot_matrices[np.argmin(results)]
+    tps_fn.trans_g= np.dot(tps_fn.lin_ag, -1*src_median) \
+                             + tps_local.trans_g[None,:]
+    tps_fn.trans_g = np.asarray(tps_fn.trans_g)[0,:]
+
 
 def tps_rpm(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_init = .1, rad_final = .005, rot_reg=1e-4,
             plotting = False, f_init = None, plot_cb = None):
@@ -272,16 +290,6 @@ def tps_rpm(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_init =
     return f
 
 
-def tps_rpm_bij_switch(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_init = .1, rad_final = .005, rot_reg = 1e-3, 
-                plotting = False, plot_cb = None, critical_points=0 , added_pts=0):
-    #if added_pts != 0:
-    return tps_rpm_bij_3d(x_nd, y_md, reg_init=reg_init, reg_final=reg_final, rad_init=rad_init, rad_final=rad_final,
-            rot_reg=rot_reg, n_iter=n_iter, critical_points=critical_points, added_pts=added_pts)
-    # else:
-    #     return tps_rpm_bij_2d(x_nd, y_md, reg_init=reg_init, reg_final=reg_final, rad_init=rad_init, rad_final=rad_final,
-    #         rot_reg=rot_reg, n_iter=n_iter, critical_points=critical_points)
-
-
 def tps_rpm_bij(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_init = .1, rad_final = .005, rot_reg = 1e-3, 
                 plotting = False, plot_cb = None, block_lengths=None, Globals=None):
     """
@@ -290,7 +298,6 @@ def tps_rpm_bij(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_in
     rad_init/rad_final: radius for correspondence calculation (meters)
     plotting: 0 means don't plot. integer n means plot every n iterations
     """
-    import traceback
 
     if block_lengths == None: block_lengths = [(len(x_nd), len(y_md))]
 
@@ -303,22 +310,11 @@ def tps_rpm_bij(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_in
 
     _,d=x_nd.shape
 
-    # if n_iter%30 == 0:
-    #     regs = loglinspace(reg_init, reg_final, 30)
-    #     rads = loglinspace(rad_init, rad_final, 30)
-    #     regs = np.vstack([regs[:,None] for i in range(int(n_iter/30))])
-    #     regs = np.vstack([rads[:,None] for i in range(int(n_iter/30))])
-    # elif n_iter > 40:
-    #     regs = loglinspace(reg_init, reg_final, 30)
-    #     rads = loglinspace(rad_init, rad_final, 30)
-    #     regs = np.vstack([regs[:,None], np.repeat(regs[-1], n_iter-30)[:,None]])
-    #     regs = np.vstack([rads[:,None], np.repeat(rads[-1], n_iter-30)[:,None]])
-    # else:
-    #     regs = loglinspace(reg_init, reg_final, n_iter)
-    #     rads = loglinspace(rad_init, rad_final, n_iter)
-
     regs = loglinspace(reg_init, reg_final, n_iter)
     rads = loglinspace(rad_init, rad_final, n_iter)
+
+    # do a coarse search through rotations
+    # fit_rotation(f, x_nd, y_md)
 
     f = ThinPlateSpline(d)
     f.trans_g = np.median(y_md,axis=0) - np.median(x_nd,axis=0)
@@ -330,22 +326,17 @@ def tps_rpm_bij(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_in
 
     x_nd_full = np.array(x_nd)
     y_md_full = np.array(y_md)
-    x_nd = np.array(x_nd[:block_lengths[0][0]])
-    y_md = np.array(y_md[:block_lengths[0][0]])
+
     handles = []
     from scipy.spatial import Voronoi
     vorx = Voronoi(x_nd[:block_lengths[0][0]][:,:2])
-
 
     for i in xrange(n_iter):
         if i > -1:
            x_nd = x_nd_full
            y_md = y_md_full
-        
-        try:
-            r = rads[i]
-        except Exception as err:
-            import IPython; IPython.embed()
+
+        r = rads[i]
 
         prob_nm = block_prob_nm(f, g, x_nd, y_md, block_lengths, r, i)
 
@@ -359,19 +350,19 @@ def tps_rpm_bij(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_in
         ytarg_md = (corr_nm/wt_m[None,:]).T.dot(x_nd)
 
         if i > -1 and len(block_lengths) > 1: #set weights for table point matching
-           wt_n, wt_m = adjust_weights(wt_n, wt_m, block_lengths)
+            wt_n, wt_m = adjust_weights(wt_n, wt_m, block_lengths)
 
         try:
             f = fit_ThinPlateSpline(x_nd, xtarg_nd, bend_coef = regs[i], wt_n=wt_n, rot_coef = rot_reg)
             g = fit_ThinPlateSpline(y_md, ytarg_md, bend_coef = regs[i], wt_n=wt_m, rot_coef = rot_reg)
-        except:
-            tb = traceback.format_exc()
+        except Exception as err:
             print "error in tps_rpm_bij"
-            import IPython; IPython.embed() #import pdb; pdb.set_trace()
+            print err
+            ipy.embed() #import pdb; pdb.set_trace()
 
-        # if Globals and len(block_lengths) > 1:
-        #     print "interation", i, "of", n_iter
-        #     plot_warp_progress(x_nd, y_md,f, block_lengths, Globals)
+        if Globals and len(block_lengths) > 1:
+            print "iteration", i, "of", n_iter
+            #plot_warp_progress(x_nd, y_md,f, block_lengths, Globals)
         vort = Voronoi(f.transform_points(x_nd[:block_lengths[0][0]])[:,:2])
 
     f._cost = tps.tps_cost(f.lin_ag, f.trans_g, f.w_ng, f.x_na, xtarg_nd, regs[-1], wt_n=wt_n)/wt_n.mean()
@@ -380,7 +371,7 @@ def tps_rpm_bij(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_in
     f.corr_nm = corr_nm
 
     # if len(block_lengths) > 1 and Globals:
-    #     import IPython; IPython.embed()
+    #     ipy.embed()
 
     return f,g
 
@@ -388,35 +379,36 @@ def tps_rpm_bij(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_in
 def block_prob_nm(f, g, x_nd, y_md, block_lengths, r,i):
     try:
         prob_nm = np.zeros((len(x_nd),len(y_md)))
-        oldb = (0,0)
-        for xb,yb in block_lengths:
-            x_bd = x_nd[oldb[0]:oldb[0]+xb]
-            y_bd = y_md[oldb[1]:oldb[1]+yb]
-            xwarped_bd = f.transform_points(x_bd)
-            ywarped_bd = g.transform_points(y_bd)
-            fwddist_bb = ssd.cdist(xwarped_bd, y_bd,'euclidean')
-            invdist_bb = ssd.cdist(x_bd, ywarped_bd,'euclidean')
-            prob_nm[oldb[0]:oldb[0]+xb,oldb[1]:oldb[1]+yb] = np.exp( -(fwddist_bb + invdist_bb) / (2*r) )
-            oldb = oldb[0]+xb, oldb[1]+yb
+        # oldb = (0,0)
+        # for xb,yb in block_lengths:
+        #     x_bd = x_nd[oldb[0]:oldb[0]+xb]
+        #     y_bd = y_md[oldb[1]:oldb[1]+yb]
+        #     xwarped_bd = f.transform_points(x_bd)
+        #     ywarped_bd = g.transform_points(y_bd)
+        #     fwddist_bb = ssd.cdist(xwarped_bd, y_bd,'euclidean')
+        #     invdist_bb = ssd.cdist(x_bd, ywarped_bd,'euclidean')
+        #     prob_nm[oldb[0]:oldb[0]+xb,oldb[1]:oldb[1]+yb] = np.exp( -(fwddist_bb + invdist_bb) / (2*r) )
+        #     oldb = oldb[0]+xb, oldb[1]+yb
     except Exception as exc:
         print "error in block_prob_nm"
         print exc; import IPython; IPython.embed()
 
     try:
-        for j in range(block_lengths[0][0]):
+        for j in range(len(x_nd)):#block_lengths[0][0]): #critical points, or rope points if forcing correspondence
             prob_nm[j,:] = 0
             prob_nm[:,j] = 0
             prob_nm[j,j] = 1
-        # if i > 4 and len(block_lengths) > 1:
-        #     for j in range(block_lengths[0][0]+block_lengths[1][0]):
-        #         prob_nm[j,:] = 0
-        #         prob_nm[:,j] = 0
-        #         prob_nm[j,j] = 1
+
     except Exception as exc:
         print "error in identifying matrix"
         import IPython; IPython.embed()
     # if i == 0 and len(x_nd) == len(y_md): #initialize correspondence
     #    for j in range(len(x_nd)):
+    #        prob_nm[j,:] = 0
+    #        prob_nm[:,j] = 0
+    #        prob_nm[j,j] = 1
+    # if i==0 and len(x_nd) == len(y_md) and len(block_lengths) > 1: #initialize correspondence
+    #    for j in range(block_lengths[0][0], block_lengths[0][0]+block_lengths[1][0]):
     #        prob_nm[j,:] = 0
     #        prob_nm[:,j] = 0
     #        prob_nm[j,j] = 1
@@ -441,17 +433,26 @@ def plot_warp_progress(x_nd, y_md,f, block_lengths, Globals, handles=None):
         handles=[]
     old_xyz = x_nd[:block_lengths[0][0]]; new_xyz = y_md[:block_lengths[0][1]]
     range1 = range(block_lengths[0][1])
-    range2 = range(block_lengths[0][0]+block_lengths[1][0],2*block_lengths[0][0]+block_lengths[1][0])
-    range3 = range(2*block_lengths[0][0]+block_lengths[1][0],block_lengths[0][0]+block_lengths[1][0]+block_lengths[2][0])
-    for rangei in [range1]: #, range2, range3]:
+    range2 = range(block_lengths[0][0],block_lengths[0][0]+block_lengths[1][0])
+    range3 = range(block_lengths[0][0]+block_lengths[1][0],block_lengths[0][0]+block_lengths[1][0]+block_lengths[2][0])
+    rangel = range(block_lengths[0][0]+block_lengths[0][0]+block_lengths[0][0], block_lengths[0][0]+block_lengths[0][0]+block_lengths[0][0]+block_lengths[0][0])
+    ranger = range(block_lengths[0][0], block_lengths[0][0]+block_lengths[0][0])
+    rangeb = range(block_lengths[0][0]+block_lengths[0][0], block_lengths[0][0]+block_lengths[0][0]+block_lengths[0][0])
+    for rangei in [range1]:#, range2]:#, range3]:
         handles.append(Globals.env.plot3(x_nd[rangei], 7, np.array([(1,0,0,1) for i in x_nd[rangei]])))
         handles.append(Globals.env.plot3(y_md[rangei], 7, np.array([(0,0,1,1) for i in y_md[rangei]])))
         handles.append(Globals.env.plot3(f.transform_points(x_nd[rangei]), 7, np.array([(0,1,0,1) for i in x_nd[rangei]])))
         handles.append(Globals.env.drawlinestrip(x_nd[rangei],5,(5,0,1,1)))
         handles.append(Globals.env.drawlinestrip(y_md[rangei],5,(0,1,5,1)))
         handles.append(Globals.env.drawlinestrip(f.transform_points(x_nd[rangei]),5,(1,5,0,1)))
+    for rangei in [rangel]:
+        handles.append(Globals.env.plot3(y_md[rangei], 7, np.array([(0,0,.5,1) for i in y_md[rangei]])))
+        handles.append(Globals.env.plot3(f.transform_points(x_nd[rangei]), 7, np.array([(0,.5,0,1) for i in x_nd[rangei]])))
+        handles.append(Globals.env.drawlinestrip(x_nd[rangei],5,(.5,0,.5,1)))
+        handles.append(Globals.env.drawlinestrip(y_md[rangei],5,(0,.5,.5,1)))
+        handles.append(Globals.env.drawlinestrip(f.transform_points(x_nd[rangei]),5,(.5,.5,0,1)))
 
-    pair_list = [(-1,31),(-7,30),(-8,29),(-9,28)]#[(8,60),(7,61),(9,59),(0,66)]#[(6,25),(2,9),(32,36)]#[(6,27),(6,25),(7,23),(5,27),(5,28),(13,31),(15,30)]
+    pair_list = [(-1,31),(-7,30),(-8,29),(-9,28)]#[(6,35),(7,36),(8,37),(9,38)]#[(5,22),(6,23),(7,24)]#[(-1,31),(-7,30),(-8,29),(-9,28)]#[(8,60),(7,61),(9,59),(0,66)]#[]#[(6,25),(2,9),(32,36)]#[(6,27),(6,25),(7,23),(5,27),(5,28),(13,31),(15,30)]
     color_list = [(1,0,1,1),(1,0,1,1),(1,0,1,1),(1,0,1,1)]#,(1,0,1,1),(1,2,1,1),(1,2,1,1)]
     for pair, color in zip(pair_list, color_list):
         orig_diff = np.array([(i/40.)*(old_xyz[pair[0]])+(1-i/40.)*old_xyz[pair[1]] for i in range(41)])  #8,58 for demo33; [(6,25),(2,9),(32,36)] for demo09 
@@ -517,80 +518,6 @@ def get_fringe(prob_nm, x_nd, y_md, block_lengths):
     return prob_nm
 
 
-def tps_rpm_bij_2d(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_init = .1, rad_final = .005, rot_reg = 1e-3, 
-                plotting = False, plot_cb = None, critical_points=0):
-    """
-    tps-rpm algorithm mostly as described by chui and rangaran
-    reg_init/reg_final: regularization on curvature
-    rad_init/rad_final: radius for correspondence calculation (meters)
-    plotting: 0 means don't plot. integer n means plot every n iterations
-    supposed to find transform in 2d plane
-    """
-    import traceback
-
-    x_nd = x_nd[:,:-1]
-    y_md = y_md[:,:-1]
-    if not np.isscalar(rot_reg):
-        rot_reg = rot_reg[:-1]
-
-    #adjust for duplicate points to prevent singular matrix errors
-    for i in range(len(x_nd)):
-        for j in range(len(x_nd)):
-            if i!=j and np.all(x_nd[i]==x_nd[j]):
-                x_nd[j][0] += 0.000001
-
-    _,d=x_nd.shape
-    regs = loglinspace(reg_init, reg_final, n_iter)
-    rads = loglinspace(rad_init, rad_final, n_iter)
-
-    f = ThinPlateSpline(d)
-    f.trans_g = np.median(y_md,axis=0) - np.median(x_nd,axis=0)
-    
-    g = ThinPlateSpline(d)
-    g.trans_g = -f.trans_g
-
-    # r_N = None
-
-    for i in xrange(n_iter):
-        xwarped_nd = f.transform_points(x_nd)
-        ywarped_md = g.transform_points(y_md)
-        
-        fwddist_nm = ssd.cdist(xwarped_nd, y_md,'euclidean')
-        invdist_nm = ssd.cdist(x_nd, ywarped_md,'euclidean')
-        
-        r = rads[i]
-        prob_nm = np.exp( -(fwddist_nm + invdist_nm) / (2*r) )
-
-        for j in range(critical_points):
-            prob_nm[j,:] = 0
-            prob_nm[:,j] = 0
-            prob_nm[j,j] = 1
-
-        corr_nm, r_N, _ =  balance_matrix3(prob_nm, 10, 1e-1, 2e-1)
-        corr_nm += 1e-9
-        
-        wt_n = corr_nm.sum(axis=1)
-        wt_m = corr_nm.sum(axis=0)
-
-        xtarg_nd = (corr_nm/wt_n[:,None]).dot(y_md)
-        ytarg_md = (corr_nm/wt_m[None,:]).T.dot(x_nd)
-        
-        try:
-            f = fit_ThinPlateSpline2d(x_nd, xtarg_nd, bend_coef = regs[i], wt_n=wt_n, rot_coef = rot_reg)
-            g = fit_ThinPlateSpline2d(y_md, ytarg_md, bend_coef = regs[i], wt_n=wt_m, rot_coef = rot_reg)
-        except:
-            tb = traceback.format_exc()
-            print "error in tps_rpm_bij"
-            import IPython; IPython.embed() #import pdb; pdb.set_trace()
-    f._cost = tps.tps_cost(f.lin_ag[:d,:d], f.trans_g[:d], f.w_ng[:,:d], f.x_na[:,:d], xtarg_nd, regs[i], wt_n=wt_n)/wt_n.mean()
-    g._cost = tps.tps_cost(g.lin_ag[:d,:d], g.trans_g[:d], g.w_ng[:,:d], g.x_na[:,:d], ytarg_md, regs[i], wt_n=wt_m)/wt_m.mean()
-
-    f.is_2d = True
-    g.is_2d = True
-
-    return f,g
-
-
 def num_matches(ind,f):
     matches = 0
     for i in f.corr_nm:
@@ -628,7 +555,7 @@ def assert_equal(ptc1, ptc2, tol):
 
 
 def tps_reg_cost(f):
-    K_nn = tps.tps_kernel_matrix(f.x_na)
+    K_nn = tps_kernel_matrix(f.x_na)
     cost = 0
     for w in f.w_ng.T:
         cost += w.dot(K_nn.dot(w))

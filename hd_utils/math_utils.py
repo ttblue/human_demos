@@ -9,6 +9,18 @@ def interp2d(x,xp,yp):
     yp = np.asarray(yp)
     assert yp.ndim == 2
     return np.array([np.interp(x,xp,col) for col in yp.T]).T
+def interp_mat(x, xp):
+    """
+    interp_mat(x, xp).dot(fp) should be the same as np.interp(x, xp, fp)
+    """
+    u_ixps = np.interp(x, xp, range(len(xp)))
+    m = np.zeros((len(x), len(xp)))
+    for ix, u_ixp in enumerate(u_ixps):
+        u, ixp = np.modf(u_ixp)
+        m[int(ix), int(ixp)] = 1.-u
+        if ixp+1 < m.shape[1]: # the last u is zero by definition
+            m[int(ix), int(ixp+1)] = u
+    return m
 def normalize(x):
     return x / np.linalg.norm(x)
 def normr(x):
@@ -30,3 +42,8 @@ def linspace2d(start,end,n):
 def remove_duplicate_rows(mat):
     diffs = mat[1:] - mat[:-1]
     return mat[np.r_[True,(abs(diffs) >= 1e-5).any(axis=1)]]
+def invertHmat(hmat):
+    R = hmat[:3,:3]
+    t = hmat[:3,3]
+    hmat_inv = np.r_[np.c_[R.T, -R.T.dot(t)], hmat[3,:][None,:]]
+    return hmat_inv

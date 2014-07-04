@@ -29,10 +29,11 @@ def main():
     for i in range(int(args.demo_start), int(args.demo_end)):
         demo = hdf.keys()[i]
         fake_data_demo = "--fake_data_demo="+demo
-        call1 = "python do_task_floating.py --demo_type="+args.demo_type+" --fake_data_demo="+demo+" --fake_data_segment=seg00 --use_ar_init --select=auto --use_crossings --use_rotation --use_crits --test_success --no_display --step=100 --force_points" 
-        call2 = "python do_task_floating.py --demo_type="+args.demo_type+" --fake_data_demo="+demo+" --fake_data_segment=seg00 --use_ar_init --select=auto --use_crossings --use_rotation --use_crits --test_success --no_display --step=100 --force_points --init_perturb=1"
+        call1 = "python do_task_merge.py --demo_type="+args.demo_type+" --fake_data_demo="+demo+" --fake_data_segment=seg00 --use_ar_init --select=auto --test_success --no_display --step=100 --force_points" 
+        call2 = "python do_task_merge.py --demo_type="+args.demo_type+" --fake_data_demo="+demo+" --fake_data_segment=seg00 --use_ar_init --select=auto --test_success --no_display --step=100 --force_points --parallel=0"
         #import IPython; IPython.embed()
         savefile = open(osp.join("test_results", args.name), 'a')
+        print "starting demo", demo
         try:
             out = subprocess.check_output(call1.split())
         except Exception as exc:
@@ -41,6 +42,7 @@ def main():
             savefile.write("Unperturbed failure: " + demo + ": " + err_msg + "\n")
             print "Unperturbed failure: " + demo + ": " + err_msg + "\n"
             savefile.flush()
+        print "finished first call"
         try:
             out = subprocess.check_output(call2.split())
         except Exception as exc:

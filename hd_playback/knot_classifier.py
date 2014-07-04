@@ -1,8 +1,6 @@
 #!/usr/bin/env python
 
 import numpy as np
-import os.path as osp
-import h5py
 
 #
 # line segment intersection using vectors
@@ -14,9 +12,9 @@ def perp( a ) :
     b[1] = a[0]
     return b
 
-# line segment a given by endpoints p1, p2
-# line segment b given by endpoints p3, p4
-# return
+# line segment a given by endpoints a1, a2
+# line segment b given by endpoints b1, b2
+# return 
 def seg_intersect(p1,p2,p3,p4) :
     p1=np.float32(p1)
     p2=np.float32(p2)
@@ -27,7 +25,31 @@ def seg_intersect(p1,p2,p3,p4) :
     denom = (p2-p1).dot(perp(p3-p4))
     if denom == 0:
         if numa==0 or numb==0: # coincident lines
-            return (0.5,0.5)
+            if np.all(p1 == p2) or np.all(p3 == p4): # any of the segments are points
+                raise NotImplementedError
+            vb = p4-p3
+            w1 = p1-p3
+            w2 = p2-p3
+            if vb[0] != 0:
+                t1 = w1[0] / vb[0]
+                t2 = w2[0] / vb[0]
+            else:
+                t1 = w1[1] / vb[1]
+                t2 = w2[1] / vb[1]
+            if t1 > t2: # must have t1 smaller than t2
+                t1, t2 = t2, t1
+            if t1 > 1 or t2 < 0: # no overlap
+                return None
+            t1 = max(0.,t1) # clip to min 0
+            t2 = min(1.,t2) # clip to max 1
+            ub = (t1+t2) / 2. # define the intersection point to be the midpoint of overlapping segment
+            pt = p3 + ub*vb # intersection point
+            va = p2-p1
+            if va[0] != 0:
+                ua = (pt - p1)[0] / va[0]
+            else:
+                ua = (pt - p1)[1] / va[1]
+            return (ua, ub)
         else: # parallel lines
             return None
     ua = (numa / denom)
@@ -36,6 +58,7 @@ def seg_intersect(p1,p2,p3,p4) :
         return (ua,ub)
     else:
         return None
+
 
 def calculateIntersections(rope_nodes):
     """
@@ -52,14 +75,14 @@ def calculateIntersections(rope_nodes):
                 intersections[j_node, i_node] = intersect[1]
     return intersections
 
-def calculateCrossings(rope_nodes, get_points=False, get_inds=False):
+
+def calculateCrossings(rope_nodes):
     """
     Returns a list of crossing patterns by following the rope nodes; +1 for overcrossings and -1 for undercrossings.
     """
     intersections = calculateIntersections(rope_nodes)
     crossings = []
-    points = []
-    inds = []
+    crossings_links_inds = []
     links_to_cross_info = {} # Contains under-over crossing and crossing id info
     curr_cross_id = 1
     for i_link in range(intersections.shape[0]):
@@ -70,8 +93,7 @@ def calculateCrossings(rope_nodes, get_points=False, get_inds=False):
             j_link_z = rope_nodes[j_link,2] + intersections[j_link,i_link] * (rope_nodes[j_link+1,2] - rope_nodes[j_link,2])
             i_over_j = 1 if i_link_z > j_link_z else -1
             crossings.append(i_over_j)
-            points.append(rope_nodes[i_link])
-            inds.append(i_link)
+            crossings_links_inds.append(i_link)
             link_pair_id = (min(i_link,j_link), max(i_link,j_link))
             if link_pair_id not in links_to_cross_info:
                 links_to_cross_info[link_pair_id] = []
@@ -91,11 +113,88 @@ def calculateCrossings(rope_nodes, get_points=False, get_inds=False):
     # dt_code[cross_info[1][0]/2] = i_over_j * cross_info[0][0]
     # else:
     # dt_code[cross_info[0][0]/2] = i_over_j * cross_info[1][0]
-    if get_points:
-        return (crossings, cross_pairs, points)
-    if get_inds:
-        return (crossings, cross_pairs, inds)
-    return (crossings, cross_pairs, rope_closed)
+    return (crossings, crossings_links_inds, cross_pairs, rope_closed)
+
+
+def close_rope(crossings, crossings_links_inds, cross_pairs, end):
+    """
+    close the rope either by removing the first or last crossing
+    crossings, crossings_links_inds, cross_pairs: crossings for a rope that is not closed
+    end: 0 or -1, the first or last crossing, respectively
+    """
+    end_cross_ind = 1 if end == 0 else 2*len(cross_pairs)
+    try:
+        end_cross_pair = [p for p in cross_pairs if end_cross_ind in p][0]    
+    except:
+        import IPython; IPython.embed()
+    return remove_cross_pair(crossings, crossings_links_inds, cross_pairs, end_cross_pair)
+
+
+def unclose_rope(crossings, crossings_links_inds, cross_pairs, end):
+    """
+    unclose the rope either by removing the first or last crossing
+    crossings, crossings_links_inds, cross_pairs: crossings for a rope that is closed
+    end: 0 or -1, the first or last crossing, respectively
+    """
+    end_cross_ind = 1 if end == 0 else 2*len(cross_pairs)
+    try:
+        end_cross_pair = [p for p in cross_pairs if end_cross_ind in p][0]    
+    except:
+        import IPython; IPython.embed()
+    return remove_cross_pair(crossings, crossings_links_inds, cross_pairs, end_cross_pair)
+
+
+def remove_cross_pair(crossings, crossings_links_inds, cross_pairs, cross_pair_to_remove):
+    new_crossings = [c for (i,c) in enumerate(crossings) if i+1 not in cross_pair_to_remove]
+    new_crossings_links_inds = [c for (i,c) in enumerate(crossings_links_inds) if i+1 not in cross_pair_to_remove]
+    # make sure it is in increasing order
+    cross_pair_to_remover_sorted = sorted(cross_pair_to_remove)
+    new_crossing_pairs = set()
+    for cross_pair in cross_pairs:
+        if cross_pair == cross_pair_to_remove:
+            continue
+        cross_ind0 = cross_pair[0]
+        cross_ind1 = cross_pair[1]
+        if cross_ind0 > cross_pair_to_remover_sorted[0]:
+            if cross_ind0 > cross_pair_to_remover_sorted[1]:
+                cross_ind0 -= 2
+            else:
+                cross_ind0 -= 1
+        if cross_ind1 > cross_pair_to_remover_sorted[0]:
+            if cross_ind1 > cross_pair_to_remover_sorted[1]:
+                cross_ind1 -= 2
+            else:
+                cross_ind1 -= 1
+        new_crossing_pairs.add((cross_ind0, cross_ind1))
+    return new_crossings, new_crossings_links_inds, new_crossing_pairs
+
+def remove_consecutive_crossings(crossings, crossings_links_inds, cross_pairs):
+    while cross_pairs: # stop if there are no crossings anymore
+        cross_pairs_array = np.array(list(cross_pairs))
+        consecutive_inds = np.abs(cross_pairs_array[:,1] - cross_pairs_array[:,0]) == 1
+        if not np.any(consecutive_inds):
+            break
+        cross_pair_to_remove = tuple(cross_pairs_array[consecutive_inds][0])
+        crossings, crossings_links_inds, cross_pairs = remove_cross_pair(crossings, crossings_links_inds, cross_pairs, cross_pair_to_remove)
+    return crossings, crossings_links_inds, cross_pairs
+
+def remove_consecutive_cross_pairs(crossings, crossings_links_inds, cross_pairs):
+    while cross_pairs: # stop if there are no crossings anymore
+        cross_pairs_ordered = np.array(sorted(list(cross_pairs)))
+        crossings_ordered = np.array( [ [ crossings[cross_pairs_ordered[i,j]-1] for j in xrange(cross_pairs_ordered.shape[1])] for i in xrange(cross_pairs_ordered.shape[0])] )
+        consecutive_cross_pairs_inds = np.all(np.c_[np.abs(np.diff(cross_pairs_ordered, axis=0)) == 1, np.diff(crossings_ordered, axis=0) == 0], axis=1) # cross pairs are consecutive for both cross indices and the respective crossings for the consecutive cross pairs are the same
+        if not np.any(consecutive_cross_pairs_inds):
+            break
+        first_ind = consecutive_cross_pairs_inds.nonzero()[0][0] # smallest index where consecutive_cross_pairs_inds is True
+        cross_pairs_to_remove = cross_pairs_ordered[first_ind:first_ind+2, :]
+        cross_ind_to_remove_last = np.min(cross_pairs_to_remove)
+        cross_pair_ind_to_remove_last = np.any(cross_pairs_to_remove == cross_ind_to_remove_last, axis=1)
+        cross_pair_to_remove_first = tuple(cross_pairs_to_remove[~cross_pair_ind_to_remove_last][0])
+        crossings, crossings_links_inds, cross_pairs = remove_cross_pair(crossings, crossings_links_inds, cross_pairs, cross_pair_to_remove_first)
+        cross_pair_to_remove_last = [p for p in cross_pairs if cross_ind_to_remove_last in p][0]
+        crossings, crossings_links_inds, cross_pairs = remove_cross_pair(crossings, crossings_links_inds, cross_pairs, cross_pair_to_remove_last)
+    return crossings, crossings_links_inds, cross_pairs
+
 
 def crossingsToString(crossings):
     s = ''
@@ -130,16 +229,20 @@ def pairs_to_dict(cross_pairs):
         pair_dict[pair[1]] = pair[0]
     return pair_dict
 
-#rope_nodes is an nx3 numpy array of the points of n control points of the rope
-def isKnot(rope_nodes, rdm1=True):
-    (crossings, cross_pairs, rope_closed) = calculateCrossings(rope_nodes)
-    if rdm1: #apply Reidemeister move 1 where possible
-        for pair in cross_pairs:
-            if pair[1] == pair[0]+1 or pair[1] == pair[0]-1:
-                crossings[pair[0]-1] = 'x'
-                crossings[pair[1]-1] = 'x'
-        crossings = [i for i in crossings if i != "x"]
+
+def isKnot(rope_nodes):
+    (crossings, crossings_links_inds, cross_pairs, rope_closed) = calculateCrossings(rope_nodes)
+    # simplify crossings a bit
+    crossings, crossings_links_inds, cross_pairs = remove_consecutive_crossings(crossings, crossings_links_inds, cross_pairs)
+    crossings, crossings_links_inds, cross_pairs = remove_consecutive_cross_pairs(crossings, crossings_links_inds, cross_pairs)
     s = crossingsToString(crossings)
+    
+    # special cases
+    if cross_pairs == set([(2, 7), (5, 10), (3, 6), (1, 8), (4, 9)]):
+        return True
+    if cross_pairs == set([(3, 8), (2, 5), (1, 6), (4, 7)]):
+        return True
+    
     knot_topologies = ['uououo', 'uoouuoou']
     for top in knot_topologies:
         flipped_top = top.replace('u','t').replace('o','u').replace('t','o')
@@ -153,20 +256,20 @@ def isKnot(rope_nodes, rdm1=True):
             return True
 
     if rope_closed:
-        return False # There is no chance of it being a knot with one end
+        return False  # There is no chance of it being a knot with one end
                       # of the rope crossing the knot accidentally
 
-    # knot_topology_variations = ['ououuouo', 'ouoououu']
-    # for top in knot_topology_variations:
-    #     flipped_top = top.replace('u','t').replace('o','u').replace('t','o')
-    #     if top in s and crossings_var_match(cross_pairs, top, s):
-    #         return True
-    #     if top[::-1] in s and crossings_var_match(cross_pairs, top[::-1], s):
-    #         return True
-    #     if flipped_top in s and crossings_var_match(cross_pairs, flipped_top, s):
-    #         return True
-    #     if flipped_top[::-1] in s and crossings_match(cross_pairs, flipped_top[::-1], s):
-    #         return True
+    knot_topology_variations = ['ououuouo', 'ouoououu']
+    for top in knot_topology_variations:
+        flipped_top = top.replace('u','t').replace('o','u').replace('t','o')
+        if top in s and crossings_var_match(cross_pairs, top, s):
+            return True
+        if top[::-1] in s and crossings_var_match(cross_pairs, top[::-1], s):
+            return True
+        if flipped_top in s and crossings_var_match(cross_pairs, flipped_top, s):
+            return True
+        if flipped_top[::-1] in s and crossings_match(cross_pairs, flipped_top[::-1], s):
+            return True
 
     return False
 
@@ -232,46 +335,6 @@ def calculateMdp(hdf):
                 points = ()
             else:
                 points = tuple(hdf[demo][seg]['crossings'][:,2])
-            if preceding and preceding != points:
-                if points in stf and preceding not in stf[points]:
-                    stf[tuple(points)].append(preceding)
-                elif points not in stf:
-                    stf[tuple(points)] = [preceding]
-            if seg == hdf[demo].keys()[-1]:
-                last.append(tuple(points))
-            preceding = points
-
-    for state1 in stf.keys():
-        for state2 in stf[state1]:
-            for state in stf[state1]:
-                if tuple(state2) in equiv:
-                    equiv[tuple(state2)].append(state)
-                else:
-                    equiv[tuple(state2)] = [state]
-    for state1 in last:
-        for state2 in last:
-            if state1 in equiv and state2 not in equiv[state1]:
-                equiv[state1].append(state2)
-            elif state1 not in equiv:
-                equiv[state1] = [state2]
-    return equiv
-
-"""
-Creates a dictionary of equivalent states, using labeled_points info if it exists.
-equiv[cross_state] returns a list of all states equivalent to cross_state.
-Two states (crossings patterns) A and B are equivalent if a segment with A
-can transition into a state C that B can also transition into.
-"""
-def calculateMdp2(hdf):
-    from do_task_floating import get_labeled_rope_demo
-    stf = {}
-    equiv = {}
-    last = []
-    for demo in hdf.keys():
-        preceding = ()
-        for seg in hdf[demo].keys():
-            _, pattern = get_labeled_rope_demo(hdf[demo][seg], get_pattern=True)
-            points = tuple(pattern)
             if preceding and preceding != points:
                 if points in stf and preceding not in stf[points]:
                     stf[tuple(points)].append(preceding)

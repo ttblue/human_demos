@@ -57,20 +57,20 @@ parser.add_argument("--no_display",action="store_true", default=False)
 parser.add_argument("--friction", help="friction value in bullet", type=float, default=1.0)
 
 parser.add_argument("--max_steps_before_failure", type=int, default=-1)
-parser.add_argument("--tps_bend_cost_init", type=float, default=1)#1)
-parser.add_argument("--tps_bend_cost_final", type=float, default=.001) #.001
-parser.add_argument("--tps_bend_cost_final_search", type=float, default=.0001) # .0001 #.00001
+parser.add_argument("--tps_bend_cost_init", type=float, default=10)#1)
+#parser.add_argument("--tps_bend_cost_final", type=float, default=.01) #.001
+parser.add_argument("--tps_bend_cost_final_search", type=float, default=.01) # .0001 #.00001
 parser.add_argument("--tps_n_iter", type=int, default=50)
 
 parser.add_argument("--closest_rope_hack", action="store_true", default=False)
 parser.add_argument("--closest_rope_hack_thresh", type=float, default=0.01)
 parser.add_argument("--cloud_downsample", type=float, default=.01)
 
-parser.add_argument("--use_crossings", action="store_true", default=False)
-parser.add_argument("--use_rotation", action="store_true", default=False)
-parser.add_argument("--use_crits", action="store_true", default=False)
+parser.add_argument("--use_crossings", action="store_true", default=True)
+parser.add_argument("--use_rotation", action="store_true", default=True)
+parser.add_argument("--use_crits", action="store_true", default=True)
 parser.add_argument("--test_success", action="store_true", default=False)
-parser.add_argument("--force_points", action="store_true", default=False)
+parser.add_argument("--force_points", action="store_true", default=True)
 
 
 
@@ -116,7 +116,7 @@ from hd_utils import transformations
 from hd_utils.defaults import demo_files_dir, hd_data_dir,\
         ar_init_dir, ar_init_demo_name, ar_init_playback_name, \
         tfm_head_dof, tfm_bf_head, cad_files_dir, init_state_perturbs_dir
-from knot_classifier import calculateCrossings, calculateMdp, calculateMdp2, isKnot, remove_crossing, pairs_to_dict
+from knot_classifier import calculateCrossings, calculateMdp, isKnot, remove_crossing, pairs_to_dict
 
 
 
@@ -230,20 +230,15 @@ def split_trajectory_by_gripper(seg_info, pot_angle_threshold, ms_thresh=2):
 def fuzz_cloud(xyz, seg_group=None, init_tfm=None):
     #return xyz, (len(xyz),0,0)
     cross_section = observe_cloud(xyz, radius=0.005, upsample_rad=4)
-    # #return np.vstack([xyz, cross_section]), (len(xyz),len(cross_section),0)
-    # # table_pts = get_convex_hull(observe_cloud(xyz, radius = 0.025, upsample_rad=2), 100, seg_group, init_tfm)
-    table_pts = get_table_grid(xyz, 10, seg_group, init_tfm)
-    # # table_pts = get_interpolations(xyz, 3, seg_group, init_tfm)-[0,0,0.002]
-    # # table_pts = np.vstack([get_table_fuzz(observe_cloud(xyz, radius = 0.015, upsample_rad=2), 100, seg_group, init_tfm),
-    # #                        get_table_fuzz(observe_cloud(xyz, radius = 0.025, upsample_rad=2), 100, seg_group, init_tfm),
-    # #                        get_table_fuzz(observe_cloud(xyz, radius = 0.035, upsample_rad=2), 100, seg_group, init_tfm)])
-    # #table_pts = get_table_fuzz(observe_cloud(xyz, radius = 0.025, upsample_rad=2), 100, seg_group, init_tfm)
-    #table_pts = get_voronoi(xyz)
-    # #xyz[:,2] = Globals.table_height + 0.1; xyz[:,2] = Globals.table_height + 0.1; xyz[:,2] = Globals.table_height + 0.1 
+    return np.vstack([xyz, cross_section]), (len(xyz),len(cross_section),0)
+    table_pts = get_table_grid(xyz, 15, seg_group, init_tfm)
+    #table_pts = get_table_fuzz(observe_cloud(xyz, radius = 0.025, upsample_rad=2), 100, seg_group, init_tfm)
+    #table_pts = get_voronoi(xyz, seg_group, init_tfm)
+    #xyz[:,2] = Globals.table_height + 0.1
     return np.vstack([xyz, cross_section, table_pts]), (len(xyz), len(cross_section), len(table_pts))
 
 
-def observe_cloud(pts=None, radius=0.005, upsample=0, upsample_rad=1):
+def observe_cloud(pts=None, radius=0.005, upsample=0, upsample_ratio=1, upsample_rad=1):
     """
     If upsample > 0, the number of points along the rope's backbone is resampled to be upsample points
     If upsample_rad > 1, the number of points perpendicular to the backbone points is resampled to be upsample_rad points, around the rope's cross-section
@@ -254,22 +249,28 @@ def observe_cloud(pts=None, radius=0.005, upsample=0, upsample_rad=1):
     if pts == None: pts = Globals.sim.rope.GetControlPoints()
     half_heights = Globals.sim.rope.GetHalfHeights()
     if upsample > 0:
+        from hd_utils import math_utils
         lengths = np.r_[0, half_heights * 2]
         summed_lengths = np.cumsum(lengths)
         assert len(lengths) == len(pts)
         pts = math_utils.interp2d(np.linspace(0, summed_lengths[-1], upsample), summed_lengths, pts)
+    elif upsample_ratio > 1:
+        lengths = np.r_[0, half_heights * 2]
+        summed_lengths = np.cumsum(lengths)
+        assert len(lengths) == len(pts)
+        pts = math_utils.interp2d(np.linspace(0, summed_lengths[-1], upsample_ratio*len(pts)), summed_lengths, pts)
     if upsample_rad > 1:
         # add points perpendicular to the points in pts around the rope's cross-section
         vs = np.diff(pts, axis=0) # vectors between the current and next points
-        vs /= np.apply_along_axis(np.linalg.norm, 1, vs)[:,None]
-        perp_vs = np.c_[-vs[:,1], vs[:,0], np.zeros(vs.shape[0])] # perpendicular vectors between the current and next points in the xy-plane
+        vsn = vs / np.apply_along_axis(np.linalg.norm, 1, vs)[:,None]
+        perp_vs = np.c_[-vsn[:,1], vsn[:,0], np.zeros(vsn.shape[0])] # perpendicular vectors between the current and next points in the xy-plane
         perp_vs /= np.apply_along_axis(np.linalg.norm, 1, perp_vs)[:,None]
-        vs = np.r_[vs, vs[-1,:][None,:]] # define the vector of the last point to be the same as the second to last one
+        vsn = np.r_[vsn, vsn[-1,:][None,:]] # define the vector of the last point to be the same as the second to last one
         perp_vs = np.r_[perp_vs, perp_vs[-1,:][None,:]] # define the perpendicular vector of the last point to be the same as the second to last one
         perp_pts = []
         from openravepy import matrixFromAxisAngle
         for theta in np.linspace(0, 2*np.pi, upsample_rad, endpoint=False): # uniformly around the cross-section circumference
-            for (center, rot_axis, perp_v) in zip(pts, vs, perp_vs):
+            for (center, rot_axis, perp_v) in zip(pts, vsn, perp_vs):
                 rot = matrixFromAxisAngle(rot_axis, theta)[:3,:3]
                 perp_pts.append(center + rot.T.dot(radius * perp_v))
         pts = np.array(perp_pts)
@@ -362,7 +363,7 @@ def get_interpolations(xyz, length=1, seg_group=None, init_tfm=None):
     else:
         xyzc = get_labeled_rope_demo(seg_group)
         xyzc[:,:3] = xyzc[:,:3].dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
-    pattern, pairs, inds = calculateCrossings(xyz, get_inds=True)
+    pattern, inds, pairs, rope_closed = calculateCrossings(xyz)
     pair_dict = pairs_to_dict(pairs)
     segs = get_rope_segments(xyzc)
     seg_pairs = {}
@@ -469,9 +470,9 @@ def rotations_from_ang(theta,median):
 
 
 def get_crossings(rope_points):
-    crossings_pattern, _, points = calculateCrossings(rope_points, get_points=True)
-    crossings_locations = np.array(points) #np.array([rope_points[i] for i in np.sort(np.array(list(cross_pairs)).flatten())])
-    return crossings_pattern, crossings_locations
+    pattern, inds, pairs, rope_closed = calculateCrossings(rope_points)
+    crossings_locations = rope_points[inds] #np.array([rope_points[i] for i in np.sort(np.array(list(cross_pairs)).flatten())])
+    return pattern, crossings_locations
 
 
 def get_critical_points_sim(rope_points):
@@ -499,7 +500,7 @@ def get_critical_points_demo(seg_group):
 
 
 def get_labeled_rope_sim(rope_points, get_pattern=False):
-    pattern, _, inds = calculateCrossings(rope_points, get_inds=True)
+    pattern, inds, pairs, rope_closed = calculateCrossings(rope_points)
     crossing_ind = 0
     labeled_rope = np.zeros((len(rope_points),4))
     for i in range(len(rope_points)):
@@ -663,8 +664,7 @@ def exec_traj_sim(lr_traj, animate=True, ljoints=None, rjoints=None):
 
     l_transition_hmats, r_transition_hmats = ropesim_floating.retime_hmats([curr_ltf, lhmats_up[0]], [curr_rtf, rhmats_up[0]])
 
-    animate_traj.animate_floating_traj(l_transition_hmats, r_transition_hmats,
-                                       Globals.sim, pause=False,
+    animate_traj.animate_floating_traj(l_transition_hmats, r_transition_hmats, Globals.sim, pause=False,
                                        callback=sim_callback, step_viewer=animate, step=args.step)
     animate_traj.animate_floating_traj_angs(lhmats_up, rhmats_up, ljoints, rjoints, Globals.sim, pause=False,
                                        callback=sim_callback, step_viewer=animate, step=args.step)
@@ -799,22 +799,27 @@ def registration_cost_and_tfm(xyz0, xyz1, num_iters=30, block_lengths=None):
     scaled_xyz0, src_params = registration.unit_boxify(xyz0)
     scaled_xyz1, targ_params = registration.unit_boxify(xyz1)
     f,g = registration.tps_rpm_bij(scaled_xyz0, scaled_xyz1, reg_init=args.tps_bend_cost_init, reg_final = args.tps_bend_cost_final_search, 
-            rad_init = .1, rad_final = .0005, rot_reg=np.r_[1e-4,1e-4,1e-1], n_iter=num_iters, plotting=True, block_lengths=block_lengths, Globals=Globals)
+            rad_init = .1, rad_final = .0005, rot_reg=np.r_[1e-4,1e-4,1e-1], n_iter=30, plotting=True, block_lengths=block_lengths, Globals=Globals)
     cost = registration.tps_reg_cost(f) + registration.tps_reg_cost(g)
     g = registration.unscale_tps_3d(g, targ_params, src_params)
     f = registration.unscale_tps_3d(f, src_params, targ_params)
     return (cost, f, g)
 
 
-def registration_cost_with_rotation(xyz0, xyz1, block_lengths=None):
-    #rad_angs = np.linspace(-np.pi+np.pi*(float(10)/180), np.pi,36)
-    rad_angs = np.linspace(-np.pi+np.pi*(float(30)/180), np.pi,12)
-    #rad_angs = np.linspace(-np.pi+np.pi*(float(45)/180), np.pi,8)
-    costs = np.zeros(len(rad_angs))
-    for i in range(len(rad_angs)):
-        rotated_demo = rotate_about_median(xyz0, rad_angs[i])
-        costs[i] = registration_cost(rotated_demo, xyz1, 3, block_lengths=block_lengths)
-    theta = rad_angs[np.argmin(costs)]
+def registration_cost_with_rotation(xyz0, xyz1, block_lengths=None, known_theta=None):
+    if known_theta:
+        theta = known_theta
+    else:
+        #rad_angs = np.linspace(-np.pi+np.pi*(float(10)/180), np.pi,36)
+        rad_angs = np.linspace(-np.pi+np.pi*(float(30)/180), np.pi,12)
+        #rad_angs = np.linspace(-np.pi+np.pi*(float(45)/180), np.pi,8)
+        #rad_angs = np.linspace(-np.pi/2+np.pi/2*(float(30)/180), np.pi,6)
+
+        costs = np.zeros(len(rad_angs))
+        for i in range(len(rad_angs)):
+            rotated_demo = rotate_about_median(xyz0, rad_angs[i])
+            costs[i] = registration_cost(rotated_demo, xyz1, 5, block_lengths=block_lengths)
+        theta = rad_angs[np.argmin(costs)]
     rotated_demo = rotate_about_median(xyz0, theta)
     cost, f, g = registration_cost_and_tfm(rotated_demo, xyz1, block_lengths=block_lengths)
 
@@ -857,28 +862,28 @@ def registration_cost_with_pca_rotation(xyz0, xyz1, critical_points=0):
     return (np.min(costs), f, g, rmat)
 
 
-def registration_cost_crit(xyz0, xyz1, crit_demo, crit_sim, block_lengths=None):
+def registration_cost_crit(xyz0, xyz1, crit_demo, crit_sim, block_lengths=None,known_theta=None):
     if block_lengths == None: block_lengths = [(len(xyz0), len(xyz1))]
     crit_num = block_lengths[0][0]
     if crit_demo == None or len(crit_demo)==0:
-        cost1, f1, g1, theta1, = registration_cost_with_rotation(xyz0, xyz1, block_lengths=block_lengths)
+        cost1, f1, g1, theta1, = registration_cost_with_rotation(xyz0, xyz1, block_lengths, known_theta)
         xyz0 = np.vstack([xyz0[:crit_num][::-1], xyz0[crit_num:][::-1]])
-        cost2, f2, g2, theta2 = registration_cost_with_rotation(xyz0[::-1], xyz1, block_lengths=block_lengths)
+        cost2, f2, g2, theta2 = registration_cost_with_rotation(xyz0[::-1], xyz1, block_lengths, known_theta)
         if cost2 < cost1:
             return cost2, f2, g2, theta2
         else:
             return cost1, f1, g1, theta1
-    elif not args.force_points:
-        if len(crit_sim) == len(crit_demo):
-            pattern, _, inds = calculateCrossings(xyz1[:crit_num], get_inds=True)
-            xyz0_new = sort_to_start(xyz0, inds)
-            xyz1_new = sort_to_start(xyz1, inds)
-            crit_num = len(inds)
-            block_lengths = [(crit_num, crit_num)] + block_lengths
-        cost1, f1, g1, theta1 = registration_cost_with_rotation(xyz0_new, xyz1_new, block_lengths=block_lengths)
-        return (cost1, f1, g1, theta1)
+    # elif not args.force_points:
+    #     if len(crit_sim) == len(crit_demo):
+    #         pattern, inds, pairs, rope_closed = calculateCrossings(xyz1[:crit_num])
+    #         xyz0_new = sort_to_start(xyz0, inds)
+    #         xyz1_new = sort_to_start(xyz1, inds)
+    #         crit_num = len(inds)
+    #         block_lengths = [(crit_num, crit_num)] + block_lengths
+    #     cost1, f1, g1, theta1 = registration_cost_with_rotation(xyz0_new, xyz1_new, block_lengths, known_theta)
+    #     return (cost1, f1, g1, theta1)
     else:
-        cost1, f1, g1, theta1, = registration_cost_with_rotation(xyz0, xyz1, block_lengths=block_lengths)
+        cost1, f1, g1, theta1, = registration_cost_with_rotation(xyz0, xyz1, block_lengths, known_theta)
         return cost1, f1, g1, theta1
 
 
@@ -1020,6 +1025,7 @@ def find_closest_auto_with_crossings(demofiles, new_xyz, init_tfm=None, n_jobs=3
                     if demo_name == "demo00025" and seg_name == "seg01": continue #non-grasping hand is on table, bumps rope
                     if demo_name == "demo00039" and seg_name == "seg02": continue #extra grab
                     #if demo_name != "demo00027" and demo_name != "demo00003": continue
+                    if demo_name == "demo00012" and seg_name == "seg00": continue #poor placement of rope for short segment
 
                     if args.choose_demo and demo_name != args.choose_demo: continue
                     if args.choose_seg and seg_name != args.choose_seg: continue #tkl
@@ -1056,7 +1062,7 @@ def find_closest_auto_with_crossings(demofiles, new_xyz, init_tfm=None, n_jobs=3
                             crit_points.append(crit_pts_demo2)
                             seg_num += 1
 
-                        else:
+                        else:#if sim_pattern == demo_pattern or sim_pattern == demo_pattern[::-1]:
                             keys[seg_num] = (demotype_num, demo_name, seg_name)
                             if seg_name == "seg%02d"%(final_seg_id):
                                 is_finalsegs[seg_num] = True
@@ -1081,46 +1087,37 @@ def find_closest_auto_with_crossings(demofiles, new_xyz, init_tfm=None, n_jobs=3
 
         demotype_num +=1
     if args.parallel:
-        if args.use_rotation:
-            if args.use_crits:
-                print "measuring cost with registration_cost_crit"
-                crit_pts_sim = get_critical_points_sim(new_xyz)
-                results = Parallel(n_jobs=n_jobs,verbose=51)(delayed(registration_cost_crit)(demo_clouds[i], new_xyz, crit_points[i], crit_pts_sim) for i in keys.keys())
-                costs, tfms, tfm_invs, thetas = zip(*results)
-            else:
-                results = Parallel(n_jobs=n_jobs,verbose=51)(delayed(registration_cost_with_rotation)(demo_cloud, new_xyz) for demo_cloud in demo_clouds)
-                costs, tfms, tfm_invs, thetas = zip(*results)
-        else:
-            results = Parallel(n_jobs=n_jobs,verbose=51)(delayed(registration_cost_and_tfm)(demo_cloud, new_xyz) for demo_cloud in demo_clouds)
-            costs, tfms, tfm_invs = zip(*results)
-            thetas = []
+        print "measuring cost with registration_cost_crit"
+        crit_pts_sim = get_critical_points_sim(new_xyz)
+        results = Parallel(n_jobs=n_jobs,verbose=51)(delayed(registration_cost_crit)(demo_clouds[i], new_xyz, crit_points[i], crit_pts_sim) for i in keys.keys())
+        try:
+            costs, tfms, tfm_invs, thetas = zip(*results)
+        except:
+            import IPython; IPython.embed()
+            file_inc = 0
+            while os.path.isfile("test_results/novel_topo_"+str(file_inc)):
+                file_inc += 1
+            pickle_dump(new_xyz, "test_results/novel_topo_"+str(file_inc))
+            print sim_pattern, (tuple(sim_pattern) in equiv or tuple(reversed(sim_pattern)) in equiv)
+            print "Novel topology, saved to file as test_results/novel_topo_"+str(file_inc)
+            raise Exception("Novel topology, saved to file") 
     else:
         costs = []
         tfms = []
         tfm_invs = []
         thetas = []
-
         for (i,ds_cloud) in enumerate(demo_clouds):
-            if args.use_rotation:
-                if args.use_crits:
-                    crit_pts_sim = get_critical_points_sim(new_xyz)
-                    (demotype_num, demo_name, seg_name) = keys[i]
-                    seg_group = demofiles[0][demo_name][seg_name]
-                    demo_xyz, demo_lens = fuzz_cloud(demo_clouds[i], seg_group, init_tfm)
-                    sim_xyz, sim_lens = fuzz_cloud(new_xyz)
-                    # cost_i, tfm_i, tfm_inverse_i, theta_i = registration_cost_crit(demo_xyz, sim_xyz, crit_points[i], crit_pts_sim, zip(demo_lens, sim_lens))
-                    cost_i, tfm_i, tfm_inverse_i, theta_i = registration_cost_crit(demo_clouds[i], new_xyz, crit_points[i], crit_pts_sim)
-                    #if (demo_name == "demo00027" and seg_name == "seg00") or (demo_name == "demo00003" and seg_name == "seg01"):
-                    #    import IPython; IPython.embed()
-                    thetas.append(theta_i)
-                else:
-                    try:
-                        cost_i, tfm_i, tfm_inverse_i, theta_i = registration_cost_with_rotation(ds_cloud, new_xyz)
-                    except Exception as exc:
-                        print exc
-                        import IPython; IPython.embed()
-            else:
-                cost_i, tfm_i, tfm_inverse_i = registration_cost_and_tfm(ds_cloud, new_xyz)                    
+            crit_pts_sim = get_critical_points_sim(new_xyz)
+            (demotype_num, demo_name, seg_name) = keys[i]
+            seg_group = demofiles[0][demo_name][seg_name]
+            demo_xyz, demo_lens = fuzz_cloud(demo_clouds[i], seg_group, init_tfm)
+            sim_xyz, sim_lens = fuzz_cloud(new_xyz)
+            # cost_i, tfm_i, tfm_inverse_i, theta_i = registration_cost_crit(demo_xyz, sim_xyz, crit_points[i], crit_pts_sim, zip(demo_lens, sim_lens))
+            cost_i, tfm_i, tfm_inverse_i, theta_i = registration_cost_crit(demo_clouds[i], new_xyz, crit_points[i], crit_pts_sim)
+            #if (demo_name == "demo00027" and seg_name == "seg00") or (demo_name == "demo00003" and seg_name == "seg01"):
+            #    import IPython; IPython.embed()
+            thetas.append(theta_i)
+                   
             costs.append(cost_i)
             tfms.append(tfm_i)
             tfm_invs.append(tfm_inverse_i)
@@ -1135,10 +1132,24 @@ def find_closest_auto_with_crossings(demofiles, new_xyz, init_tfm=None, n_jobs=3
     (demotype_num, demo_name, seg_name) = keys[choice_ind]
     seg_group = demofiles[0][demo_name][seg_name]
     
+    t1 = time.time()
     demo_xyz, demo_lens = fuzz_cloud(demo_clouds[choice_ind], seg_group, init_tfm)
     sim_xyz, sim_lens = fuzz_cloud(new_xyz)
-    cost, tfm, tfm_inverse, theta = registration_cost_crit(demo_xyz, sim_xyz, crit_points[choice_ind], crit_pts_sim, zip(demo_lens, sim_lens))
-    print cost, theta
+
+
+    cost1, tfm1,_,_ = registration_cost_crit(demo_xyz, sim_xyz, crit_points[choice_ind], crit_pts_sim, zip(demo_lens, sim_lens), thetas[choice_ind])
+    demol = np.array(demo_xyz[67:134])
+    demo_xyz[67:134] = demo_xyz[201:268]
+    demo_xyz[201:268] = demol
+    cost2, tfm2,_,_ = registration_cost_crit(demo_xyz, sim_xyz, crit_points[choice_ind], crit_pts_sim, zip(demo_lens, sim_lens), thetas[choice_ind])
+    if cost1 < cost2:
+        tfm = tfm1
+    else:
+        tfm = tfm2
+    t2 = time.time()
+    print "time:", t2-t1
+    print "cost:", min([cost1, cost2])
+    #import IPython; IPython.embed()
     #for now, assume only one demotype at a time
     return (keys[choice_ind][1],keys[choice_ind][2]) , is_finalsegs[choice_ind], tfm, (new_xyz, demo_clouds[choice_ind])
 
@@ -1201,8 +1212,8 @@ def segment_demo(sim_xyz, seg_group, demofile, reverse=False):
     if len(demo_xyz) != len(sim_xyz):
         print "\n\narray lengths do not match\n\n"
         import IPython; IPython.embed()
-    if not args.no_display:
-        plot_transform_mlab(demo_xyz, sim_xyz, demo_xyz, [np.array(seg) for seg in new_segs])
+    #if not args.no_display:
+    #    plot_transform_mlab(demo_xyz, sim_xyz, demo_xyz, [np.array(seg) for seg in new_segs])
     if sim_pattern != demo_pattern:
         import IPython; IPython.embed()
 
@@ -1280,17 +1291,18 @@ def match_crossings(demofiles, keys, costs, tfms, tfm_invs, init_tfm, dclouds, c
                 #import IPython; IPython.embed()
                 demo_pattern.reverse()
 
-        if not args.no_display:
-            plot_transform_mlab(demo_pointcloud, sim_xyz, orig_demo, [crit1, crit2, crit3])
-            #segment_demo(sim_xyz, seg_group, demofiles[0])
-            #plot_crossings_2d(flat_points, seg_group)
-            #import IPython; IPython.embed()
+        # if not args.no_display:
+        # #     #plot_transform_mlab(demo_pointcloud, sim_xyz, orig_demo, [crit1, crit2, crit3])
+        # #     #segment_demo(sim_xyz, seg_group, demofiles[0])
+        # #     #plot_crossings_2d(flat_points, seg_group)
+        #     import IPython; IPython.embed()
 
         if demo_pattern == sim_pattern or demo_pattern == sim_pattern[::-1]:
             if wrong_topo:
                 print "Wrong topology:", seg_group
-                import IPython; IPython.embed()
-                #raise Exception("Wrong topology")
+                #import IPython; IPython.embed()
+                raise Exception("Wrong topology")
+                return choice_ind
                 return np.argmin(costs)
             print "match found directly"
             return choice_ind
@@ -1301,6 +1313,7 @@ def match_crossings(demofiles, keys, costs, tfms, tfm_invs, init_tfm, dclouds, c
             print "choice ind:", str(choice_ind)+"/"+str(len(cost_inds))
             print "Wrong intial topology"
             #import IPython; IPython.embed()
+            #return np.argmin(costs)
             #raise Exception("Wrong initial topology") 
             wrong_topo = True
 
@@ -1311,8 +1324,8 @@ def match_crossings(demofiles, keys, costs, tfms, tfm_invs, init_tfm, dclouds, c
         pickle_dump(sim_xyz, "test_results/novel_topo_"+str(file_inc))
         print sim_pattern, (tuple(sim_pattern) in equiv or tuple(reversed(sim_pattern)) in equiv)
         print "Novel topology, saved to file as test_results/novel_topo_"+str(file_inc)
-        raise Exception("Novel topology, saved to file") 
         #import IPython; IPython.embed()
+        raise Exception("Novel topology, saved to file") 
 
     return np.argmin(costs)
 
@@ -1716,7 +1729,7 @@ def main():
 
         if curr_step > 1:
             # for following steps in rope simulation, using simulation result
-            new_xyz = Globals.sim.observe_cloud(upsample=3)
+            new_xyz = Globals.sim.observe_cloud(upsample_ratio=3)
             new_xyz = clouds.downsample(new_xyz, args.cloud_downsample)
 
             hitch = Globals.env.GetKinBody('hitch')
@@ -1760,7 +1773,7 @@ def main():
                 rope_nodes = rope_nodes.dot(init_tfm[:3,:3])+init_tfm[:3,3][None,:]
 
             Globals.sim.create(rope_nodes)
-            fake_xyz = Globals.sim.observe_cloud(upsample=3)
+            fake_xyz = Globals.sim.observe_cloud(upsample_ratio=3)
             fake_xyz = clouds.downsample(fake_xyz, args.cloud_downsample)
             
             if Globals.viewer:
@@ -1782,7 +1795,7 @@ def main():
             new_xyz = fake_xyz
 
         if args.closest_rope_hack:
-            rope_cloud = Globals.sim.observe_cloud(upsample=3)
+            rope_cloud = Globals.sim.observe_cloud(upsample_ratio=3)
             rope_cloud = clouds.downsample(rope_cloud, args.cloud_downsample)
         
         '''
@@ -1899,7 +1912,10 @@ def main():
 
         segment_len = miniseg_ends[-1] - miniseg_starts[0] + 1
         portion = max(args.early_stop_portion, miniseg_ends[0] / float(segment_len))
-        
+
+        #Globals.viewer.Idle() #for recording
+        #import IPython; IPython.embed()
+
         for (i_miniseg, (i_start, i_end)) in enumerate(zip(miniseg_starts, miniseg_ends)):
 
             redprint("Generating joint trajectory for demo %s segment %s, part %i"%(demo_name, seg_name, i_miniseg))
@@ -1922,8 +1938,8 @@ def main():
                         file_inc += 1
                     pickle_dump(old_sim_xyz, "test_results/grab_failed_"+str(file_inc))
                     print "Grab failed. Saved preceding state as test_results/grab_failed_"+str(file_inc)
-                    import IPython; IPython.embed()
-                    #raise Exception("grab failed")
+                    #import IPython; IPython.embed()
+                    raise Exception("grab failed")
 
             print "about to calculate"
 
@@ -1996,8 +2012,8 @@ def main():
                             miniseg_traj[lr].append(miniseg_traj[lr][-1])
 
             #len_miniseg = len(adaptive_times)
-            import IPython; IPython.embed()
-            
+            #import IPython; IPython.embed()
+
             redprint("Executing joint trajectory for demo %s segment %s, part %i using arms '%s'"%(demo_name, seg_name, i_miniseg, miniseg_traj.keys()))
 
             if len(miniseg_traj) > 0:
@@ -2024,11 +2040,13 @@ def main():
                 Globals.viewer.Idle()
             Globals.sim.settle(tol=0.0001, animate=True)
             Globals.sim.settle(tol=0.0001, animate=True)
+            if Globals.viewer:
+                Globals.viewer.Step()
 
         redprint("Demo %s Segment %s result: %s"%(demo_name, seg_name, success))
         
         if args.test_success:
-            if isKnot(Globals.sim.rope.GetControlPoints(), True):
+            if isKnot(Globals.sim.rope.GetControlPoints()):
                 greenprint("Demo %s Segment %s success: isKnot returns true"%(args.fake_data_demo, args.fake_data_segment))
                 return
             elif curr_step > 5:
@@ -2036,7 +2054,7 @@ def main():
                 print "too many segments"
                 raise Exception("too many segments")
             else:
-                rope = Globals.sim.observe_cloud(upsample=5)
+                rope = Globals.sim.observe_cloud()
                 if rope[0][2] < 0:
                     redprint("Demo %s Segment %s failed: rope fell off table"%(args.fake_data_demo, args.fake_data_segment))
                     print "Rope fell off table"

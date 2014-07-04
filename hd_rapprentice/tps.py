@@ -56,13 +56,9 @@ def tps_kernel_matrix2(x_na, y_ma):
     return tps_apply_kernel(distmat, dim)
 
 def tps_eval(x_ma, lin_ag, trans_g, w_ng, x_na):
-    try:
-        K_mn = tps_kernel_matrix2(x_ma, x_na)
-        return np.dot(K_mn, w_ng) + np.dot(x_ma, lin_ag) + trans_g[None,:]
-    except Exception as exc:
-        print "exception in tps_eval_2d"
-        print exc
-        import IPython; IPython.embed() 
+    K_mn = tps_kernel_matrix2(x_ma, x_na)
+    return np.dot(K_mn, w_ng) + np.dot(x_ma, lin_ag) + trans_g[None,:]
+
 
 def tps_eval_2d(x_ma, lin_ag, trans_g, w_ng, x_na):
     try:

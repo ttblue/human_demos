@@ -209,7 +209,7 @@ class FloatingGripperSimulation(object):
         self.env.UpdatePublishedBodies()
         print "settled in %d iterations" % (i+1)
 
-    def observe_cloud(self, pts=None, radius=0.005, upsample=0, upsample_rad=1):
+    def observe_cloud(self, pts=None, radius=0.005, upsample=0, upsample_ratio=1, upsample_rad=1):
         """
         If upsample > 0, the number of points along the rope's backbone is resampled to be upsample points
         If upsample_rad > 1, the number of points perpendicular to the backbone points is resampled to be upsample_rad points, around the rope's cross-section
@@ -222,6 +222,11 @@ class FloatingGripperSimulation(object):
             summed_lengths = np.cumsum(lengths)
             assert len(lengths) == len(pts)
             pts = math_utils.interp2d(np.linspace(0, summed_lengths[-1], upsample), summed_lengths, pts)
+        elif upsample_ratio > 1:
+            lengths = np.r_[0, half_heights * 2]
+            summed_lengths = np.cumsum(lengths)
+            assert len(lengths) == len(pts)
+            pts = math_utils.interp2d(np.linspace(0, summed_lengths[-1], upsample_ratio*len(pts)), summed_lengths, pts)
         if upsample_rad > 1:
             # add points perpendicular to the points in pts around the rope's cross-section
             vs = np.diff(pts, axis=0) # vectors between the current and next points
