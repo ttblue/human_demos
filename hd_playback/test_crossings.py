@@ -30,7 +30,7 @@ def main():
         demo = hdf.keys()[i]
         fake_data_demo = "--fake_data_demo="+demo
         call1 = "python do_task_merge.py --demo_type="+args.demo_type+" --fake_data_demo="+demo+" --fake_data_segment=seg00 --use_ar_init --select=auto --test_success --no_display --step=100 --force_points" 
-        call2 = "python do_task_merge.py --demo_type="+args.demo_type+" --fake_data_demo="+demo+" --fake_data_segment=seg00 --use_ar_init --select=auto --test_success --no_display --step=100 --force_points --parallel=0"
+        call2 = "python do_task_merge.py --demo_type="+args.demo_type+" --fake_data_demo="+demo+" --fake_data_segment=seg00 --use_ar_init --select=auto --test_success --no_display --step=100 --force_points --extra_settle"
         #import IPython; IPython.embed()
         savefile = open(osp.join("test_results", args.name), 'a')
         print "starting demo", demo

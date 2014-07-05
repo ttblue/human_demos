@@ -116,11 +116,15 @@ class FloatingGripper(object):
     
         # check that pt is behind the gripper tip
         pt_local = transform(np.linalg.inv(self.get_endeffector_transform()), pt)
-        if pt_local[2] > .03 + tol:
+        if abs(pt_local[2]) > .02 + tol:
             return False
     
         # check that pt is within the finger width
-        if abs(pt_local[0]) > .009 + tol: #.009
+        if abs(pt_local[0]) > .008 + tol: #.009
+            return False
+
+        #corners of gripper pads
+        if abs(pt_local[0]) > .006+tol and abs(pt_local[2]) > .015+tol:
             return False
     
         # check that pt is between the fingers
