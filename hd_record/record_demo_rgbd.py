@@ -331,7 +331,7 @@ def record_demo (demo_name, use_voice):
         return False
 
 
-def record_pipeline ( calib_file, num_cameras, num_demos, use_voice, use_init=True, redo):
+def record_pipeline ( calib_file, num_cameras, num_demos, use_voice, use_init=True, redo=False):
     """
     Either records n demos or until person says he is done.
     @calib_file: file to load calibration from. "", -- default -- means using the one in the master file

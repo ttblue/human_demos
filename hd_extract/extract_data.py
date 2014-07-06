@@ -126,10 +126,12 @@ def save_observations_rgbd(demo_type, demo_name, save_file=None):
                         tfm_c1[i] = nlg.inv(tfm_link_rof).dot(tfm['tfm']).dot(tfm_link_rof)
 
     if tfm_c1_h is None or not all([tfm_c1[s] != None for s in tfm_c1]):
+        import IPython; IPython.embed()
         redprint("Calibration does not have required transforms")
         return
 
     if not calib_data.get('grippers'):
+        import IPython; IPython.embed()
         redprint("Gripper not found.")
         return
 

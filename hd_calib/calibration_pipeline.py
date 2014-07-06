@@ -279,6 +279,10 @@ class CalibratedTransformPublisher(Thread):
                 gripper_data[lr] = gr.transform_graph
 
         calib_data['grippers'] = gripper_data
+        
+        if gripper_data == {}:
+            print "\nNo gripper info\n"
+            import pdb; pdb.set_trace()
 
         calib_transforms = []
         for (parent, child) in self.transforms:
