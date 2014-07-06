@@ -54,7 +54,7 @@ class HydraCalibrator:
     
     def get_hydra_transform(self):
         tfms = gmt.get_hydra_transforms('hydra_base', [self.calib_hydra])
-        if tfms is None: return None
+        if tfms is None or tfms == {}: return None
         return tfms[self.calib_hydra]
     
     def get_ar_transform (self):
