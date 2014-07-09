@@ -208,7 +208,10 @@ def load_demo_data(demo_dir, freq, rem_outliers, tps_correct, tps_model_fname, p
     for lr in 'lr':
         for cam in cam_dat[lr].keys():
             all_cam_strms.append(cam_dat[lr][cam]['stream'])
-    tmin, _, _ = relative_time_streams(hydra_dat.values() + pot_dat.values() + all_cam_strms, freq)
+    try:
+        tmin, _, _ = relative_time_streams(hydra_dat.values() + pot_dat.values() + all_cam_strms, freq)
+    except Exception as exc:
+        import IPython; IPython.embed()
     tshift1 = -tmin
 
     ## remove outliers in the camera streams

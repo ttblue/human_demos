@@ -252,8 +252,10 @@ def view_demo_on_rviz(demo_type, demo_name, freq, speed=1.0, main='h', prompt=Fa
         for lr in grippers:
             for m,est in next_est[lr].items():
                 if est != None:
+                    print "est is none"
                     tfm_pubs[lr][m].publish(conversions.pose_to_stamped_pose(conversions.hmat_to_pose(est), cam_frames[1]))
                 else:
+                    print "est is not none"
                     tfm_pubs[lr][m].publish(conversions.pose_to_stamped_pose(conversions.hmat_to_pose(T_far), cam_frames[1]))
         
         sleeper.sleep()

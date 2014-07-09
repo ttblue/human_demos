@@ -271,8 +271,7 @@ def tps_rpm_bij(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_in
         
         if plotting and i%plotting==0:
             plot_cb(x_nd, y_md, xtarg_nd, corr_nm, wt_n, f)
-        import IPython
-        IPython.embed()
+
         if critical_points != None:
             x_n2d = np.vstack([x_nd, critical_points[:,0]])
 

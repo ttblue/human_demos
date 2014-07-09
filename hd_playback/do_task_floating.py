@@ -395,7 +395,7 @@ def registration_cost_with_rotation(xyz0, xyz1):
     for i in range(len(rad_angs)):
         try:
             rotated_demo = rotate_about_median(xyz0, rad_angs[i])
-        except ValueError as e:
+        except ValueError as err:
             import IPython
             IPython.embed()
         scaled_rotated_demo, src_params = registration.unit_boxify(rotated_demo)

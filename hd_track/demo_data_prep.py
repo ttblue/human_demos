@@ -149,9 +149,11 @@ def relative_time_streams(strms, freq):
         tmin = min(tmin, np.min(ts))            
         tmax = max(tmax, np.max(ts)) 
 
-    ## calculate the number of time-steps for the kalman filter.    
-    nsteps = int(math.ceil((tmax-tmin)/dt))
-
+    ## calculate the number of time-steps for the kalman filter.
+    try:
+        nsteps = int(math.ceil((tmax-tmin)/dt))
+    except:
+        import IPython; IPython.embed()
     ## create the data-streams:
     for strm in strms:
         strm.ts -= tmin
