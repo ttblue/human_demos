@@ -29,11 +29,19 @@ def main():
     for i in range(int(args.demo_start), int(args.demo_end)):
         demo = hdf.keys()[i]
         fake_data_demo = "--fake_data_demo="+demo
-        call1 = "python do_task_merge.py --demo_type="+args.demo_type+" --fake_data_demo="+demo+" --fake_data_segment=seg00 --use_ar_init --select=auto --test_success --no_display --step=100 --force_points" 
-        call2 = "python do_task_merge.py --demo_type="+args.demo_type+" --fake_data_demo="+demo+" --fake_data_segment=seg00 --use_ar_init --select=auto --test_success --no_display --step=100 --force_points --extra_settle"
-        #import IPython; IPython.embed()
+        call1 = "python do_task_merge.py --test_success --no_display --demo_type " + args.demo_type + " overhand_new overhand_recovery --fake_data_demo=" + demo
+        call1 += " --fake_data_segment=seg00 --step=100 --force_points --weight_pts --extra_settle=12 --shiftx=0 --choice_file="+args.name+"choice"
+        call2 = "python do_task_merge.py --test_success --no_display --demo_type " + args.demo_type + " overhand_new overhand_recovery --fake_data_demo=" + demo
+        call2 += " --fake_data_segment=seg00 --step=100 --force_points --weight_pts --extra_settle=12 --shiftx=0 --choice_file="+args.name+"choice --init_perturb=0"
+
         savefile = open(osp.join("test_results", args.name), 'a')
+
+        if i == int(args.demo_start):
+            savefile.write(call1 + "\n")
+            savefile.write(call2 + "\n")
+
         print "starting demo", demo
+
         try:
             out = subprocess.check_output(call1.split())
         except Exception as exc:
@@ -42,7 +50,9 @@ def main():
             savefile.write("Unperturbed failure: " + demo + ": " + err_msg + "\n")
             print "Unperturbed failure: " + demo + ": " + err_msg + "\n"
             savefile.flush()
+
         print "finished first call"
+
         try:
             out = subprocess.check_output(call2.split())
         except Exception as exc:
@@ -51,19 +61,22 @@ def main():
             savefile.write(" Perturbed failure: " + demo + ": " + err_msg + "\n")
             print " Perturbed failure: " + demo + ": " + err_msg + "\n"
         savefile.close()
+
         print "finished demo", demo
-        #IPython.embed()
+
     print " Perturbed failures:", crossings_failures, "\nUnperturbed failures:", baseline_failures
     savefile = open(osp.join("test_results", args.name), 'a')
+
     savefile.write("Perturbed failures: " + str(len(crossings_failures)) + "\n")
     for item in crossings_failures:
         savefile.write("   " + str(item)+"\n")
+
     savefile.write("Unperturbed failures: " + str(len(baseline_failures)) + "\n")
     for item in baseline_failures:
         savefile.write("   " + str(item)+"\n")
+
     savefile.close()
-    return crossings_failures, baseline_failures
- 
+    return crossings_failures, baseline_failures 
 
 if __name__=="__main__":
     main()

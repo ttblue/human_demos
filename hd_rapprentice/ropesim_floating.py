@@ -6,6 +6,8 @@ from hd_utils.defaults import models_dir
 import os.path as osp
 from openravepy import matrixFromAxisAngle
 
+import IPython as ipy
+
 def transform(hmat, p):
     return hmat[:3,:3].dot(p) + hmat[:3,3]
 
@@ -116,15 +118,15 @@ class FloatingGripper(object):
     
         # check that pt is behind the gripper tip
         pt_local = transform(np.linalg.inv(self.get_endeffector_transform()), pt)
-        if abs(pt_local[2]) > .02 + tol:
+        if abs(pt_local[2]) > .0175 + tol:
             return False
     
         # check that pt is within the finger width
-        if abs(pt_local[0]) > .008 + tol: #.009
+        if abs(pt_local[0]) > .008 + tol: #.008
             return False
 
-        #corners of gripper pads
-        if abs(pt_local[0]) > .006+tol and abs(pt_local[2]) > .015+tol:
+        #corners of gripper pads #.006                        #.015
+        if abs(pt_local[0]) > .006+tol and abs(pt_local[2]) > .0175+tol:
             return False
     
         # check that pt is between the fingers
@@ -143,6 +145,7 @@ class FloatingGripperSimulation(object):
         self.bt_robot = None
         self.rope     = None
         self.constraints = {"l": [], "r": []}
+        self.constraints_inds = {"l": [], "r": []}
 
         self.rope_params = bulletsimpy.CapsuleRopeParams()
         #radius: A larger radius means a thicker rope.
@@ -279,7 +282,45 @@ class FloatingGripperSimulation(object):
                     }
                 })
                 self.constraints[lr].append(cnt)
+                self.constraints_inds[lr].append(i_cnt)
+
         return True
+
+    def get_grab_links(self, lr):
+
+        nodes, ctl_pts = self.rope.GetNodes(), self.rope.GetControlPoints()
+
+        graspable_nodes = np.array([self.grippers[lr].in_grasp_region(n) for n in nodes])
+        graspable_ctl_pts = np.array([self.grippers[lr].in_grasp_region(n) for n in ctl_pts])
+        graspable_inds = np.flatnonzero(np.logical_or(graspable_nodes, np.logical_or(graspable_ctl_pts[:-1], graspable_ctl_pts[1:])))
+        #print 'graspable inds for %s: %s' % (lr, str(graspable_inds))
+        if len(graspable_inds) == 0:
+            #No part close enough to the gripper to grab, so return False.
+            return False
+
+        robot_link = self.grippers[lr].robot.GetLink("l_gripper_l_finger_tip_link")
+        rope_links = self.rope.GetKinBody().GetLinks()
+        for i_node in graspable_inds:
+            for i_cnt in range(max(0, i_node-1), min(len(nodes), i_node+2)):
+                cnt = self.bt_env.AddConstraint({
+                    "type": "generic6dof",
+                    "params": {
+                        "link_a": robot_link,
+                        "link_b": rope_links[i_cnt],
+                        "frame_in_a": np.linalg.inv(robot_link.GetTransform()).dot(rope_links[i_cnt].GetTransform()),
+                        "frame_in_b": np.eye(4),
+                        "use_linear_reference_frame_a": False,
+                        "stop_erp": 0.8,
+                        "stop_cfm": 0.1,
+                        "disable_collision_between_linked_bodies": True,
+                    }
+                })
+                self.constraints[lr].append(cnt)
+                self.constraints_inds[lr].append(i_cnt)
+
+        grasped_links = self.rope.GetNodes()[graspable_inds]
+        
+        return grasped_links
 
     def release_rope(self, lr):
         print 'RELEASE: %s (%d constraints)' % (lr, len(self.constraints[lr]))
