@@ -31,7 +31,7 @@ def animate_floating_traj_angs(lhmats, rhmats, ljoints, rjoints, sim_env, pause=
     if step_viewer or pause: viewer = trajoptpy.GetViewer(sim_env.sim.env)
     eetrajs = {'l':np.array(lhmats), 'r':np.array(rhmats)}
 
-    valid_inds = grippers_exceed_rope_length(sim_env, eetrajs, 0.05)
+    valid_inds = grippers_exceed_rope_length(sim_env, eetrajs, 0.15) #0.05
     min_gripper_dist = [np.inf] # minimum distance between gripper when the rope capsules are too far apart
 
     for i in xrange(len(lhmats)):
@@ -62,7 +62,7 @@ def is_rope_pulled_too_tight(i_step, ee_trajs, min_gripper_dist, valid_inds, sim
     fwd_pts = (trans + hhs[:,None]*rots[:,:3,0])
     bkwd_pts = (trans - hhs[:,None]*rots[:,:3,0])
     pts_dists = np.apply_along_axis(np.linalg.norm, 1, fwd_pts[:-1] - bkwd_pts[1:])[:,None] # these should all be zero if the rope constraints are satisfied
-    if np.any(pts_dists > 2*sim_env.sim.rope_params.radius):
+    if np.any(pts_dists > 1.5*sim_env.sim.rope_params.radius): #2 optimal so far
         if i_step == 0:# or i_step == len(ee_trajs['l'])-1:
             return False
         min_gripper_dist[0] = min(min_gripper_dist[0], np.linalg.norm(ee_trajs['r'][i_step,:3,3] - ee_trajs['l'][i_step,:3,3]))

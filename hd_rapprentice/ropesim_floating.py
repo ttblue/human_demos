@@ -267,7 +267,7 @@ class FloatingGripperSimulation(object):
         robot_link = self.grippers[lr].robot.GetLink("l_gripper_l_finger_tip_link")
         rope_links = self.rope.GetKinBody().GetLinks()
         for i_node in graspable_inds:
-            for i_cnt in range(max(0, i_node-1), min(len(nodes), i_node+2)):
+            for i_cnt in [i_node]: #range(max(0, i_node-1), min(len(nodes), i_node+2)):
                 cnt = self.bt_env.AddConstraint({
                     "type": "generic6dof",
                     "params": {
@@ -285,6 +285,7 @@ class FloatingGripperSimulation(object):
                 self.constraints_inds[lr].append(i_cnt)
 
         return True
+
 
     def get_grab_links(self, lr):
 

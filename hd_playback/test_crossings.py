@@ -29,10 +29,10 @@ def main():
     for i in range(int(args.demo_start), int(args.demo_end)):
         demo = hdf.keys()[i]
         fake_data_demo = "--fake_data_demo="+demo
-        call1 = "python do_task_merge.py --test_success --no_display --demo_type " + args.demo_type + " overhand_new overhand_recovery --fake_data_demo=" + demo
+        call1 = "python do_task_merge.py --test_success --no_display --demo_type " + args.demo_type + " overhand_recovery overhand_fix --fake_data_demo=" + demo
         call1 += " --fake_data_segment=seg00 --step=100 --force_points --weight_pts --extra_settle=12 --shiftx=0 --choice_file="+args.name+"choice"
-        call2 = "python do_task_merge.py --test_success --no_display --demo_type " + args.demo_type + " overhand_new overhand_recovery --fake_data_demo=" + demo
-        call2 += " --fake_data_segment=seg00 --step=100 --force_points --weight_pts --extra_settle=12 --shiftx=0 --choice_file="+args.name+"choice --init_perturb=0"
+        call2 = "python do_task_merge.py --test_success --no_display --demo_type " + args.demo_type + " overhand_recovery overhand_fix --fake_data_demo=" + demo
+        call2 += " --fake_data_segment=seg00 --step=100 --force_points --weight_pts --extra_settle=12 --shiftx=0 --choice_file="+args.name+"choice --init_perturb=1"
 
         savefile = open(osp.join("test_results", args.name), 'a')
 
