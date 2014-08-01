@@ -29,10 +29,10 @@ def main():
     for i in range(int(args.demo_start), int(args.demo_end)):
         demo = hdf.keys()[i]
         fake_data_demo = "--fake_data_demo="+demo
-        call1 = "python do_task_merge.py --test_success --no_display --demo_type " + args.demo_type + " overhand_recovery overhand_fix --fake_data_demo=" + demo
-        call1 += " --fake_data_segment=seg00 --step=100 --force_points --weight_pts --extra_settle=12 --shiftx=0 --choice_file="+args.name+"choice"
-        call2 = "python do_task_merge.py --test_success --no_display --demo_type " + args.demo_type + " overhand_recovery overhand_fix --fake_data_demo=" + demo
-        call2 += " --fake_data_segment=seg00 --step=100 --force_points --weight_pts --extra_settle=12 --shiftx=0 --choice_file="+args.name+"choice --init_perturb=1"
+        call1 = "python do_task_merge.py --test_success --no_display --demo_type " + args.demo_type + " overhand_recovery overhand_fix overhand_replace --fake_data_demo=" + demo
+        call1 += " --fake_data_segment=seg00 --step=100 --force_points --weight_pts --weight_power=3 --bend_cost=0.05 --choice_file="+args.name+"choice"
+        call2 = "python do_task_merge.py --test_success --no_display --demo_type " + args.demo_type + " overhand_recovery overhand_fix overhand_replace --fake_data_demo=" + demo
+        call2 += " --fake_data_segment=seg00 --step=100 --force_points --weight_pts --weight_power=3 --bend_cost=0.05 --choice_file="+args.name+"choice --init_perturb=1"
 
         savefile = open(osp.join("test_results", args.name), 'a')
 
@@ -64,6 +64,8 @@ def main():
 
         print "finished demo", demo
 
+    print " Perturbed failures:", len(crossings_failures)
+    print " Unperturbed failures:", len(baseline_failures)        
     print " Perturbed failures:", crossings_failures, "\nUnperturbed failures:", baseline_failures
     savefile = open(osp.join("test_results", args.name), 'a')
 

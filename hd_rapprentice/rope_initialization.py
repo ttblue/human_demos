@@ -88,8 +88,12 @@ def find_path_through_point_cloud(xyzs, plotting=False, perturb_peak_dist=None, 
 
     total_path_3d = unif_resample(total_path_3d, seg_len=.02, tol=.003) # tolerance of 1mm
     total_path_3d = unif_resample(total_path_3d, seg_len=.02, tol=.003) # tolerance of 1mm
-#    total_path_3d = unif_resample(total_path_3d, seg_len=.02, tol=.003) # tolerance of 1mm
-
+    dists = np.zeros(len(total_path_3d))
+    # for i in range(len(total_path_3d)-1):
+    #     dists[i] = np.linalg.norm(total_path_3d[i]-total_path_3d[i+1])
+    # if np.any(dists > 0.04) or np.any(dists < 0.01):
+    #     import IPython; IPython.embed()
+    #     total_path_3d = unif_resample(total_path_3d, seg_len=.02, tol=.003) # tolerance of 1mm
     if plotting:
         mlab.figure(2); mlab.clf()
         for seg in segs3d:
