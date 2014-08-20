@@ -9,6 +9,73 @@ from hd_utils.pr2_utils import get_kinect_transform
 from hd_rapprentice.rope_initialization import points_to_graph
 import networkx as nx
 from openravepy import matrixFromAxisAngle
+from sklearn.neighbors import KDTree
+
+
+import random
+from ransac import *
+
+def augment(xyz):
+    axyz = np.ones((len(xyz), 4))
+    axyz[:, :3] = xyz
+    return axyz
+
+def estimate(xyz):
+    axyz = augment(xyz[:3])
+    return np.linalg.svd(axyz)[-1][-1, :]
+
+def is_inlier(coeffs, xyz, threshold):
+    return np.abs(coeffs.dot(augment([xyz]).T)) < threshold
+
+def plot_plane(a, b, c, d):
+    xx, yy = np.mgrid[-1:3, -1:3]
+    print a, b, c, d
+    return xx, yy, (-d - a * xx - b * yy) / c
+
+def extract_table_ransac(rgb, depth, T_w_k, inlier_fraction=0.90):    
+    
+    xyz = extract_green(rgb, depth, T_w_k)
+    n_rows, n_cols = xyz.shape
+    
+    max_iterations = 100
+    m, _ = run_ransac(xyz, estimate, lambda x, y: is_inlier(x, y, 0.01), 3, inlier_fraction, max_iterations)
+    print "running ransac"
+    a, b, c, d = m
+    xx, yy, zz = plot_plane(a, b, c, d)
+    
+    return (xx, yy, zz), m
+
+def extract_table_pca(rgb, depth, T_w_k):
+    xyz = extract_green(rgb, depth, T_w_k)
+    
+    n_rows, n_cols = xyz.shape
+    n_samples = min(n_rows, 1000)
+    sample_indices = random.sample(xrange(n_rows), n_samples)
+    
+    sampled_xyz = xyz[sample_indices, :]
+    #import IPython
+    #IPython.embed()
+    normal = clouds.clouds_plane(sampled_xyz)
+    
+    center_xyz = np.median(sampled_xyz, axis=0)
+    centered_sampled_xyz = sampled_xyz - center_xyz[None,:]
+    mean_t = np.mean(centered_sampled_xyz.dot(normal))
+    
+    a = normal[0]
+    b = normal[1]
+    c = normal[2]
+    d = -center_xyz.dot(normal) - mean_t
+    
+    xx, yy, zz = plot_plane(a, b, c, d)
+    
+    return (xx, yy, zz), (a, b, c, d)
+    
+    
+
+    
+def extract_raw_cloud(rgb, depth, T_w_k, inlier_fraction=0.9):    
+    xyz = extract_green(rgb, depth, T_w_k)
+    return xyz    
 
 def remove_outlier_connected_component(xyz, max_dist = .03):
     G = points_to_graph(xyz, max_dist)
@@ -23,6 +90,20 @@ def remove_outlier_connected_component(xyz, max_dist = .03):
         else: 
             break
     return xyz
+
+
+
+
+def extract_cloud(depth, T_w_k):
+    xyz_k = clouds.depth_to_xyz(depth, asus_xtion_pro_f)
+    xyz_w = xyz_k.dot(T_w_k[:3,:3].T) + T_w_k[:3,3][None,None,:]
+    
+    valid_mask = (depth > 0)
+    
+    good_xyz = xyz_w[valid_mask]
+    
+    return good_xyz
+
     
 def extract_color(rgb, depth, mask, T_w_k, xyz_mask=None, use_outlier_removal=False, outlier_thresh=2, outlier_k=20):
 
@@ -75,9 +156,12 @@ def extract_color(rgb, depth, mask, T_w_k, xyz_mask=None, use_outlier_removal=Fa
     return good_xyz
 
 
+
 def extract_red(rgb, depth, T_w_k):
-    red_mask = [lambda(x): (x<15)|(x>125), lambda(x): x>80, lambda(x): x>100]
-    xyz_mask = (lambda(xyz): xyz[:, :, 2] > 0.95)
+    red_mask = [lambda(x): (x<25)|(x>115), lambda(x): x>80, lambda(x): x>100]
+    #red_mask = [lambda(x): (x<35)|(x>105), lambda(x): x>70, lambda(x): x>90]
+
+    xyz_mask = (lambda(xyz): xyz[:, :, 2] > 0.9)
     return extract_color(rgb, depth, red_mask, T_w_k, xyz_mask, True)
 
 def extract_white(rgb, depth, T_w_k):
@@ -89,6 +173,85 @@ def extract_yellow(rgb, depth, T_w_k):
     #xyz_mask = (lambda(xyz): xyz[:, :, 2] < 0.9)
     xyz_mask = None
     return extract_color(rgb, depth, yellow_mask, T_w_k, xyz_mask)
+
+def extract_green(rgb, depth, T_w_k):
+    green_mask = [lambda(x): (x<140)&(x>60), lambda(x): x>30, lambda(x): x>80]
+    
+    xyz_mask = (lambda(xyz): xyz[:, :, 2] > 0.9)
+    return extract_color(rgb, depth, green_mask, T_w_k, xyz_mask, True)   
+
+
+'''
+Special rope extraction:
+1) the result is in the camera's frame, not in T_w_k ==> Alex mentioned it should be in ground frame not in camera's frame??
+2) the height_mask is less aggressive
+'''
+def extract_rope_tracking(rgb, depth, T_w_k):
+    red_mask = [lambda(x): (x<25)|(x>100), lambda(x): x>80, lambda(x): x>100]
+    hsv = cv2.cvtColor(rgb, cv2.COLOR_BGR2HSV)
+    h = hsv[:,:,0]
+    s = hsv[:,:,1]
+    v = hsv[:,:,2]
+    
+    h_mask = red_mask[0](h)
+    s_mask = red_mask[1](s)
+    v_mask = red_mask[2](v)
+    color_mask = h_mask & s_mask & v_mask
+    
+    valid_mask = (depth > 0)
+    
+    xyz_k = clouds.depth_to_xyz(depth, asus_xtion_pro_f)
+    xyz_w = xyz_k.dot(T_w_k[:3,:3].T) + T_w_k[:3,3][None,None,:]
+    
+    z = xyz_w[:,:,2]   
+    z0 = xyz_k[:,:,2]
+
+    # 'height' or distance from the camera
+    height_mask = (xyz_w[:,:,2] > 0) & (xyz_w[:,:,2] < 1.1)
+        
+    good_mask = color_mask & valid_mask & height_mask
+    
+    # return xyz_k instead of xyz_w ==> change to use xyz_w
+    good_xyz = xyz_w[good_mask]
+    good_rgb = rgb[good_mask]
+    
+
+    
+    
+    colored_xyz = np.hstack((good_xyz, good_rgb))
+    
+    return colored_xyz
+
+
+def remove_shadow(cloud):
+    X = cloud[:, :2]
+    kdt = KDTree(X, leaf_size=30, metric='euclidean')
+    kdq_results = kdt.query(X, k=5, return_distance=False)
+    
+    new_z = cloud[:, 2]
+    for i in range(len(kdq_results)):
+        closest_ids = kdq_results[i]
+        z = max(cloud[closest_ids, 2])
+        new_z[i] = z   
+    cloud[:, 2] = new_z
+    
+    return cloud
+
+
+def rope_shape_filter(nodes, cloud, filter_threshold = 0.05):
+    X = nodes
+    kdt = KDTree(X, leaf_size=30, metric='euclidean')
+    
+    queries = cloud[:, :3]
+    
+    [kdq_results_dist, kdq_results_ind] = kdt.query(queries, k=1, return_distance=True)
+    
+    filtered_cloud = []
+    for i in range(len(kdq_results_dist)):
+        if kdq_results_dist[i] < filter_threshold:
+            filtered_cloud.append(cloud[i, :])
+    
+    return np.vstack(filtered_cloud)
     
 
 def extract_hitch(rgb, depth, T_w_k, dir=None, radius=0.016, length =0.215, height_range=[0.70,0.80]):
@@ -138,11 +301,6 @@ def extract_hitch(rgb, depth, T_w_k, dir=None, radius=0.016, length =0.215, heig
         tfm = matrixFromAxisAngle(axis, angle)
         tfm[:3,3] = - tfm[:3,:3].dot(center_xyz) + center_xyz
         return np.asarray([tfm[:3,:3].dot(point) + tfm[:3,3] for point in all_pts]), center_xyz
-        
-        
-            
-    
-    
 
 def grabcut(rgb, depth, T_w_k):
     xyz_k = clouds.depth_to_xyz(depth, asus_xtion_pro_f)
@@ -150,7 +308,7 @@ def grabcut(rgb, depth, T_w_k):
 
     valid_mask = depth > 0
 
-    import interactive_roi as ir
+    from hd_rapprentice import interactive_roi as ir
     xys = ir.get_polyline(rgb, "rgb")
     xy_corner1 = np.clip(np.array(xys).min(axis=0), [0,0], [639,479])
     xy_corner2 = np.clip(np.array(xys).max(axis=0), [0,0], [639,479])

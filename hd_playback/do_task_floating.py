@@ -66,7 +66,9 @@ parser.add_argument("--use_crossings", action="store_true", default=False)
 parser.add_argument("--use_rotation", action="store_true", default=False)
 parser.add_argument("--test_success", action="store_true", default=False)
 
-parser.add_argument("--choose_demo", type=str, default="")
+parser.add_argument("--choose_demo", nargs='+', type=str)
+parser.add_argument("--choose_seg", nargs='+', type=str)
+
 
 args = parser.parse_args()
 
@@ -515,6 +517,10 @@ def find_closest_auto(demofiles, new_xyz, init_tfm=None, n_jobs=3, seg_proximity
                     final_seg_id = len(demofile[demo_name].keys()) - 1
 
                 for seg_name in demofile[demo_name]:
+                    if args.choose_demo and demo_name not in args.choose_demo:
+                        continue
+                    if args.choose_seg and seg_name not in args.choose_seg:
+                        continue
 
                     keys[seg_num] = (demotype_num, demo_name, seg_name)
 
@@ -1034,7 +1040,6 @@ def unif_resample(traj, max_diff, wt = None):
     newt = np.interp(newl, l, np.arange(len(traj)))
 
     return traj_rs, newt
-
 
 def close_traj(traj):
 
