@@ -159,6 +159,238 @@ def view_demo_on_rviz(demo_type, demo_name, freq, speed=1.0, main='h', prompt=Fa
         rospy.init_node("visualize_demo")
 
 
+    @prompt: does the user hit enter after each time step?
+    """
+    demo_dir = osp.join(demo_files_dir, demo_type, demo_name)
+    bag_file = osp.join(demo_dir, demo_names.bag_name)
+    data_file = osp.join(demo_dir, demo_names.data_name)
+    calib_file = osp.join(demo_dir, demo_names.calib_name)
+    with open(osp.join(demo_dir, demo_names.camera_types_name),'r') as fh: cam_types = yaml.load(fh)
+    
+    if not osp.isfile(data_file):
+        yellowprint("%s does not exist for this demo. Extracting now."%demo_names.data_name)
+        ed.save_observations_rgbd(demo_type, demo_name)
+    with open(data_file, 'r') as fh: dat = cp.load(fh)
+    
+    # get grippers used
+    grippers = [key for key in dat.keys() if key in 'lr']
+
+    # data 
+    rgbd_dirs = {cam:osp.join(demo_dir,demo_names.video_dir%cam) for cam in cam_types if cam_types[cam] == 'rgbd'}
+    cam_frames = {cam:'/camera%i_rgb_optical_frame'%cam for cam in rgbd_dirs}
+    
+    tfm_pubs = {}
+
+    cam_dat = {}
+    hydra_dat = {}
+    pot_dat = {}
+    
+    _, cam_dat['l'], hydra_dat['l'], pot_dat['l'] = load_data(data_file, 'l', freq, speed)
+    _,  cam_dat['r'], hydra_dat['r'], pot_dat['r'] = load_data(data_file, 'r', freq, speed)
+
+    all_cam_strms = []
+    for lr in 'lr':
+        for cam in cam_dat[lr].keys():
+            all_cam_strms.append(cam_dat[lr][cam]['stream'])
+    tmin, _, nsteps = relative_time_streams(hydra_dat.values() + pot_dat.values() + all_cam_strms, freq, speed)
+
+    if rospy.get_name() == "/unnamed":
+        rospy.init_node("visualize_demo")
+
+
+    ## publishers for unfiltered-data:
+    for lr in grippers:
+        tfm_pubs[lr] = {}
+        for cam in cam_types:
+            tfm_pubs[lr][cam] = rospy.Publisher('/%s_ar%i_estimate'%(lr,cam), PoseStamped)
+        tfm_pubs[lr]['h'] = rospy.Publisher('/%s_hydra_estimate'%(lr), PoseStamped)
+
+    ## get the point-cloud stream
+    pc_strms = {cam:streamize_rgbd_pc(rgbd_dirs[cam], cam_frames[cam], freq, tstart=tmin,speed=speed,verbose=verbose) for cam in rgbd_dirs}
+    pc_pubs = {cam:rospy.Publisher('/point_cloud%i'%cam, PointCloud2) for cam in rgbd_dirs}
+
+#     import IPython
+#     IPython.embed()
+
+    cam_tfms  = get_cam_transforms (calib_file, len(cam_types))
+    for cam in rgbd_dirs:
+        if cam != 1:
+            publish_static_tfm(cam_frames[1], cam_frames[cam], cam_tfms[cam])
+
+    @prompt: does the user hit enter after each time step?
+    """
+    demo_dir = osp.join(demo_files_dir, demo_type, demo_name)
+    bag_file = osp.join(demo_dir, demo_names.bag_name)
+    data_file = osp.join(demo_dir, demo_names.data_name)
+    calib_file = osp.join(demo_dir, demo_names.calib_name)
+    with open(osp.join(demo_dir, demo_names.camera_types_name),'r') as fh: cam_types = yaml.load(fh)
+    
+    if not osp.isfile(data_file):
+        yellowprint("%s does not exist for this demo. Extracting now."%demo_names.data_name)
+        ed.save_observations_rgbd(demo_type, demo_name)
+    with open(data_file, 'r') as fh: dat = cp.load(fh)
+    
+    # get grippers used
+    grippers = [key for key in dat.keys() if key in 'lr']
+
+    # data 
+    rgbd_dirs = {cam:osp.join(demo_dir,demo_names.video_dir%cam) for cam in cam_types if cam_types[cam] == 'rgbd'}
+    cam_frames = {cam:'/camera%i_rgb_optical_frame'%cam for cam in rgbd_dirs}
+    
+    tfm_pubs = {}
+
+    cam_dat = {}
+    hydra_dat = {}
+    pot_dat = {}
+    
+    _, cam_dat['l'], hydra_dat['l'], pot_dat['l'] = load_data(data_file, 'l', freq, speed)
+    _,  cam_dat['r'], hydra_dat['r'], pot_dat['r'] = load_data(data_file, 'r', freq, speed)
+
+    all_cam_strms = []
+    for lr in 'lr':
+        for cam in cam_dat[lr].keys():
+            all_cam_strms.append(cam_dat[lr][cam]['stream'])
+    tmin, _, nsteps = relative_time_streams(hydra_dat.values() + pot_dat.values() + all_cam_strms, freq, speed)
+
+    if rospy.get_name() == "/unnamed":
+        rospy.init_node("visualize_demo")
+
+
+    ## publishers for unfiltered-data:
+    for lr in grippers:
+        tfm_pubs[lr] = {}
+        for cam in cam_types:
+            tfm_pubs[lr][cam] = rospy.Publisher('/%s_ar%i_estimate'%(lr,cam), PoseStamped)
+        tfm_pubs[lr]['h'] = rospy.Publisher('/%s_hydra_estimate'%(lr), PoseStamped)
+
+    ## get the point-cloud stream
+    pc_strms = {cam:streamize_rgbd_pc(rgbd_dirs[cam], cam_frames[cam], freq, tstart=tmin,speed=speed,verbose=verbose) for cam in rgbd_dirs}
+    pc_pubs = {cam:rospy.Publisher('/point_cloud%i'%cam, PointCloud2) for cam in rgbd_dirs}
+
+#     import IPython
+#     IPython.embed()
+
+    cam_tfms  = get_cam_transforms (calib_file, len(cam_types))
+    for cam in rgbd_dirs:
+        if cam != 1:
+            publish_static_tfm(cam_frames[1], cam_frames[cam], cam_tfms[cam])
+
+    @prompt: does the user hit enter after each time step?
+    """
+    demo_dir = osp.join(demo_files_dir, demo_type, demo_name)
+    bag_file = osp.join(demo_dir, demo_names.bag_name)
+    data_file = osp.join(demo_dir, demo_names.data_name)
+    calib_file = osp.join(demo_dir, demo_names.calib_name)
+    with open(osp.join(demo_dir, demo_names.camera_types_name),'r') as fh: cam_types = yaml.load(fh)
+    
+    if not osp.isfile(data_file):
+        yellowprint("%s does not exist for this demo. Extracting now."%demo_names.data_name)
+        ed.save_observations_rgbd(demo_type, demo_name)
+    with open(data_file, 'r') as fh: dat = cp.load(fh)
+    
+    # get grippers used
+    grippers = [key for key in dat.keys() if key in 'lr']
+
+    # data 
+    rgbd_dirs = {cam:osp.join(demo_dir,demo_names.video_dir%cam) for cam in cam_types if cam_types[cam] == 'rgbd'}
+    cam_frames = {cam:'/camera%i_rgb_optical_frame'%cam for cam in rgbd_dirs}
+    
+    tfm_pubs = {}
+
+    cam_dat = {}
+    hydra_dat = {}
+    pot_dat = {}
+    
+    _, cam_dat['l'], hydra_dat['l'], pot_dat['l'] = load_data(data_file, 'l', freq, speed)
+    _,  cam_dat['r'], hydra_dat['r'], pot_dat['r'] = load_data(data_file, 'r', freq, speed)
+
+    all_cam_strms = []
+    for lr in 'lr':
+        for cam in cam_dat[lr].keys():
+            all_cam_strms.append(cam_dat[lr][cam]['stream'])
+    tmin, _, nsteps = relative_time_streams(hydra_dat.values() + pot_dat.values() + all_cam_strms, freq, speed)
+
+    if rospy.get_name() == "/unnamed":
+        rospy.init_node("visualize_demo")
+
+
+    ## publishers for unfiltered-data:
+    for lr in grippers:
+        tfm_pubs[lr] = {}
+        for cam in cam_types:
+            tfm_pubs[lr][cam] = rospy.Publisher('/%s_ar%i_estimate'%(lr,cam), PoseStamped)
+        tfm_pubs[lr]['h'] = rospy.Publisher('/%s_hydra_estimate'%(lr), PoseStamped)
+
+    ## get the point-cloud stream
+    pc_strms = {cam:streamize_rgbd_pc(rgbd_dirs[cam], cam_frames[cam], freq, tstart=tmin,speed=speed,verbose=verbose) for cam in rgbd_dirs}
+    pc_pubs = {cam:rospy.Publisher('/point_cloud%i'%cam, PointCloud2) for cam in rgbd_dirs}
+
+#     import IPython
+#     IPython.embed()
+
+    cam_tfms  = get_cam_transforms (calib_file, len(cam_types))
+    for cam in rgbd_dirs:
+        if cam != 1:
+            publish_static_tfm(cam_frames[1], cam_frames[cam], cam_tfms[cam])
+
+    @prompt: does the user hit enter after each time step?
+    """
+    demo_dir = osp.join(demo_files_dir, demo_type, demo_name)
+    bag_file = osp.join(demo_dir, demo_names.bag_name)
+    data_file = osp.join(demo_dir, demo_names.data_name)
+    calib_file = osp.join(demo_dir, demo_names.calib_name)
+    with open(osp.join(demo_dir, demo_names.camera_types_name),'r') as fh: cam_types = yaml.load(fh)
+    
+    if not osp.isfile(data_file):
+        yellowprint("%s does not exist for this demo. Extracting now."%demo_names.data_name)
+        ed.save_observations_rgbd(demo_type, demo_name)
+    with open(data_file, 'r') as fh: dat = cp.load(fh)
+    
+    # get grippers used
+    grippers = [key for key in dat.keys() if key in 'lr']
+
+    # data 
+    rgbd_dirs = {cam:osp.join(demo_dir,demo_names.video_dir%cam) for cam in cam_types if cam_types[cam] == 'rgbd'}
+    cam_frames = {cam:'/camera%i_rgb_optical_frame'%cam for cam in rgbd_dirs}
+    
+    tfm_pubs = {}
+
+    cam_dat = {}
+    hydra_dat = {}
+    pot_dat = {}
+    
+    _, cam_dat['l'], hydra_dat['l'], pot_dat['l'] = load_data(data_file, 'l', freq, speed)
+    _,  cam_dat['r'], hydra_dat['r'], pot_dat['r'] = load_data(data_file, 'r', freq, speed)
+
+    all_cam_strms = []
+    for lr in 'lr':
+        for cam in cam_dat[lr].keys():
+            all_cam_strms.append(cam_dat[lr][cam]['stream'])
+    tmin, _, nsteps = relative_time_streams(hydra_dat.values() + pot_dat.values() + all_cam_strms, freq, speed)
+
+    if rospy.get_name() == "/unnamed":
+        rospy.init_node("visualize_demo")
+
+
+    ## publishers for unfiltered-data:
+    for lr in grippers:
+        tfm_pubs[lr] = {}
+        for cam in cam_types:
+            tfm_pubs[lr][cam] = rospy.Publisher('/%s_ar%i_estimate'%(lr,cam), PoseStamped)
+        tfm_pubs[lr]['h'] = rospy.Publisher('/%s_hydra_estimate'%(lr), PoseStamped)
+
+    ## get the point-cloud stream
+    pc_strms = {cam:streamize_rgbd_pc(rgbd_dirs[cam], cam_frames[cam], freq, tstart=tmin,speed=speed,verbose=verbose) for cam in rgbd_dirs}
+    pc_pubs = {cam:rospy.Publisher('/point_cloud%i'%cam, PointCloud2) for cam in rgbd_dirs}
+
+#     import IPython
+#     IPython.embed()
+
+    cam_tfms  = get_cam_transforms (calib_file, len(cam_types))
+    for cam in rgbd_dirs:
+        if cam != 1:
+            publish_static_tfm(cam_frames[1], cam_frames[cam], cam_tfms[cam])
+
     ## publishers for unfiltered-data:
     for lr in grippers:
         tfm_pubs[lr] = {}
@@ -252,10 +484,8 @@ def view_demo_on_rviz(demo_type, demo_name, freq, speed=1.0, main='h', prompt=Fa
         for lr in grippers:
             for m,est in next_est[lr].items():
                 if est != None:
-                    print "est is none"
                     tfm_pubs[lr][m].publish(conversions.pose_to_stamped_pose(conversions.hmat_to_pose(est), cam_frames[1]))
                 else:
-                    print "est is not none"
                     tfm_pubs[lr][m].publish(conversions.pose_to_stamped_pose(conversions.hmat_to_pose(T_far), cam_frames[1]))
         
         sleeper.sleep()
@@ -371,8 +601,8 @@ def view_tracking_on_rviz(demo_type, demo_name, tps_model_fname, freq=30.0, spee
             ang_vals  = []
     
             for lr in grippers:
-#         		if lr == 'r':
-#         		    continue
+		if lr == 'r':
+		    continue
                 tfm = dat_snext[lr]['traj']()
                 
                 ang_val = dat_snext[lr]['pot']()

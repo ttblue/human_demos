@@ -66,6 +66,7 @@ parser.add_argument("--use_crossings", action="store_true", default=False)
 parser.add_argument("--use_rotation", action="store_true", default=False)
 parser.add_argument("--test_success", action="store_true", default=False)
 
+parser.add_argument("--choose_demo", type=str, default="")
 
 args = parser.parse_args()
 
@@ -370,6 +371,26 @@ def find_closest_manual(demofiles):
     else:
         return keys[choice_ind], is_finalsegs[choice_ind]
 
+def find_playback(demofile):
+
+    if isinstance(demofile, list):
+        demofile = demofile[0]
+
+    demo_name = args.fake_data_demo
+    seg_name = args.fake_data_segment
+
+    if 'done' in demofile[demo_name].keys():
+        final_seg_id = len(demofile[demo_name].keys()) - 2
+    else:
+        final_seg_id = len(demofile[demo_name].keys()) - 1
+
+    if seg_name == "seg%02d"%(final_seg_id):
+        is_finalsegs = True
+    else:
+        is_finalsegs = False
+
+    return (0, demo_name, seg_name), is_finalsegs
+
 
 def registration_cost(xyz0, xyz1):
     scaled_xyz0, _ = registration.unit_boxify(xyz0)
@@ -486,6 +507,8 @@ def find_closest_auto(demofiles, new_xyz, init_tfm=None, n_jobs=3, seg_proximity
     for demofile in demofiles:
         for demo_name in demofile:
             if demo_name != "ar_demo":
+                if args.choose_demo != "" and demo_name != args.choose_demo:
+                    continue
                 if 'done' in demofile[demo_name].keys():
                     final_seg_id = len(demofile[demo_name].keys()) - 2
                 else:
@@ -1213,7 +1236,9 @@ def main():
         '''
         redprint("Finding closest demonstration")
         if use_diff_length:
-            if args.select=="manual":
+            if args.select=="playback":
+                (dnum, demo_name, seg_name), is_final_seg = find_playback(demofiles)
+            elif args.select=="manual":
                 dnum, (demo_name, seg_name), is_final_seg = find_closest_manual(demofiles)
             elif args.select=="auto":
 #                 dnum, (demo_name, seg_name), is_final_seg = find_closest_auto(demofiles, new_xyz, init_tfm=init_tfm, DS_LEAF_SIZE = args.cloud_downsample)
@@ -1227,7 +1252,9 @@ def main():
             seg_info = demofiles[dnum][demo_name][seg_name]
             redprint("closest demo: %i, %s, %s"%(dnum, demo_name, seg_name))
         else:
-            if args.select=="manual":
+            if args.select=="playback":
+                (_, demo_name, seg_name), is_final_seg = find_playback(demofile)
+            elif args.select=="manual":
                 (demo_name, seg_name), is_final_seg = find_closest_manual(demofile)
             elif args.select=="auto":
 #                 (demo_name, seg_name), is_final_seg = find_closest_auto(demofile, new_xyz, init_tfm=init_tfm)

@@ -342,8 +342,7 @@ def calibrate_cameras():
             cam_calib.reset_calibration()
         else:
             tfm_pub.add_transforms(cam_calib.get_transforms())
-            if yes_or_no('Are you happy with the calibration? Check RVIZ.'
-                         ):
+            if yes_or_no('Are you happy with the calibration? Check RVIZ.'):
                 done = True
             else:
                 yellowprint('Calibrating cameras again.')

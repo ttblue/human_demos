@@ -6,7 +6,7 @@ import h5py
 import cv2, hd_rapprentice.cv_plot_utils as cpu
 from hd_utils.defaults import demo_files_dir
 
-
+import IPython as ipy
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--demo_type", help="Type of demonstration", type=str)
@@ -23,8 +23,6 @@ else:
     h5file = osp.join(demotype_dir, args.h5_name+".h5")
 
 demofile = h5py.File(h5file, 'r')
-
-
 
 
 if args.demo_name == '':
