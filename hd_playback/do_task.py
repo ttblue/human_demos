@@ -95,6 +95,7 @@ import cPickle
 import numpy as np
 import importlib
 from numpy.linalg import norm
+import IPython as ipy
 
 
 import trajoptpy, openravepy
@@ -270,10 +271,14 @@ def unwrap_in_place(t):
         raise NotImplementedError
 
 def exec_traj_maybesim(bodypart2traj):
+    """
+    bodypart2traj is a dictionary mapping body part names (rarm, larm, possibly base) to tuples (bodypartname, traj)
+    """
     def sim_callback(i):
         Globals.sim.step()
     
     if args.animation or args.simulation:
+        manip_inds = {}
         dof_inds = []
         trajs = []
         base_hmats = None
@@ -282,6 +287,8 @@ def exec_traj_maybesim(bodypart2traj):
                 base_hmats = [planning.base_pose_to_mat(base_dofs) for base_dofs in traj]
                 continue
             manip_name = {"larm":"leftarm","rarm":"rightarm"}[part_name]
+            arm_inds = Globals.robot.GetManipulator(manip_name).GetArmIndices()    # new 8/1/14
+            manip_inds[manip_name] = range(len(dof_inds),len(dof_inds)+len(arm_inds))   # new 8/1/14
             dof_inds.extend(Globals.robot.GetManipulator(manip_name).GetArmIndices())
             trajs.append(traj)
         full_traj = np.concatenate(trajs, axis=1)
@@ -300,25 +307,33 @@ def exec_traj_maybesim(bodypart2traj):
             else:
                 transition_base_hmats = None
             
-            unwrap_in_place(transition_traj)
+            unwrap_in_place(transition_traj) #this doesn't work in place at all, what the heck?
             
             transition_traj, transition_base_hmats = ropesim.retime_traj(Globals.robot, dof_inds, transition_traj, transition_base_hmats, max_cart_vel=.01)
             animate_traj.animate_traj(transition_traj, transition_base_hmats, Globals.robot, restore=False, pause=args.interactive,
                 callback=sim_callback if args.simulation else None, step_viewer=args.animation)
-            
+
+            ipy.embed()
+
             full_traj[0] = transition_traj[-1]
-          
-            
+
             if base_hmats != None:
                 base_hmats[0] = transition_base_hmats[-1]
-            
-            
+
             unwrap_in_place(full_traj)
         
         animate_traj.animate_traj(full_traj, base_hmats, Globals.robot, restore=False, pause=args.interactive,
                                   callback=sim_callback if args.simulation else None, step_viewer=args.animation)
-        
-        
+
+        #add transition trajectory to full body trajectory (new 8/1/14)
+        manip_inv = {"leftarm":"larm","rightarm":"rarm"}
+        for manip_name in manip_inv:
+            inds = manip_inds[manip_name]
+            bodypart2traj[manip_inv[manip_name]] = (manip_inv[manip_name], full_traj[:,inds])
+        if 'base' in bodypart2traj.keys():
+            base_traj = np.array([planning.mat_to_base_pose(hmat) for hmat in base_hmats])
+            bodypart2traj['base'] = ('base', base_traj)
+    
     if args.execution:
         if not args.prompt or yes_or_no("execute?"):
             pr2_trajectories.follow_body_traj(Globals.pr2, bodypart2traj)

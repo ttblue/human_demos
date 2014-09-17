@@ -1,7 +1,7 @@
 import numpy as np
 
-def draw_grid(env, f, mins, maxes, xres = .1, yres = .1, zres = .04):
-    
+def draw_grid(env, f, mins, maxes, xres = .1, yres = .1, zres = .04, color=(1,1,0,1)):
+
     xmin, ymin, zmin = mins
     xmax, ymax, zmax = maxes
 
@@ -43,7 +43,7 @@ def draw_grid(env, f, mins, maxes, xres = .1, yres = .1, zres = .04):
     handles = []
 
     for line in lines:
-        handles.append(env.drawlinestrip(line,1,(1,1,0,1)))
+        handles.append(env.drawlinestrip(line,1,color))
                                 
     return handles
 

@@ -274,7 +274,7 @@ def tps_rpm(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_init =
 
     for i in xrange(n_iter):
         xwarped_nd = f.transform_points(x_nd)
-        corr_nm = calc_correspondence_matrix(xwarped_nd, y_md, r=rads[i], p=.1, max_iter=10)
+        corr_nm = calc_correspondence_matrix(xwarped_nd, y_md, r=rads[i], p=.1, max_iter=10)[0]
 
         wt_n = corr_nm.sum(axis=1)
 
@@ -328,8 +328,6 @@ def tps_rpm_bij(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_in
     y_md_full = np.array(y_md)
 
     handles = []
-    from scipy.spatial import Voronoi
-    vorx = Voronoi(x_nd[:block_lengths[0][0]][:,:2])
 
     for i in xrange(n_iter):
         if i > -1:
@@ -338,11 +336,11 @@ def tps_rpm_bij(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_in
 
         r = rads[i]
 
-        prob_nm = block_prob_nm(f, g, x_nd, y_md, block_lengths, r, i)
+        prob_nm = block_prob_nm(f, g, x_nd, y_md, block_lengths, r, i) #np.eye(len(x_nd)) #
 
         corr_nm, r_N, _ =  balance_matrix3(prob_nm, 10, 1e-1, 2e-1)
         corr_nm += 1e-9
-        
+
         wt_n = corr_nm.sum(axis=1)
         wt_m = corr_nm.sum(axis=0)
         
@@ -358,12 +356,7 @@ def tps_rpm_bij(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_in
         except Exception as err:
             print "error in tps_rpm_bij"
             print err
-            ipy.embed() #import pdb; pdb.set_trace()
-
-        if Globals and len(block_lengths) > 1:
-            print "iteration", i, "of", n_iter
-            #plot_warp_progress(x_nd, y_md,f, block_lengths, Globals)
-        vort = Voronoi(f.transform_points(x_nd[:block_lengths[0][0]])[:,:2])
+            ipy.embed()
 
     f._cost = tps.tps_cost(f.lin_ag, f.trans_g, f.w_ng, f.x_na, xtarg_nd, regs[-1], wt_n=wt_n)/wt_n.mean()
     g._cost = tps.tps_cost(g.lin_ag, g.trans_g, g.w_ng, g.x_na, ytarg_md, regs[-1], wt_n=wt_m)/wt_m.mean()
@@ -377,43 +370,57 @@ def tps_rpm_bij(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_in
 
 
 def block_prob_nm(f, g, x_nd, y_md, block_lengths, r,i):
-    try:
-        prob_nm = np.zeros((len(x_nd),len(y_md)))
-        # oldb = (0,0)
-        # for xb,yb in block_lengths:
-        #     x_bd = x_nd[oldb[0]:oldb[0]+xb]
-        #     y_bd = y_md[oldb[1]:oldb[1]+yb]
-        #     xwarped_bd = f.transform_points(x_bd)
-        #     ywarped_bd = g.transform_points(y_bd)
-        #     fwddist_bb = ssd.cdist(xwarped_bd, y_bd,'euclidean')
-        #     invdist_bb = ssd.cdist(x_bd, ywarped_bd,'euclidean')
-        #     prob_nm[oldb[0]:oldb[0]+xb,oldb[1]:oldb[1]+yb] = np.exp( -(fwddist_bb + invdist_bb) / (2*r) )
-        #     oldb = oldb[0]+xb, oldb[1]+yb
-    except Exception as exc:
-        print "error in block_prob_nm"
-        print exc; import IPython; IPython.embed()
-
-    try:
-        for j in range(len(x_nd)):#block_lengths[0][0]): #critical points, or rope points if forcing correspondence
-            prob_nm[j,:] = 0
-            prob_nm[:,j] = 0
-            prob_nm[j,j] = 1
-
-    except Exception as exc:
-        print "error in identifying matrix"
-        import IPython; IPython.embed()
-    # if i == 0 and len(x_nd) == len(y_md): #initialize correspondence
-    #    for j in range(len(x_nd)):
-    #        prob_nm[j,:] = 0
-    #        prob_nm[:,j] = 0
-    #        prob_nm[j,j] = 1
-    # if i==0 and len(x_nd) == len(y_md) and len(block_lengths) > 1: #initialize correspondence
-    #    for j in range(block_lengths[0][0], block_lengths[0][0]+block_lengths[1][0]):
-    #        prob_nm[j,:] = 0
-    #        prob_nm[:,j] = 0
-    #        prob_nm[j,j] = 1
-
+    xwarped_nd = f.transform_points(x_nd)
+    ywarped_md = g.transform_points(y_md)
+    fwddist = ssd.cdist(xwarped_nd, y_md,'euclidean')
+    invdist = ssd.cdist(x_nd, ywarped_md,'euclidean')
+    prob_nm = np.exp( -(fwddist + invdist) / (2*r) )
     return prob_nm
+
+    # if len(x_nd) != len(y_md):
+    #     xwarped_nd = f.transform_points(x_nd)
+    #     ywarped_md = g.transform_points(y_md)
+    #     fwddist = ssd.cdist(xwarped_nd, y_md,'euclidean')
+    #     invdist = ssd.cdist(x_nd, ywarped_md,'euclidean')
+    #     prob_nm = np.exp( -(fwddist + invdist) / (2*r) )
+    #     return prob_nm
+    # try:
+    #     prob_nm = np.zeros((len(x_nd),len(y_md)))
+    #     # oldb = (0,0)
+    #     # for xb,yb in block_lengths:
+    #     #     x_bd = x_nd[oldb[0]:oldb[0]+xb]
+    #     #     y_bd = y_md[oldb[1]:oldb[1]+yb]
+    #     #     xwarped_bd = f.transform_points(x_bd)
+    #     #     ywarped_bd = g.transform_points(y_bd)
+    #     #     fwddist_bb = ssd.cdist(xwarped_bd, y_bd,'euclidean')
+    #     #     invdist_bb = ssd.cdist(x_bd, ywarped_bd,'euclidean')
+    #     #     prob_nm[oldb[0]:oldb[0]+xb,oldb[1]:oldb[1]+yb] = np.exp( -(fwddist_bb + invdist_bb) / (2*r) )
+    #     #     oldb = oldb[0]+xb, oldb[1]+yb
+    # except Exception as exc:
+    #     print "error in block_prob_nm"
+    #     print exc; import IPython; IPython.embed()
+
+    # try:
+    #     for j in range(len(x_nd)):#block_lengths[0][0]): #critical points, or rope points if forcing correspondence
+    #         prob_nm[j,:] = 0
+    #         prob_nm[:,j] = 0
+    #         prob_nm[j,j] = 1
+
+    # except Exception as exc:
+    #     print "error in identifying matrix"
+    #     import IPython; IPython.embed()
+    # # if i == 0 and len(x_nd) == len(y_md): #initialize correspondence
+    # #    for j in range(len(x_nd)):
+    # #        prob_nm[j,:] = 0
+    # #        prob_nm[:,j] = 0
+    # #        prob_nm[j,j] = 1
+    # # if i==0 and len(x_nd) == len(y_md) and len(block_lengths) > 1: #initialize correspondence
+    # #    for j in range(block_lengths[0][0], block_lengths[0][0]+block_lengths[1][0]):
+    # #        prob_nm[j,:] = 0
+    # #        prob_nm[:,j] = 0
+    # #        prob_nm[j,j] = 1
+
+    # return prob_nm
 
 
 def adjust_weights(wt_n, wt_m, block_lengths):
