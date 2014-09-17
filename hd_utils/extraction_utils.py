@@ -7,13 +7,14 @@ from cloud_proc_funcs import extract_rope_tracking, extract_red, remove_outlier_
 import bulletsimpy
 import cbulletracpy2
 from hd_utils import clouds, color_match
-from rapprentice import rope_initialization
+from hd_rapprentice import rope_initialization
 
 import openravepy
 from sklearn.neighbors import KDTree
 
 from clouds import XYZ_to_xy, depth_to_xyz
 from hd_utils.defaults import asus_xtion_pro_f
+import sys
 
 
 
@@ -24,6 +25,10 @@ def searchsortednearest(a,v):
     lower_is_better = np.abs(a[higher_inds] - v) > np.abs(a[lower_inds] - v)
     closer_inds[lower_is_better] = lower_inds[lower_is_better]
     return closer_inds
+
+def get_video_stamps(video_dir):
+    video_stamps = np.loadtxt(osp.join(video_dir,demo_names.stamps_name))
+    return video_stamps
 
 
 def get_video_frames(video_dir, frame_stamps):
@@ -76,8 +81,6 @@ def track_video_frames_online(video_dir, T_w_k, init_tfm, table_plane, ref_image
     
     stdev = np.array([])
     
-    
-    
     rgb = cv2.imread(osp.join(video_dir,demo_names.rgb_name%0))
     rgb = color_match.match(ref_image, rgb)
     assert rgb is not None
@@ -99,10 +102,16 @@ def track_video_frames_online(video_dir, T_w_k, init_tfm, table_plane, ref_image
     table_tfm[:3,3] = - table_tfm[:3,:3].dot(table_center_xyz) + table_center_xyz
     init_tfm = table_tfm.dot(init_tfm)
     
-    tracked_nodes = None
     
+    all_tracked_nodes = None
+    tracked_nodes = None
+        
     for (index, stamp) in zip(range(len(video_stamps)), video_stamps):
-        print index, stamp
+        #print index, stamp
+        #sys.stdout.write(index)
+        #sys.stdout.flush()
+        
+
         rgb = cv2.imread(osp.join(video_dir,demo_names.rgb_name%index))
         rgb = color_match.match(ref_image, rgb)
         assert rgb is not None
@@ -126,21 +135,20 @@ def track_video_frames_online(video_dir, T_w_k, init_tfm, table_plane, ref_image
         ##########################################
         color_cloud = remove_shadow(color_cloud)
         
-        if tracked_nodes is not None:
-            color_cloud = rope_shape_filter(tracked_nodes, color_cloud)
+        #if tracked_nodes is not None:
+        #    color_cloud = rope_shape_filter(tracked_nodes, color_cloud, 0.1)
              
         if index == 0:
             rope_xyz = extract_red(rgb, depth, T_w_k)
             rope_xyz = clouds.downsample(rope_xyz, .01)
             rope_xyz = rope_xyz.dot(init_tfm[:3, :3].T) + init_tfm[:3,3][None,:]
-            rope_nodes = rope_initialization.find_path_through_point_cloud(rope_xyz) # rope_nodes and rope_xyz are in global frame
-                        
+            rope_nodes = rope_initialization.find_path_through_point_cloud(rope_xyz) # rope_nodes and rope_xyz are in global frame          
             # print rope_nodes
             
             table_height = rope_xyz[:,2].min() - .02
             table_xml = make_table_xml(translation=[1, 0, table_height], extents=[.85, .55, .01])
             env.LoadData(table_xml)            
-            
+
             bulletsimpy.sim_params.scale = 10
             bulletsimpy.sim_params.maxSubSteps = 200
             if rope_params is None:
@@ -228,8 +236,7 @@ def track_video_frames_online(video_dir, T_w_k, init_tfm, table_plane, ref_image
         
         depth_cloud = extract_cloud(depth, T_w_k)
         depth_cloud[:,:3] = depth_cloud[:,:3].dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:] # depth_cloud now is in global frame
-
-
+            
         [tracked_nodes, new_stdev] = bulletsimpy.py_tracking(rope, bt_env, init_tfm, color_cloud, rgb, depth, 5, stdev)
         stdev = new_stdev
         
@@ -237,10 +244,7 @@ def track_video_frames_online(video_dir, T_w_k, init_tfm, table_plane, ref_image
 
         #if index % 10 != 0:
         #    continue
-        
-        print index
-        
-        
+                
         xx, yy = np.mgrid[-1:3, -1:3]
         zz = np.ones(xx.shape) * table_height
         table_cloud = [xx, yy, zz]
@@ -249,7 +253,6 @@ def track_video_frames_online(video_dir, T_w_k, init_tfm, table_plane, ref_image
         ax = fig.gca(projection='3d')
         ax.set_autoscale_on(False)     
         
-        print init_tfm[:,3]
         ax.plot(depth_cloud[:,0], depth_cloud[:,1], depth_cloud[:,2], 'go', alpha=0.1)
         ax.plot(color_cloud[:,0], color_cloud[:,1], color_cloud[:,2]-0.1, 'go')
         ax.plot(raw_color_cloud[:,0], raw_color_cloud[:,1], raw_color_cloud[:,2] -0.2, 'ro')
@@ -260,7 +263,16 @@ def track_video_frames_online(video_dir, T_w_k, init_tfm, table_plane, ref_image
 
 
         fig.show()
-        raw_input()
+        
+        # enable when debugging!!!!!
+        #raw_input()
+        
+        if all_tracked_nodes is None:
+            all_tracked_nodes = [tracked_nodes]
+        else:
+            all_tracked_nodes.append(tracked_nodes)
+        
+    return np.array(all_tracked_nodes)
 
         
         
@@ -273,7 +285,7 @@ def track_video_frames_offline(video_dir, T_w_k, init_tfm, ref_image, rope_param
     color_clouds = []
     
     for (index, stamp) in zip(range(len(video_stamps)), video_stamps):        
-        print index, stamp
+        #print index, stamp
         rgb = cv2.imread(osp.join(video_dir,demo_names.rgb_name%index))
         rgb = color_match.match(ref_image, rgb)
         assert rgb is not None
@@ -310,6 +322,8 @@ def track_video_frames_offline(video_dir, T_w_k, init_tfm, ref_image, rope_param
         ax.plot(tracked_nodes[:, 0], tracked_nodes[:,1], tracked_nodes[:,2], 'o')
         fig.show()
         raw_input()
+        
+    return all_tracked_nodes
 
 
 
