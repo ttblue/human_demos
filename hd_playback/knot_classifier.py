@@ -94,7 +94,7 @@ def calculateCrossings(rope_nodes):
             i_over_j = 1 if i_link_z > j_link_z else -1
             crossings.append(i_over_j)
             crossings_links_inds.append(i_link)
-            link_pair_id = (min(i_link,j_link), max(i_link,j_link))
+            link_pair_id = (min(i_link,j_link), max(i_link,j_link)) # each link_pair should correspond to two crossings (one over and one under)
             if link_pair_id not in links_to_cross_info:
                 links_to_cross_info[link_pair_id] = []
             links_to_cross_info[link_pair_id].append((curr_cross_id, i_over_j))

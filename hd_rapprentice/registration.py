@@ -369,6 +369,7 @@ def tps_rpm_bij(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_in
     return f,g
 
 
+
 def block_prob_nm(f, g, x_nd, y_md, block_lengths, r,i):
     xwarped_nd = f.transform_points(x_nd)
     ywarped_md = g.transform_points(y_md)

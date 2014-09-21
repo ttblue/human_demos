@@ -247,6 +247,7 @@ def tps_segment_registration(rope_nodes_or_crossing_info0, rope_nodes_or_crossin
     rope_nodes_or_crossing_info is either rope nodes, which is an ordered sequence of points (i.e. it is the back bone of its respective rope), or is a tuple containing the rope nodes and crossings information (the information returned by knot_classifier.calculateCrossings)
     rev_perm is the permutation matrix of how corr_tile_pattern changes when the rope_nodes have been reversed
     """
+
     if type(rope_nodes_or_crossing_info0) == tuple:
         rope_nodes0, crossings0, crossings_links_inds0, cross_pairs0, rope_closed0 = rope_nodes_or_crossing_info0
     else:

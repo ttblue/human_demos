@@ -76,6 +76,11 @@ parser.add_argument("--weight_pts", action="store_true", default=False)
 parser.add_argument("--weight_power", type=int, default=1)
 parser.add_argument("--bend_cost", type=float, default=.01)
 
+parser.add_argument("--net_prototxt", help="File name for prototxt", type=str, default="")
+parser.add_argument("--net_model", help="File name for learned model", type=str, default="")
+parser.add_argument("--net_mean", help="File name for mean values", type=str, default="")
+
+
 args = parser.parse_args()
 
 """
@@ -129,6 +134,11 @@ from hd_utils.defaults import demo_files_dir, hd_data_dir,\
         tfm_head_dof, tfm_bf_head, cad_files_dir, init_state_perturbs_dir
 from hd_utils import math_utils
 from knot_classifier import calculateCrossings, calculateMdp, isKnot, remove_crossing, pairs_to_dict, cluster_points
+from knot_predictor import *
+
+import caffe
+from caffe.proto import caffe_pb2
+
 
 
 
@@ -262,6 +272,9 @@ def observe_cloud(pts=None, radius=0.005, upsample=0, upsample_rad=1):
     """
     if pts == None: pts = Globals.sim.rope.GetControlPoints()
     half_heights = Globals.sim.rope.GetHalfHeights()
+    import IPython
+    IPython.embed()
+    
     if upsample > 0:
         from hd_utils import math_utils
         lengths = np.r_[0, half_heights * 2]
@@ -503,7 +516,7 @@ def get_critical_points_demo(seg_group):
         demo_xyzc = remove_crossing(demo_xyzc,-1)
     elif demo_xyzc[0][-1] != 0: #first point of demo is a crossing
         print "remove first demo crossing (from end)"
-        demo_xyzc = remove_crossing(demo_xyzc,0)
+        demo_xyzc = remove_crossing(demo_get_critical_points_demoxyzc,0)
     crit_pts = [pt[:-1] for pt in demo_xyzc if pt[-1]!=0]
     return np.array(crit_pts).reshape(len(crit_pts),3)
 
@@ -824,7 +837,18 @@ def registration_cost_and_tfm(xyz0, xyz1, num_iters=30, block_lengths=None):
     cost = registration.tps_reg_cost(f) + registration.tps_reg_cost(g)
     g = registration.unscale_tps_3d(g, targ_params, src_params)
     f = registration.unscale_tps_3d(f, src_params, targ_params)
-    return (cost, f, g)
+    return (cost, f, g) 
+
+def registration_cost_and_tfm_and_corr(xyz0, xyz1, num_iters=30, block_lengths=None):
+    print xyz0.shape, xyz1.shape
+    scaled_xyz0, src_params = registration.unit_boxify(xyz0)
+    scaled_xyz1, targ_params = registration.unit_boxify(xyz1)
+    f,g = registration.tps_rpm_bij(scaled_xyz0, scaled_xyz1, reg_init=args.tps_bend_cost_init, reg_final = args.tps_bend_cost_final_search, 
+            rad_init = .1, rad_final = .0005, rot_reg=np.r_[1e-4,1e-4,1e-1], n_iter=30, plotting=True, block_lengths=block_lengths, Globals=Globals)
+    cost = registration.tps_reg_cost(f) + registration.tps_reg_cost(g)
+    g = registration.unscale_tps_3d(g, targ_params, src_params)
+    f = registration.unscale_tps_3d(f, src_params, targ_params)
+    return (cost, f, g, f.corr_nm) 
 
 
 def registration_cost_with_rotation(xyz0, xyz1, block_lengths=None, known_theta=None):
@@ -919,7 +943,8 @@ def sort_to_start(array, inds):
     return np.vstack([np.array(crit_pts), np.array(non_crit_pts)])
 
 
-def find_closest_auto(demofiles, new_xyz, init_tfm=None, n_jobs=3, seg_proximity=2, DS_LEAF_SIZE=0.02):
+
+def find_closest_auto_with_learned_crossing(demofiles, net, new_xyz, init_tfm=None, n_jobs=3, seg_proximity=2, DS_LEAF_SIZE=0.02):
     """
     sim_seg_num   : is the index of the segment being executed in the simulation: used to find
     seg_proximity : only segments with numbers in +- seg_proximity of sim_seg_num are selected.
@@ -932,8 +957,8 @@ def find_closest_auto(demofiles, new_xyz, init_tfm=None, n_jobs=3, seg_proximity
 
     demo_clouds = []
 
-    new_xyz = clouds.downsample(new_xyz,DS_LEAF_SIZE)
-
+    new_xyz = Globals.sim.rope.GetControlPoints() #continuing to not understand this
+    #new_xyz = clouds.downsample(new_xyz,DS_LEAF_SIZE)
     avg = 0.0
 
     keys = {}
@@ -949,6 +974,42 @@ def find_closest_auto(demofiles, new_xyz, init_tfm=None, n_jobs=3, seg_proximity
                     final_seg_id = len(demofile[demo_name].keys()) - 1
 
                 for seg_name in demofile[demo_name]:
+                    
+                    
+                    if args.demo_type[demotype_num] == "overhand140" or args.demo_type[demotype_num] == "overhand65" or args.demo_type[demotype_num] == "overhand100":
+                        if demo_name == "demo00008" and seg_name == "seg02": continue #mysteriously bad
+                        if demo_name == "demo00010" and seg_name == "seg02": continue #bad gripper angle
+                        if demo_name == "demo00012" and seg_name == "seg00": continue #poor placement of rope for short segment
+                        if demo_name == "demo00017" and seg_name == "seg00": continue #extra grab
+                        if demo_name == "demo00019" and seg_name == "seg02": continue #low gripper angle - replace
+                        if demo_name == "demo00025" and seg_name == "seg01": continue #non-grasping hand is on table, bumps rope
+                        if demo_name == "demo00026" and seg_name == "seg02": continue #tip brushes too close above rope
+                        if demo_name == "demo00028" and seg_name == "seg02": continue #grabs outside/past the end of the rope
+                        if demo_name == "demo00029" and seg_name == "seg02": continue #mysteriously bad
+                        if demo_name == "demo00030" and seg_name == "seg02": continue #completely off, grabs way above rope (recording error?)
+                        if demo_name == "demo00034" and seg_name == "seg01": continue #generalizes badly
+                        if demo_name == "demo00036" and seg_name == "seg02": continue #low gripper angle - replace
+                        if demo_name == "demo00039" and seg_name == "seg02": continue #extra grab
+                        if demo_name == "demo00040" and seg_name == "seg02": continue #grabs near end of rope from wrong direction; high chance to push it away
+
+                        if demo_name == "demo00041" and seg_name == "seg02": continue #unlabeled
+                        if demo_name == "demo00047" and seg_name == "seg00": continue #doesn't generalize even to same demo with sim physics
+                        if demo_name == "demo00049" and seg_name == "seg02": continue #unlabeled
+                        if demo_name == "demo00052" and seg_name == "seg02": continue #pullthrough fail - rerecord or ignore
+                        if demo_name == "demo00055" and seg_name == "seg00": continue #low trajectory (through rope)
+                        if demo_name == "demo00055" and seg_name == "seg01": continue #low trajectory (through rope)
+                        if demo_name == "demo00055" and seg_name == "seg03": continue #low gripper angle
+
+                        if demo_name == "demo00081" and seg_name == "seg02": continue #low gripper angle
+                        if demo_name == "demo00098" and seg_name == "seg01": continue #bad gripper placement
+                        if demo_name == "demo00098" and seg_name == "seg03": continue #low gripper angle
+                        if demo_name == "demo00099" and seg_name == "seg01": continue #doesn't generalize
+                        if demo_name == "demo00016" and seg_name == "seg01": continue #extra grab
+
+                        #newly replaced
+                        if demo_name == "demo00037" and seg_name == "seg02": continue #newly replaced by overhand_replace
+                        if demo_name == "demo00060" and seg_name == "seg00": continue #newly replaced by overhand_replace
+
 
                     keys[seg_num] = (demotype_num, demo_name, seg_name)
                     if seg_name == "seg%02d"%(final_seg_id):
@@ -958,9 +1019,13 @@ def find_closest_auto(demofiles, new_xyz, init_tfm=None, n_jobs=3, seg_proximity
 
                     seg_num += 1
                     demo_xyz = clouds.downsample(np.asarray(demofile[demo_name][seg_name]["cloud_xyz"]),DS_LEAF_SIZE)
+                    
+                    demo_rgb = demofile[demo_name][seg_name]["rgb"]
+                    #learned_labels = predictCrossing3D(demo_xyz, demo_rgb, net)
+                    
                     if init_tfm is not None:
                         demo_xyz = demo_xyz.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
-                    print demo_xyz.shape
+
                     avg += demo_xyz.shape[0]
     
                     demo_clouds.append(demo_xyz)
@@ -969,15 +1034,20 @@ def find_closest_auto(demofiles, new_xyz, init_tfm=None, n_jobs=3, seg_proximity
 
     # raw_input(avg/len(demo_clouds))
     if args.parallel:
-        costs = Parallel(n_jobs=n_jobs,verbose=51)(delayed(registration_cost)(demo_cloud, new_xyz) for demo_cloud in demo_clouds)
+        #costs = Parallel(n_jobs=n_jobs,verbose=51)(delayed(registration_cost)(demo_cloud, new_xyz) for demo_cloud in demo_clouds)
+        results = Parallel(n_jobs=n_jobs,verbose=51)(delayed(registration_cost_and_tfm_and_corr)(demo_cloud, new_xyz) for demo_cloud in demo_clouds) 
     else:
-        costs = []
+        results = []
         for (i,ds_cloud) in enumerate(demo_clouds):
-            cost_i = registration_cost(ds_cloud, new_xyz)
-            costs.append(cost_i)
+            result_i = registration_cost_and_tfm_and_corr(ds_cloud, new_xyz)
+            results.append(cost_i)
             print "completed %i/%i"%(i+1, len(demo_clouds))
 
-    print "costs\n", costs
+    costs, fs, gs, corr_nm = zip(*results)  
+    
+    
+    #print "costs\n", costs
+    print min(costs)
 
     if args.show_neighbors:
         nshow = min(5, len(demo_clouds.keys()))
@@ -995,11 +1065,139 @@ def find_closest_auto(demofiles, new_xyz, init_tfm=None, n_jobs=3, seg_proximity
         cv2.waitKey()
 
     choice_ind = np.argmin(costs)
+    
 
     if demotype_num == 1:
-        return (keys[choice_ind][1],keys[choice_ind][2]) , is_finalsegs[choice_ind]
+        return (keys[choice_ind][1],keys[choice_ind][2]) , is_finalsegs[choice_ind], fs[choice_ind], (new_xyz, demo_clouds[choice_ind])
     else:
-        return keys[choice_ind], is_finalsegs[choice_ind]
+        return keys[choice_ind], is_finalsegs[choice_ind], fs[choice], fs[choice_ind], (new_xyz, demo_clouds[choice_ind])
+
+
+def find_closest_auto(demofiles, new_xyz, init_tfm=None, n_jobs=3, seg_proximity=2, DS_LEAF_SIZE=0.02):
+    """
+    sim_seg_num   : is the index of the segment being executed in the simulation: used to find
+    seg_proximity : only segments with numbers in +- seg_proximity of sim_seg_num are selected.
+    """
+    if args.parallel:
+        from joblib import Parallel, delayed
+
+    if not isinstance(demofiles, list):
+        demofiles = [demofiles]
+
+    demo_clouds = []
+
+    new_xyz = Globals.sim.rope.GetControlPoints() #continuing to not understand this
+    #new_xyz = clouds.downsample(new_xyz,DS_LEAF_SIZE)
+    avg = 0.0
+
+    keys = {}
+    is_finalsegs = {}
+    demotype_num = 0
+    seg_num = 0      ## this seg num is the index of all the segments in all the demos.
+    for demofile in demofiles:
+        for demo_name in demofile:
+            if demo_name != "ar_demo":
+                if 'done' in demofile[demo_name].keys():
+                    final_seg_id = len(demofile[demo_name].keys()) - 2
+                else:
+                    final_seg_id = len(demofile[demo_name].keys()) - 1
+
+                for seg_name in demofile[demo_name]:
+                    
+                    
+                    if args.demo_type[demotype_num] == "overhand140" or args.demo_type[demotype_num] == "overhand65" or args.demo_type[demotype_num] == "overhand100":
+                        if demo_name == "demo00008" and seg_name == "seg02": continue #mysteriously bad
+                        if demo_name == "demo00010" and seg_name == "seg02": continue #bad gripper angle
+                        if demo_name == "demo00012" and seg_name == "seg00": continue #poor placement of rope for short segment
+                        if demo_name == "demo00017" and seg_name == "seg00": continue #extra grab
+                        if demo_name == "demo00019" and seg_name == "seg02": continue #low gripper angle - replace
+                        if demo_name == "demo00025" and seg_name == "seg01": continue #non-grasping hand is on table, bumps rope
+                        if demo_name == "demo00026" and seg_name == "seg02": continue #tip brushes too close above rope
+                        if demo_name == "demo00028" and seg_name == "seg02": continue #grabs outside/past the end of the rope
+                        if demo_name == "demo00029" and seg_name == "seg02": continue #mysteriously bad
+                        if demo_name == "demo00030" and seg_name == "seg02": continue #completely off, grabs way above rope (recording error?)
+                        if demo_name == "demo00034" and seg_name == "seg01": continue #generalizes badly
+                        if demo_name == "demo00036" and seg_name == "seg02": continue #low gripper angle - replace
+                        if demo_name == "demo00039" and seg_name == "seg02": continue #extra grab
+                        if demo_name == "demo00040" and seg_name == "seg02": continue #grabs near end of rope from wrong direction; high chance to push it away
+
+                        if demo_name == "demo00041" and seg_name == "seg02": continue #unlabeled
+                        if demo_name == "demo00047" and seg_name == "seg00": continue #doesn't generalize even to same demo with sim physics
+                        if demo_name == "demo00049" and seg_name == "seg02": continue #unlabeled
+                        if demo_name == "demo00052" and seg_name == "seg02": continue #pullthrough fail - rerecord or ignore
+                        if demo_name == "demo00055" and seg_name == "seg00": continue #low trajectory (through rope)
+                        if demo_name == "demo00055" and seg_name == "seg01": continue #low trajectory (through rope)
+                        if demo_name == "demo00055" and seg_name == "seg03": continue #low gripper angle
+
+                        if demo_name == "demo00081" and seg_name == "seg02": continue #low gripper angle
+                        if demo_name == "demo00098" and seg_name == "seg01": continue #bad gripper placement
+                        if demo_name == "demo00098" and seg_name == "seg03": continue #low gripper angle
+                        if demo_name == "demo00099" and seg_name == "seg01": continue #doesn't generalize
+                        if demo_name == "demo00016" and seg_name == "seg01": continue #extra grab
+
+                        #newly replaced
+                        if demo_name == "demo00037" and seg_name == "seg02": continue #newly replaced by overhand_replace
+                        if demo_name == "demo00060" and seg_name == "seg00": continue #newly replaced by overhand_replace
+
+
+                    keys[seg_num] = (demotype_num, demo_name, seg_name)
+                    if seg_name == "seg%02d"%(final_seg_id):
+                        is_finalsegs[seg_num] = True
+                    else:
+                        is_finalsegs[seg_num] = False
+
+                    seg_num += 1
+                    demo_xyz = clouds.downsample(np.asarray(demofile[demo_name][seg_name]["cloud_xyz"]),DS_LEAF_SIZE)
+                                        
+                    
+                    if init_tfm is not None:
+                        demo_xyz = demo_xyz.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
+
+                    avg += demo_xyz.shape[0]
+    
+                    demo_clouds.append(demo_xyz)
+
+        demotype_num +=1
+
+    # raw_input(avg/len(demo_clouds))
+    if args.parallel:
+        #costs = Parallel(n_jobs=n_jobs,verbose=51)(delayed(registration_cost)(demo_cloud, new_xyz) for demo_cloud in demo_clouds)
+        results = Parallel(n_jobs=n_jobs,verbose=51)(delayed(registration_cost_and_tfm_and_corr)(demo_cloud, new_xyz) for demo_cloud in demo_clouds) 
+    else:
+        results = []
+        for (i,ds_cloud) in enumerate(demo_clouds):
+            result_i = registration_cost_and_tfm_and_corr(ds_cloud, new_xyz)
+            results.append(cost_i)
+            print "completed %i/%i"%(i+1, len(demo_clouds))
+
+    costs, fs, gs, corr_nm = zip(*results)  
+    
+    
+    #print "costs\n", costs
+    print min(costs)
+
+    if args.show_neighbors:
+        nshow = min(5, len(demo_clouds.keys()))
+        import cv2, hd_rapprentice.cv_plot_utils as cpu
+        sortinds = np.argsort(costs)[:nshow]
+
+        near_rgbs = []
+        for i in sortinds:
+            (demo_name, seg_name) = keys[i]
+            near_rgbs.append(np.asarray(demofile[demo_name][seg_name]["rgb"]))
+
+        bigimg = cpu.tile_images(near_rgbs, 1, nshow)
+        cv2.imshow("neighbors", bigimg)
+        print "press any key to continue"
+        cv2.waitKey()
+
+    choice_ind = np.argmin(costs)
+    
+
+    if demotype_num == 1:
+        return (keys[choice_ind][1],keys[choice_ind][2]) , is_finalsegs[choice_ind], fs[choice_ind], (new_xyz, demo_clouds[choice_ind])
+    else:
+        return keys[choice_ind], is_finalsegs[choice_ind], fs[choice], fs[choice_ind], (new_xyz, demo_clouds[choice_ind])
 
 
 
@@ -1052,6 +1250,7 @@ def find_closest_auto_with_crossings(demofiles, new_xyz, init_tfm=None, n_jobs=3
                     if args.choose_seg and seg_name != args.choose_seg: continue #tkl
 
                     seg_group = demofile[demo_name][seg_name]
+                    
                     if 'labeled_points' in seg_group.keys():
                         sim_xyzc, sim_pattern = get_labeled_rope_sim(new_xyz, get_pattern=True)
                         demo_xyzc, demo_pattern = get_labeled_rope_demo(seg_group, get_pattern=True)
@@ -1353,6 +1552,7 @@ def find_closest_corr(demofiles, new_xyz, init_tfm=None, n_jobs=3, seg_proximity
                                 summed_lengths = np.cumsum(lengths)
                                 assert len(lengths) == len(demo_xyz)
                                 demo_xyz = math_utils.interp2d(np.linspace(0, summed_lengths[-1], 67), summed_lengths, demo_xyz)
+
                                 
                                 if init_tfm is not None:
                                     demo_xyz = demo_xyz.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
@@ -1402,8 +1602,12 @@ def find_closest_corr(demofiles, new_xyz, init_tfm=None, n_jobs=3, seg_proximity
     if args.parallel:
         sim_pattern, sim_inds, sim_pairs, sim_rope_closed = calculateCrossings(new_xyz)
         sim_info = (new_xyz, sim_pattern, sim_inds, sim_pairs, sim_rope_closed)
-        sim_cloud = observe_cloud(new_xyz, upsample_rad=CROSS_SECTION_SIZE)                                                                                 #0.01
+        sim_cloud = observe_cloud(new_xyz, upsample_rad=CROSS_SECTION_SIZE)   
+
+        
+                                                                                      #0.01
         results = Parallel(n_jobs=5,verbose=51)(delayed(tps_segment_registration)(info[0:5], sim_info, info[6], sim_cloud, np.eye(4), x_weights=info[5], reg=0.01) for info in crossing_infos)
+        
         fs, corrs = zip(*results)
         costs = []
         for f in fs:
@@ -1974,6 +2178,29 @@ use_diff_length = args.use_diff_length
 
 
 def main():
+    
+    is_lenet = False
+    if "lenet" == args.net_prototxt.split("_")[0]:
+        is_lenet = True
+    
+    if is_lenet:
+        net = caffe.Classifier(args.net_prototxt, args.net_model)
+        net.set_phase_test()
+        net.set_mode_gpu()
+        net.set_input_scale('data', 1)
+        net.set_channel_swap('data', (2,1,0))
+    else:
+        net = caffe.Classifier(args.net_prototxt, args.net_model)
+        net.set_phase_test()
+        net.set_mode_gpu()
+        net.set_mean('data', np.load(args.net_mean))
+        net.set_raw_scale('data', 255)
+        net.set_channel_swap('data', (2,1,0))
+    
+    
+    
+    
+    
     np.set_printoptions(precision=5, suppress=True)
 
     global use_diff_length
@@ -2162,6 +2389,8 @@ def main():
                 (dnum, demo_name, seg_name), is_final_seg = find_closest_manual(demofiles)
             elif args.select=="auto":
                 (dnum, demo_name, seg_name), is_final_seg, f, (simxyz, demoxyz) = find_closest_corr(demofiles, new_xyz, init_tfm=init_tfm, DS_LEAF_SIZE = args.cloud_downsample)
+            elif args.select=="simple_auto":
+                (dnum, demo_name, seg_name), is_final_seg, f, (simxyz, demoxyz) = find_closest_auto_with_learned_crossing(demofiles, net, new_xyz, init_tfm=init_tfm, DS_LEAF_SIZE = args.cloud_downsample)
             else:
                 (dnum, demo_name, seg_name), is_final_seg = find_closest_clusters(demofiles, clusterfiles, new_xyz, curr_step-1, init_tfm=init_tfm, DS_LEAF_SIZE = args.cloud_downsample)
 
@@ -2172,6 +2401,8 @@ def main():
                 (demo_name, seg_name), is_final_seg = find_closest_manual(demofile)
             elif args.select=="auto":
                 (demo_name, seg_name), is_final_seg, f, (simxyz, demoxyz) = find_closest_corr(demofile, new_xyz, init_tfm=init_tfm)
+            elif args.select=="simple_auto":
+                (demo_name, seg_name), is_final_seg, f, (simxyz, demoxyz) = find_closest_auto_with_learned_crossing(demofile, net, new_xyz, init_tfm=init_tfm, DS_LEAF_SIZE = args.cloud_downsample)
             else:
                 (demo_name, seg_name), is_final_seg = find_closest_clusters(demofile, clusterfile, new_xyz, curr_step-1, init_tfm=init_tfm)
             seg_info = demofile[demo_name][seg_name]
