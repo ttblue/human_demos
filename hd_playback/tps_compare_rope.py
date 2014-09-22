@@ -39,6 +39,7 @@ import argparse
 ###################copy from do_task_merge start
 
 CROSS_SECTION_SIZE = 4
+DS_LEAF_SIZE = 0.01
 
 def get_labeled_rope_demo(seg_group, get_pattern=False):
     labeled_points = seg_group["labeled_points"][:]
@@ -90,7 +91,7 @@ def observe_cloud(pts=None, radius=0.005, upsample=0, upsample_rad=1):
 
 ###################copy from do_task_merge end
 
-def tps_segment_data(demofiles, demo_key, init_tfm = None):
+def tps_segment_data(demofiles, demo_key, init_tfm):
     crossing_infos = []
     demo_xyzc = get_labeled_rope_demo(demofiles[demo_key[0]][demo_key[1]])
     for demo_xyzc_i in [demo_xyzc,demo_xyzc[::-1]]: # consider both original and reverse rope
@@ -135,13 +136,26 @@ def tps_segment_data(demofiles, demo_key, init_tfm = None):
     return crossing_infos
 
 
-def tps_segment(demofiles, demo_key1, demo_key2, parallel, init_tfm = None):
+def registration_cost_and_tfm_and_corr(xyz0, xyz1, num_iters=30, block_lengths=None):
+    scaled_xyz0, src_params = registration.unit_boxify(xyz0)
+    scaled_xyz1, targ_params = registration.unit_boxify(xyz1)
+    f, _ = registration.tps_rpm_bij(scaled_xyz0, scaled_xyz1, reg_init=10, reg_final = 0.01, 
+            rad_init = .1, rad_final = .0005, rot_reg=np.r_[1e-4,1e-4,1e-1], n_iter=num_iters, plotting=True, block_lengths=block_lengths)
+    cost = registration.tps_reg_cost(f)
+    #cost = registration.tps_reg_cost(f) + registration.tps_reg_cost(g)
+    #g = registration.unscale_tps_3d(g, targ_params, src_params)
+    f = registration.unscale_tps_3d(f, src_params, targ_params)
+    return (cost, f, f.corr_nm) 
+
+
+
+def tps_segment_core(demofiles, demo_key1, demo_key2, parallel, init_tfm = None):
     tps_segment_crossing_infos1 = tps_segment_data(demofiles, demo_key1, init_tfm)
     tps_segment_crossing_infos2 = tps_segment_data(demofiles, demo_key2, init_tfm)
     
     if parallel:
-        results = Parallel(n_jobs=4, verbose=51)(delayed(tps_segment_registration)(info1[0:5], info2[0:5], info1[6], info2[6], np.eye(4), x_weights=info1[5], reg=0.01) 
-                                                 for info1 in tps_segment_crossing_infos1 for info2 in tps_segment_crossing_infos2)
+        results = Parallel(n_jobs=4)(delayed(tps_segment_registration)(info1[0:5], info2[0:5], info1[6], info2[6], np.eye(4), x_weights=info1[5], reg=0.01) 
+                                     for info1 in tps_segment_crossing_infos1 for info2 in tps_segment_crossing_infos2)
         
         fs, corrs = zip(*results)
 
@@ -166,16 +180,132 @@ def tps_segment(demofiles, demo_key1, demo_key2, parallel, init_tfm = None):
             
     
     choice_ind = np.argmin(costs)
+        
+    return costs[choice_ind], fs[choice_ind], corrs[choice_ind]
+
+def tps_segment_dataset(demofiles, query_demofiles, dataset_demofiles, parallel, init_tfm = None):
+    query_demo_keys= []
+    dataset_demo_keys = []
     
-    print min(costs)
+    for demo_name in demofiles:
+        if demo_name in query_demofiles:
+            for seg_name in demofiles[demo_name]:
+                query_demo_keys.append((demo_name, seg_name))
+        elif demo_name in dataset_demofiles:
+            for seg_name in demofiles[demo_name]:
+                dataset_demo_keys.append((demo_name, seg_name))
+        else:
+            pass
+        
+    query_results = {}
+    for query_demo_key in query_demo_keys:
+        results = []
+        for dataset_demo_key in dataset_demo_keys:
+            result = tps_segment_core(demofiles, query_demo_key, dataset_demo_key, parallel, init_tfm)
+            results.append(result)
+            
+        import IPython
+        IPython.embed()
+            
+        costs, fs, corrs = zip(*results)
+        choice_ind = np.argmin(costs)
+        
+        query_results[query_demo_key] = (dataset_demo_keys[choice_ind], costs[choice_ind], fs[choice_ind], corrs[choice_ind])
+        print query_demo_key, query_results[query_demo_key][1]
     
-    return fs[choice_ind], corrs[choice_ind], costs[choice_ind]
+    return query_results
+
+
+
+
+def tps_basic_core(demofiles, demo_key1, demo_key2, init_tfm = None):
+    demo_xyz1 = clouds.downsample(np.asarray(demofiles[demo_key1[0]][demo_key1[1]]["cloud_xyz"]), DS_LEAF_SIZE)
+    demo_xyz2 = clouds.downsample(np.asarray(demofiles[demo_key2[0]][demo_key2[1]]["cloud_xyz"]), DS_LEAF_SIZE)
     
+    if init_tfm is not None:
+        demo_xyz1 = demo_xyz1.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
+        demo_xyz2 = demo_xyz2.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
+        
+    result = registration_cost_and_tfm_and_corr(demo_xyz1, demo_xyz2)
+    
+    return result
+
+def tps_basic_sequential(demofiles, query_demo_keys, dataset_demo_keys, init_tfm = None):
+    query_results = {}
+    for query_demo_key in query_demo_keys:
+        query_result = []
+        for dataset_demo_key in dataset_demo_keys:
+            tps_result = tps_basic_core(demofiles, query_demo_key, dataset_demo_key, init_tfm)
+            query_result.append(tps_result)
+            
+        costs, fs, corrs = zip(*query_result)
+        choice_ind = np.argmin(costs)
+        query_results[query_demo_key] = (dataset_demo_keys[choice_ind], costs[choice_ind], fs[choice_ind], corrs[choice_ind])
+        
+    return query_results
+    
+    
+def tps_basic_parallel(demofiles, query_demo_keys, dataset_demo_keys, init_tfm = None):
+    query_demo_xyzs = []
+    for demo_key in query_demo_keys:
+        demo_xyz = clouds.downsample(np.asarray(demofiles[demo_key[0]][demo_key[1]]["cloud_xyz"]), DS_LEAF_SIZE)
+        if init_tfm is not None:
+            demo_xyz = demo_xyz.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
+        query_demo_xyzs.append(demo_xyz)
+        
+    dataset_demo_xyzs = []
+    for demo_key in dataset_demo_keys:
+        demo_xyz = clouds.downsample(np.asarray(demofiles[demo_key[0]][demo_key[1]]["cloud_xyz"]), DS_LEAF_SIZE)
+        if init_tfm is not None:
+            demo_xyz = demo_xyz.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
+        dataset_demo_xyzs.append(demo_xyz)
+        
+    all_results = Parallel(n_jobs=4, verbose=51)(delayed(registration_cost_and_tfm_and_corr)(query_demo_xyz, dataset_demo_xyz) for query_demo_xyz in query_demo_xyzs for dataset_demo_xyz in dataset_demo_xyzs)
+    
+    query_results = {}
+    result_start_ind = 0
+    num_dataset_demos = len(dataset_demo_keys)
+    for query_demo_key in query_demo_keys:
+        results = all_results[result_start_ind:result_start_ind + num_dataset_demos]
+        costs, fs, corrs = zip(*results)
+        choice_ind = np.argmin(costs)
+        query_results[query_demo_key] = (dataset_demo_keys[choice_ind], costs[choice_ind], fs[choice_ind], corrs[choice_ind])
+        print query_demo_key, query_results[query_demo_key][1]
+        result_start_ind += num_dataset_demos
+    
+    return query_results    
+ 
+
+def tps_basic_dataset(demofiles, query_demofiles, dataset_demofiles, parallel, init_tfm = None):
+    
+    query_demo_keys= []
+    dataset_demo_keys = []
+    
+    for demo_name in demofiles:
+        if demo_name in query_demofiles:
+            for seg_name in demofiles[demo_name]:
+                query_demo_keys.append((demo_name, seg_name))
+        elif demo_name in dataset_demofiles:
+            for seg_name in demofiles[demo_name]:
+                dataset_demo_keys.append((demo_name, seg_name))
+        else:
+            pass
+        
+    if parallel:
+        query_results = tps_basic_parallel(demofiles, query_demo_keys, dataset_demo_keys, init_tfm)
+    else:
+        query_results = tps_basic_sequential(demofiles, query_demo_keys, dataset_demo_keys, init_tfm)
+        
+    return query_results
+        
+            
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--demo_type", help="Type of demonstration")
 parser.add_argument("--parallel", action="store_true")
 parser.add_argument("--use_ar_init", action="store_true")
+parser.add_argument("--tps_type", type=str, help="basic, segment")
+parser.add_argument("--start_dataset", type=int, default=2)
 
 args = parser.parse_args()
 
@@ -206,30 +336,27 @@ def main():
         # Basically a rough transform from head kinect to demo_camera, given the tables are the same.
         init_tfm = ar_run_tfm.dot(np.linalg.inv(ar_demo_tfm))
         init_tfm = tfm_bf_head.dot(tfm_head_dof).dot(init_tfm)
-    
-    
-    demo_keys = []
-    
-    for demo_name in demofiles:
-        for seg_name in demofiles[demo_name]:
-            demo_keys.append((demo_name, seg_name))
-            
-    num_demos = len(demo_keys)
-    
-    results = {}
-    
-    for i in range(len(demo_keys)):
-        for j in range(len(demo_keys)):
-            if i != j:
-                demo_key1 = demo_keys[i]
-                demo_key2 = demo_keys[j]
-                
-                cost, f, corr = tps_segment(demofiles, demo_key1, demo_key2, args.parallel)
-                
-                results[(i, j)] = (cost, f, corr)
+        
+        query_demofiles = []
+        dataset_demofiles = []
+        demo_ind = 0
+        for demo_name in demofiles:
+            if demo_ind < args.start_dataset:
+                query_demofiles.append(demo_name)
             else:
-                results[(i, j)] = (0, None, None)
+                dataset_demofiles.append(demo_name) 
+                
+            demo_ind += 1   
+                        
+        if args.tps_type == "basic":     
+            results = tps_basic_dataset(demofiles, query_demofiles, dataset_demofiles, args.parallel, init_tfm)
+        elif args.tps_type == "segment":
+            results = tps_segment_dataset(demofiles, query_demofiles, dataset_demofiles, args.parallel, init_tfm)
 
+        result_filename = osp.join(task_dir, "result_" + args.tps_type + "_" + str(args.start_dataset) + ".cp")
+        f = open(result_filename, 'wb')
+        pickle.dump(results, f)
+    
             
 if __name__ == "__main__":
     main()

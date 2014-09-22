@@ -288,7 +288,7 @@ def tps_segment_registration(rope_nodes_or_crossing_info0, rope_nodes_or_crossin
                 if crossings_links_inds1[0] < SHORT_SEG_LEN:
                     rope_nodes_crossing_infos1.append((rope_nodes1,) + knot_classifier.unclose_rope(crossings1, crossings_links_inds1, cross_pairs1, 0) + (True,))
         if not rope_closed1 and rope_closed0:
-            print "sim rope not closed and demo rope is"
+            # print "sim rope not closed and demo rope is"
             if len(crossings1) > len(crossings0) and crossings1 != [-1,1,1,-1]:
                 # if len(crossings1) == len(crossings0)+2:
                 #     ipy.embed()
