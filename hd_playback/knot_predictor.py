@@ -22,9 +22,9 @@ def cloud_backto_xy(xyz, T_w_k):
 
 
 def predictCrossing2D(xy, image, net, image_name = None):
-    params = [v.data.shape for k, v in net.blobs.items()]
-    n_parallel = params[0][0]
-    patch_size = params[0][2]
+    params = [(k, v.data.shape) for k, v in net.blobs.items()]
+    n_parallel = params[0][1][0]
+    patch_size = params[0][1][2]
     offset = np.round(patch_size / 2.).astype(int)
     
     patches_indices = []
@@ -43,7 +43,14 @@ def predictCrossing2D(xy, image, net, image_name = None):
     n_iterations = int(n_iterations)
     
     rope_crossing_predicts = []
-    rope_crossing_scores = []
+    rope_crossing_scores = np.zeros([0, 4])
+    
+    rope_features = {}
+    for param in params:
+        if "ip" in param[0] or "fc" in param[0] or "pool" in param[0]:
+            rope_features[param[0]] = np.zeros([0, param[1][1], param[1][2], param[1][3]])
+    
+    
     for i in range(n_iterations):
         start_id = n_parallel * i
         end_id = min(n_parallel * (i + 1), n_patch_images)
@@ -51,7 +58,14 @@ def predictCrossing2D(xy, image, net, image_name = None):
         if end_id == n_patch_images:
             scores = scores[:end_id-start_id, :]
             
+        for feature_name in rope_features.keys():
+            feat = net.blobs[feature_name].data.copy()
+            if end_id == n_patch_images:
+                feat = feat[:end_id-start_id, :, :, :]
+            rope_features[feature_name] = np.concatenate([rope_features[feature_name], feat], axis=0)
+        
         # print scores
+        rope_crossing_scores = np.concatenate([rope_crossing_scores, scores], axis=0)
             
         predicts = np.argmax(scores, axis=1)
         rope_crossing_predicts = np.concatenate((rope_crossing_predicts, predicts)).astype(int)
@@ -82,7 +96,7 @@ def predictCrossing2D(xy, image, net, image_name = None):
 #            cv2.imwrite(osp.join(folder_name, "3", str(i) + ".jpg"), patch.copy())
     
         
-    return rope_crossing_predicts
+    return rope_crossing_predicts, rope_crossing_scores, rope_features
 
 
 def predictCrossing3D(xyz, image, net, image_name = None):    
@@ -98,13 +112,9 @@ def predictCrossing3D(xyz, image, net, image_name = None):
     valid_mask = (xy[:, 0] - offset >= 0) & (xy[:, 0] - offset + patch_size <= width) & (xy[:, 1] - offset >= 0) & (xy[:, 1] - offset + patch_size <= height)
     xy = xy[valid_mask]
     
-    rope_crossing_predicts_valid_points = predictCrossing2D(xy, image, net, image_name)
+    rope_crossing_predicts_valid_points, rope_crossing_scores_valid_points, rope_features_valid_points = predictCrossing2D(xy, image, net, image_name)
             
-    rope_crossing_predicts = np.empty((len(xyz), 1))
-    rope_crossing_predicts.fill(-1)
-    rope_crossing_predicts[valid_mask] = np.expand_dims(rope_crossing_predicts_valid_points, axis=1)
-
-    return rope_crossing_predicts
+    return rope_crossing_predicts_valid_points, rope_crossing_scores_valid_points, rope_features_valid_points, valid_mask
 
 def learned_label_2_manual_label(labels):
     labels2 = []

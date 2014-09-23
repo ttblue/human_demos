@@ -328,8 +328,8 @@ def compute_label_costs(labels1, labels2):
 def tps_label_basic_core(demofiles, demo_key1, demo_key2, init_tfm = None):
     demo1 = demofiles[demo_key1[0]][demo_key1[1]]
     demo2 = demofiles[demo_key2[0]][demo_key2[1]]
-    demo_xyz1 = clouds.downsample(np.asarray(demo1["cloud_xyz"]), DS_LEAF_SIZE)
-    demo_xyz2 = clouds.downsample(np.asarray(demo2["cloud_xyz"]), DS_LEAF_SIZE)
+    demo_xyz1 = np.asarray(demo["downsampled_cloud_xyz"])
+    demo_xyz2 = np.asarray(demo["downsampled_cloud_xyz"])
     demo_rgb1 = demo1['rgb']
     demo_rgb2 = demo2['rgb']
     
@@ -367,7 +367,7 @@ def tps_label_basic_parallel(demofiles, query_demo_keys, dataset_demo_keys, init
     query_demo_xyzs = []
     for demo_key in query_demo_keys:
         demo = demofiles[demo_key[0]][demo_key[1]]
-        demo_xyz = clouds.downsample(np.asarray(demo["cloud_xyz"]), DS_LEAF_SIZE)
+        demo_xyz = np.asarray(demo["downsampled_cloud_xyz"])
         if init_tfm is not None:
             demo_xyz = demo_xyz.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
         query_demo_xyzs.append(demo_xyz)
@@ -375,7 +375,7 @@ def tps_label_basic_parallel(demofiles, query_demo_keys, dataset_demo_keys, init
     dataset_demo_xyzs = []
     for demo_key in dataset_demo_keys:
         demo = demofiles[demo_key[0]][demo_key[1]]
-        demo_xyz = clouds.downsample(np.asarray(demo["cloud_xyz"]), DS_LEAF_SIZE)
+        demo_xyz = np.asarray(demo["downsampled_cloud_xyz"])
         if init_tfm is not None:
             demo_xyz = demo_xyz.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
         dataset_demo_xyzs.append(demo_xyz)
@@ -431,31 +431,81 @@ def tps_label_basic_dataset(demofiles, query_demofiles, dataset_demofiles, net, 
             demo = demofiles[demo_key[0]][demo_key[1]]
             demo_xyz = clouds.downsample(np.asarray(demo["cloud_xyz"]), DS_LEAF_SIZE)
             demo_rgb = demo['rgb']
-            demo_label = predictCrossing3D(demo_xyz, demo_rgb, net, demo_key[0] + "_" + demo_key[1])
+            demo_label, demo_score, demo_features, valid_mask = predictCrossing3D(demo_xyz, demo_rgb, net, demo_key[0] + "_" + demo_key[1])
+            
+            demo_xyz = demo_xyz[valid_mask]
+
+            
             if "learned_label" in demo.keys():
-                demo["learned_label"][()] = demo_label 
+                demo["learned_label"][()] = np.expand_dims(demo_label, axis=1) 
             else:
-                demo["learned_label"] = demo_label                 
+                demo["learned_label"] = demo_label    
+                
+            if "downsampled_cloud_xyz" in demo.keys():
+                demo["downsampled_cloud_xyz"][()] = demo_xyz
+            else:
+                demo["downsampled_cloud_xyz"] = demo_xyz 
+                
+            if "learned_score" in demo.keys():
+                demo["learned_score"][()] = demo_score      
+            else:
+                demo["learned_score"] = demo_score
+                
+            if not "learned_features" in demo.keys():
+                demo.create_group("learned_features")
+                
+            features = demo["learned_features"]
+            for feature_name in demo_features:
+                if feature_name in features.keys():
+                    features[feature_name][()] = demo_features[feature_name]
+                else:
+                    features[feature_name] = demo_features[feature_name]
+                    
                 
         for demo_key in dataset_demo_keys:
             print "label", demo_key
             demo = demofiles[demo_key[0]][demo_key[1]]
             demo_xyz = clouds.downsample(np.asarray(demo["cloud_xyz"]), DS_LEAF_SIZE)
             demo_rgb = demo['rgb']
-            demo_label = predictCrossing3D(demo_xyz, demo_rgb, net, demo_key[0] + "_" + demo_key[1])
-            if "learned_label" in demo.keys():
-                demo["learned_label"][()] = demo_label 
-            else:
-                demo["learned_label"] = demo_label                 
+            demo_label, demo_score, demo_features, valid_mask = predictCrossing3D(demo_xyz, demo_rgb, net, demo_key[0] + "_" + demo_key[1])
             
+            if "learned_label" in demo.keys():
+                demo["learned_label"][()] = np.expand_dims(demo_label, axis=1) 
+            else:
+                demo["learned_label"] = demo_label    
+                
+            if "downsampled_cloud_xyz" in demo.keys():
+                demo["downsampled_cloud_xyz"][()] = demo_xyz
+            else:
+                demo["downsampled_cloud_xyz"] = demo_xyz 
+                
+            if "learned_score" in demo.keys():
+                demo["learned_score"][()] = demo_score      
+            else:
+                demo["learned_score"] = demo_score
+                
+            if not "learned_features" in demo.keys():
+                demo.create_group("learned_features")
+                
+            features = demo["learned_features"]
+            for feature_name in demo_features:
+                if feature_name in features.keys():
+                    features[feature_name][()] = demo_features[feature_name]
+                else:
+                    features[feature_name] = demo_features[feature_name]      
+                
+                  
+    demofiles.flush()
 
         
-    if parallel:
-        query_results = tps_label_basic_parallel(demofiles, query_demo_keys, dataset_demo_keys, init_tfm)
-    else:
-        query_results = tps_label_basic_sequential(demofiles, query_demo_keys, dataset_demo_keys, init_tfm)
+#    if parallel:
+#        query_results = tps_label_basic_parallel(demofiles, query_demo_keys, dataset_demo_keys, init_tfm)
+#    else:
+#        query_results = tps_label_basic_sequential(demofiles, query_demo_keys, dataset_demo_keys, init_tfm)
+#
+#    return query_results
 
-    return query_results
+    return None
         
             
 
@@ -531,7 +581,7 @@ def main():
             dataset_demofiles.append(demo_name) 
             
         demo_ind += 1   
-        
+                
                     
     if args.tps_type == "basic":     
         results = tps_basic_dataset(demofiles, query_demofiles, dataset_demofiles, args.parallel, init_tfm)
@@ -541,14 +591,15 @@ def main():
         results = tps_label_basic_dataset(demofiles, query_demofiles, dataset_demofiles, net, args.parallel, args.recompute_label, init_tfm)
 
     
-    if args.use_ar_init:
-        use_ar = "use_ar"
-    else:
-        use_ar = "no_use_ar"
-        
-    result_filename = osp.join(task_dir, "result_" + args.tps_type + "_" + use_ar + "_" + str(args.start_dataset) + ".cp")
-    f = open(result_filename, 'wb')
-    pickle.dump([results, query_demofiles, dataset_demofiles], f)
+#    if args.use_ar_init:
+#        use_ar = "use_ar"
+#    else:
+#        use_ar = "no_use_ar"
+#        
+#    result_filename = osp.join(task_dir, "result_" + args.tps_type + "_" + use_ar + "_" + str(args.start_dataset) + ".cp")
+#    f = open(result_filename, 'wb')
+#    pickle.dump([results, query_demofiles, dataset_demofiles], f)
+    
     
             
 if __name__ == "__main__":
