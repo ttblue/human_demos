@@ -276,7 +276,7 @@ def tps_segment_registration(rope_nodes_or_crossing_info0, rope_nodes_or_crossin
     # Add registrations for the closed versions of any open rope
     if not rope_closed0 or not rope_closed1:
         if not rope_closed0 and rope_closed1:# or (crossings0 == crossings1 and cross_pairs0 == cross_pairs1)): #also check pairs?
-            print "demo rope not closed and sim rope is"
+            #print "demo rope not closed and sim rope is"
             if len(crossings0) > len(crossings1):
                 if len(rope_nodes0)-crossings_links_inds0[-1] < SHORT_SEG_LEN:
                     rope_nodes_crossing_infos0.append((rope_nodes0,) + knot_classifier.close_rope(crossings0, crossings_links_inds0, cross_pairs0, -1) + (True,))

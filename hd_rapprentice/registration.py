@@ -290,6 +290,86 @@ def tps_rpm(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_init =
     return f
 
 
+def tps_rpm_bij_features(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_init = .1, rad_final = .005, rot_reg = 1e-3, 
+                            plotting = False, plot_cb = None, x_weights = None, y_weights = None, outlierprior = .1, outlierfrac = 2e-1, 
+                            feature_costs = None):
+    """
+    tps-rpm algorithm mostly as described by chui and rangaran
+    reg_init/reg_final: regularization on curvature
+    rad_init/rad_final: radius for correspondence calculation (meters)
+    plotting: 0 means don't plot. integer n means plot every n iterations
+    interest_pts are points in either scene where we want a lower prior of outliers
+    x_weights: rescales the weights of the forward tps fitting of the last iteration
+    y_weights: same as x_weights, but for the backward tps fitting
+    feature_costs: an array of feature cost matrix, each for one feature
+    """
+    
+    _,d=x_nd.shape
+    regs = loglinspace(reg_init, reg_final, n_iter)
+    rads = loglinspace(rad_init, rad_final, n_iter)
+
+    f = ThinPlateSpline(d)
+    f.trans_g = np.median(y_md,axis=0) - np.median(x_nd,axis=0) # align the medians
+    # do a coarse search through rotations
+    # fit_rotation(f, x_nd, y_md)
+    
+    g = ThinPlateSpline(d)
+    g.trans_g = -f.trans_g
+
+    # set up outlier priors for source and target scenes
+    n, _ = x_nd.shape
+    m, _ = y_md.shape
+
+    x_priors = np.ones(n)*outlierprior    
+    y_priors = np.ones(m)*outlierprior    
+
+    # r_N = None
+    
+    for i in xrange(n_iter):
+        xwarped_nd = f.transform_points(x_nd)
+        ywarped_md = g.transform_points(y_md)
+        
+        fwddist_nm = ssd.cdist(xwarped_nd, y_md,'euclidean')
+        invdist_nm = ssd.cdist(x_nd, ywarped_md,'euclidean')
+        
+        r = rads[i]
+        prob_nm = np.exp( -(fwddist_nm + invdist_nm) / (2*r) )
+                
+        if feature_costs != None:
+            for feature_cost in feature_costs:
+                pi = np.exp(-feature_cost)
+                # rescale the maximum probability to be 1. 
+                # effectively, the outlier priors are multiplied by a visual prior of 1 
+                # (since the outlier points have a visual prior of 1 with any point)
+                pi /= pi.max()
+                prob_nm *= pi
+        
+        corr_nm, r_N, _ =  balance_matrix3_prior(prob_nm, 10, x_priors, y_priors, outlierfrac) # edit final value to change outlier percentage
+        corr_nm += 1e-9
+        
+        wt_n = corr_nm.sum(axis=1)
+        wt_m = corr_nm.sum(axis=0)
+
+        xtarg_nd = (corr_nm/wt_n[:,None]).dot(y_md)
+        ytarg_md = (corr_nm/wt_m[None,:]).T.dot(x_nd)
+        
+        if plotting and i%plotting==0:
+            plot_cb(x_nd, y_md, xtarg_nd, corr_nm, wt_n, f)
+        
+        if i == (n_iter-1):
+            if x_weights is not None:
+                wt_n=wt_n*x_weights
+            if y_weights is not None:
+                wt_m=wt_m*y_weights
+        f = fit_ThinPlateSpline(x_nd, xtarg_nd, bend_coef = regs[i], wt_n=wt_n, rot_coef = rot_reg)
+        g = fit_ThinPlateSpline(y_md, ytarg_md, bend_coef = regs[i], wt_n=wt_m, rot_coef = rot_reg)
+    
+    f._cost = tps_cost(f.lin_ag, f.trans_g, f.w_ng, f.x_na, xtarg_nd, regs[i], wt_n=wt_n)/wt_n.mean()
+    g._cost = tps_cost(g.lin_ag, g.trans_g, g.w_ng, g.x_na, ytarg_md, regs[i], wt_n=wt_m)/wt_m.mean()
+    return f,g
+    
+
+
 def tps_rpm_bij(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_init = .1, rad_final = .005, rot_reg = 1e-3, 
                 plotting = False, plot_cb = None, block_lengths=None, Globals=None):
     """
@@ -573,6 +653,32 @@ def logmap(m):
     "http://en.wikipedia.org/wiki/Axis_angle#Log_map_from_SO.283.29_to_so.283.29"
     theta = np.arccos(np.clip((np.trace(m) - 1)/2,-1,1))
     return (1/(2*np.sin(theta))) * np.array([[m[2,1] - m[1,2], m[0,2]-m[2,0], m[1,0]-m[0,1]]]), theta
+
+
+
+def balance_matrix3_prior(prob_nm, max_iter, row_priors, col_priors, outlierfrac, r_N = None):
+    
+    n,m = prob_nm.shape
+    prob_NM = np.empty((n+1, m+1), 'f4')
+    prob_NM[:n, :m] = prob_nm
+    prob_NM[:n, m] = row_priors
+    prob_NM[n, :m] = col_priors
+    prob_NM[n, m] = np.sqrt(np.sum(row_priors)*np.sum(col_priors)) # this can `be weighted bigger weight = fewer outliers
+    a_N = np.ones((n+1),'f4')
+    a_N[n] = m*outlierfrac
+    b_M = np.ones((m+1),'f4')
+    b_M[m] = n*outlierfrac
+    
+    if r_N is None: r_N = np.ones(n+1,'f4')
+
+    for _ in xrange(max_iter):
+        c_M = b_M/r_N.dot(prob_NM)
+        r_N = a_N/prob_NM.dot(c_M)
+
+    prob_NM *= r_N[:,None]
+    prob_NM *= c_M[None,:]
+    
+    return prob_NM[:n, :m], r_N, c_M
 
 
 def balance_matrix3(prob_nm, max_iter, p, outlierfrac, r_N = None):

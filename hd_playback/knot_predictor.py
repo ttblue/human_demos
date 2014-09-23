@@ -1,4 +1,9 @@
 import numpy as np
+import os, os.path as osp
+import cv2
+import shutil
+import scipy
+
 
 def cloud_backto_xy(xyz, T_w_k):
     cx = 320. - .5
@@ -16,7 +21,7 @@ def cloud_backto_xy(xyz, T_w_k):
     return np.concatenate((x, y), axis=1)
 
 
-def predictCrossing2D(xy, image, net):
+def predictCrossing2D(xy, image, net, image_name = None):
     params = [v.data.shape for k, v in net.blobs.items()]
     n_parallel = params[0][0]
     patch_size = params[0][2]
@@ -27,8 +32,8 @@ def predictCrossing2D(xy, image, net):
         x_start = xy[i, 0] - offset
         y_start = xy[i, 1] - offset
         
-        #patch = image[x_start:x_start+patch_size, y_start:y_start+patch_size, :]
         patch = image[y_start:y_start+patch_size, x_start:x_start+patch_size, :] / 255.0
+        patch = np.asarray(patch[:, :, [2, 1, 0]])
         patches_indices.append((patch, i))
         
     patches, indices = zip(*patches_indices)
@@ -38,6 +43,7 @@ def predictCrossing2D(xy, image, net):
     n_iterations = int(n_iterations)
     
     rope_crossing_predicts = []
+    rope_crossing_scores = []
     for i in range(n_iterations):
         start_id = n_parallel * i
         end_id = min(n_parallel * (i + 1), n_patch_images)
@@ -45,15 +51,41 @@ def predictCrossing2D(xy, image, net):
         if end_id == n_patch_images:
             scores = scores[:end_id-start_id, :]
             
-        print scores
+        # print scores
             
         predicts = np.argmax(scores, axis=1)
         rope_crossing_predicts = np.concatenate((rope_crossing_predicts, predicts)).astype(int)
         
+#    folder_name = osp.join("/home/jia/human_demos_DATA/demos/test", image_name)
+#    if osp.exists(folder_name):
+#        shutil.rmtree(folder_name)
+#    os.makedirs(folder_name)
+#    os.makedirs(osp.join(folder_name, "0"))
+#    os.makedirs(osp.join(folder_name, "1"))
+#    os.makedirs(osp.join(folder_name, "2"))
+#    os.makedirs(osp.join(folder_name, "3"))
+#    
+#    #scipy.misc.imsave(osp.join(folder_name, "raw.jpg"), image)
+#    cv2.imwrite(osp.join(folder_name, "raw.jpg"), np.asarray(image))
+#    for i in range(n_patch_images):
+#        label = rope_crossing_predicts[i]
+#        patch = patches[i] * 255
+#        patch = np.array(patch[:, :, [2, 1, 0]])
+#
+#        if label == 0:
+#            cv2.imwrite(osp.join(folder_name, "0", str(i) + ".jpg"), patch.copy())
+#        elif label == 1:
+#            cv2.imwrite(osp.join(folder_name, "1", str(i) + ".jpg"), patch.copy())
+#        elif label == 2:
+#            cv2.imwrite(osp.join(folder_name, "2", str(i) + ".jpg"), patch.copy())
+#        elif label == 3:
+#            cv2.imwrite(osp.join(folder_name, "3", str(i) + ".jpg"), patch.copy())
+    
+        
     return rope_crossing_predicts
 
 
-def predictCrossing3D(xyz, image, net):    
+def predictCrossing3D(xyz, image, net, image_name = None):    
     params = [v.data.shape for k, v in net.blobs.items()]
     n_parallel = params[0][0]
     patch_size = params[0][2]
@@ -66,7 +98,7 @@ def predictCrossing3D(xyz, image, net):
     valid_mask = (xy[:, 0] - offset >= 0) & (xy[:, 0] - offset + patch_size <= width) & (xy[:, 1] - offset >= 0) & (xy[:, 1] - offset + patch_size <= height)
     xy = xy[valid_mask]
     
-    rope_crossing_predicts_valid_points = predictCrossing2D(xy, image, net)
+    rope_crossing_predicts_valid_points = predictCrossing2D(xy, image, net, image_name)
             
     rope_crossing_predicts = np.empty((len(xyz), 1))
     rope_crossing_predicts.fill(-1)
