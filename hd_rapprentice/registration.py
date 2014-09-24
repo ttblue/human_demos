@@ -335,14 +335,27 @@ def tps_rpm_bij_features(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .00
         r = rads[i]
         prob_nm = np.exp( -(fwddist_nm + invdist_nm) / (2*r) )
                 
-        if feature_costs != None:
+#        if feature_costs != None:
+#            for feature_cost in feature_costs:
+#                pi = np.exp(-feature_cost)
+#                # rescale the maximum probability to be 1. 
+#                # effectively, the outlier priors are multiplied by a visual prior of 1 
+#                # (since the outlier points have a visual prior of 1 with any point)
+#                pi /= pi.max()
+#                prob_nm *= pi
+
+        if feature_costs != None and feature_costs != []:
+            sum_feature_cost = np.zeros(feature_costs[0].shape)
             for feature_cost in feature_costs:
-                pi = np.exp(-feature_cost)
-                # rescale the maximum probability to be 1. 
-                # effectively, the outlier priors are multiplied by a visual prior of 1 
-                # (since the outlier points have a visual prior of 1 with any point)
-                pi /= pi.max()
-                prob_nm *= pi
+                sum_feature_cost += feature_cost
+            
+            pi = np.exp(-sum_feature_cost)
+                
+            # rescale the maximum probability to be 1. 
+            # effectively, the outlier priors are multiplied by a visual prior of 1 
+            # (since the outlier points have a visual prior of 1 with any point)
+            pi /= pi.max()
+            prob_nm *= pi
         
         corr_nm, r_N, _ =  balance_matrix3_prior(prob_nm, 10, x_priors, y_priors, outlierfrac) # edit final value to change outlier percentage
         corr_nm += 1e-9

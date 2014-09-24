@@ -124,6 +124,7 @@ def tps_segment_data(demofiles, demo_key, init_tfm):
                 if (pair[0] < pair[1]):
                     demo_pairs.append((pair[0]+1, pair[1]+1))
             demo_pairs = set(demo_pairs)
+            demo_pairs = list(demo_pairs)
     
             x_weights = 15*np.ones(len(demo_xyz)*CROSS_SECTION_SIZE)/(1.0*len(demo_xyz)*CROSS_SECTION_SIZE)
     
@@ -132,7 +133,47 @@ def tps_segment_data(demofiles, demo_key, init_tfm):
                 crossing_infos.append((demo_xyz, demo_pattern, demo_inds, demo_pairs, demo_rope_closed, x_weights, demo_cloud1))
             if num == 1:
                 crossing_infos.append((demo_xyz, demo_pattern, demo_inds, demo_pairs, demo_rope_closed, x_weights, demo_cloud2))
-                
+           
+    return crossing_infos
+
+def load_tps_segment_data(demofiles, demo_key, init_tfm):
+    
+    crossing_infos_group = demofiles[demo_key[0]][demo_key[1]]["crossing_infos"]
+    demo_xyz_list = np.asarray(crossing_infos_group["demo_xyz"])
+    demo_pattern_list_ = np.asarray(crossing_infos_group["demo_pattern"])
+    demo_pattern_list = []
+    for i in range(len(demo_pattern_list_)):
+        demo_pattern_list.append(list(demo_pattern_list_[i]))
+    
+    demo_inds_list = np.asarray(crossing_infos_group["demo_inds"])
+    demo_pairs_list_ = np.asarray(crossing_infos_group["demo_pairs"])
+
+    demo_pairs_list = []
+    for i in range(len(demo_pairs_list_)):
+        demo_pairs_ = demo_pairs_list_[i]
+        demo_pairs = []
+        for j in range(len(demo_pairs_)):
+            demo_pairs.append((demo_pairs_[j][0], demo_pairs_[j][1]))
+        demo_pairs_list.append(set(demo_pairs))
+
+    
+    demo_rope_closed_list = np.asarray(crossing_infos_group["demo_rope_closed"])
+    x_weights_list = np.asarray(crossing_infos_group["x_weights"])
+    demo_cloud_list = np.asarray(crossing_infos_group["demo_cloud"])
+    
+
+    crossing_infos2 = tps_segment_data(demofiles, demo_key, init_tfm)
+    
+
+    crossing_infos = []
+    n = len(demo_xyz_list)
+    for i in range(n):
+        #import IPython
+        #IPython.embed()
+        #crossing_infos.append((demo_xyz_list[i], demo_pattern_list[i], demo_inds_list[i], demo_pairs_list[i], demo_rope_closed_list[i], x_weights_list[i], demo_cloud_list[i]))
+        crossing_infos.append((demo_xyz_list[i], demo_pattern_list[i], demo_inds_list[i], demo_pairs_list[i], demo_rope_closed_list[i], x_weights_list[i], demo_cloud_list[i]))
+ 
+     
     return crossing_infos
 
 
@@ -162,8 +203,11 @@ def registration_cost_and_tfm_and_corr_features(xyz0, xyz1, feature_costs, num_i
 
 
 def tps_segment_core(demofiles, demo_key1, demo_key2, parallel, init_tfm = None):
-    tps_segment_crossing_infos1 = tps_segment_data(demofiles, demo_key1, init_tfm)
-    tps_segment_crossing_infos2 = tps_segment_data(demofiles, demo_key2, init_tfm)
+#    tps_segment_crossing_infos1 = tps_segment_data(demofiles, demo_key1, init_tfm)
+#    tps_segment_crossing_infos2 = tps_segment_data(demofiles, demo_key2, init_tfm)
+
+    tps_segment_crossing_infos1 = load_tps_segment_data(demofiles, demo_key1, init_tfm)
+    tps_segment_crossing_infos2 = load_tps_segment_data(demofiles, demo_key2, init_tfm)
     
     if parallel:
         results = Parallel(n_jobs=4)(delayed(tps_segment_registration)(info1[0:5], info2[0:5], info1[6], info2[6], np.eye(4), x_weights=info1[5], reg=0.01) 
@@ -195,7 +239,7 @@ def tps_segment_core(demofiles, demo_key1, demo_key2, parallel, init_tfm = None)
         
     return costs[choice_ind], fs[choice_ind], corrs[choice_ind]
 
-def tps_segment_dataset(demofiles, query_demofiles, dataset_demofiles, parallel, init_tfm = None):
+def tps_segment_dataset(demofiles, query_demofiles, dataset_demofiles, parallel, re_precompute = False, init_tfm = None):
     query_demo_keys= []
     dataset_demo_keys = []
     
@@ -203,23 +247,74 @@ def tps_segment_dataset(demofiles, query_demofiles, dataset_demofiles, parallel,
         if demo_name in query_demofiles:
             for seg_name in demofiles[demo_name]:
                 query_demo_keys.append((demo_name, seg_name))
-        elif demo_name in dataset_demofiles:
+        if demo_name in dataset_demofiles:
             for seg_name in demofiles[demo_name]:
                 dataset_demo_keys.append((demo_name, seg_name))
-        else:
-            pass
+        
+    if re_precompute:
+        for demo_name in demofiles:
+            for seg_name in demofiles[demo_name]:
+                demo = demofiles[demo_name][seg_name]
+                demo_key = (demo_name, seg_name)
+                crossing_infos = tps_segment_data(demofiles, demo_key, init_tfm)
+                
+                if not "crossing_infos" in demo.keys():
+                    demo.create_group("crossing_infos")
+                    
+                crossing_infos_group = demo["crossing_infos"]
+                
+                demo_xyz_list, demo_pattern_list, demo_inds_list, demo_pairs_list, demo_rope_closed_list, x_weights_list, demo_cloud_list = zip(*crossing_infos)
+                
+                if "demo_xyz" in crossing_infos_group.keys():
+                    crossing_infos_group["demo_xyz"][()] = np.asarray(demo_xyz_list)
+                else:
+                    crossing_infos_group["demo_xyz"] = np.asarray(demo_xyz_list)
+                                        
+                if "demo_pattern" in crossing_infos_group.keys():
+                    crossing_infos_group["demo_pattern"][()] = np.asarray(demo_pattern_list)
+                else:
+                    crossing_infos_group["demo_pattern"] = np.asarray(demo_pattern_list)                    
+                
+                if "demo_inds" in crossing_infos_group.keys():
+                    crossing_infos_group["demo_inds"][()] = np.asarray(demo_inds_list)
+                else:
+                    crossing_infos_group["demo_inds"] = np.asarray(demo_inds_list)
+                 
+                if "demo_pairs" in crossing_infos_group.keys():
+                    crossing_infos_group["demo_pairs"][()] = np.asarray(demo_pairs_list)
+                else:
+                    crossing_infos_group["demo_pairs"] = np.asarray(demo_pairs_list)       
+                    
+                if "demo_rope_closed" in crossing_infos_group.keys():
+                    crossing_infos_group["demo_rope_closed"][()] = np.asarray(demo_rope_closed_list)
+                else:
+                    crossing_infos_group["demo_rope_closed"] = np.asarray(demo_rope_closed_list)     
+                    
+                if "x_weights" in crossing_infos_group.keys():
+                    crossing_infos_group["x_weights"][()] = np.asarray(x_weights_list)
+                else:
+                    crossing_infos_group["x_weights"] = np.asarray(x_weights_list)      
+                    
+                if "demo_cloud" in crossing_infos_group.keys():
+                    crossing_infos_group["demo_cloud"][()] = np.asarray(demo_cloud_list)
+                else:
+                    crossing_infos_group["demo_cloud"] = np.asarray(demo_cloud_list)   
+                    
+        demofiles.flush()
+                      
+        
         
     query_results = {}
     for query_demo_key in query_demo_keys:
         results = []
         for dataset_demo_key in dataset_demo_keys:
+            print query_demo_key, dataset_demo_key
             result = tps_segment_core(demofiles, query_demo_key, dataset_demo_key, parallel, init_tfm)
             results.append(result)
             
         costs, fs, corrs = zip(*results)
         choice_ind = np.argmin(costs)
         
-        #query_results[query_demo_key] = (dataset_demo_keys[choice_ind], costs[choice_ind], fs[choice_ind], corrs[choice_ind])
         query_results[query_demo_key] = (choice_ind, costs, fs[choice_ind], corrs[choice_ind])
         print query_demo_key, costs[choice_ind]
     
@@ -260,19 +355,24 @@ def tps_basic_sequential(demofiles, query_demo_keys, dataset_demo_keys, init_tfm
 def tps_basic_parallel(demofiles, query_demo_keys, dataset_demo_keys, init_tfm = None):
     query_demo_xyzs = []
     for demo_key in query_demo_keys:
-        demo_xyz = clouds.downsample(np.asarray(demofiles[demo_key[0]][demo_key[1]]["cloud_xyz"]), DS_LEAF_SIZE)
+        demo = demofiles[demo_key[0]][demo_key[1]]
+        demo_xyz = np.asarray(demo["downsampled_cloud_xyz"])
         if init_tfm is not None:
             demo_xyz = demo_xyz.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
         query_demo_xyzs.append(demo_xyz)
         
     dataset_demo_xyzs = []
     for demo_key in dataset_demo_keys:
-        demo_xyz = clouds.downsample(np.asarray(demofiles[demo_key[0]][demo_key[1]]["cloud_xyz"]), DS_LEAF_SIZE)
+        demo = demofiles[demo_key[0]][demo_key[1]]
+        demo_xyz = np.asarray(demo["downsampled_cloud_xyz"])
         if init_tfm is not None:
             demo_xyz = demo_xyz.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
         dataset_demo_xyzs.append(demo_xyz)
         
-    all_results = Parallel(n_jobs=4, verbose=51)(delayed(registration_cost_and_tfm_and_corr)(query_demo_xyz, dataset_demo_xyz) for query_demo_xyz in query_demo_xyzs for dataset_demo_xyz in dataset_demo_xyzs)
+    #all_results = Parallel(n_jobs=4, verbose=51)(delayed(registration_cost_and_tfm_and_corr)(query_demo_xyz, dataset_demo_xyz) for query_demo_xyz in query_demo_xyzs for dataset_demo_xyz in dataset_demo_xyzs)
+    all_results = Parallel(n_jobs=4, verbose=51)(delayed(registration_cost_and_tfm_and_corr)(query_demo_xyzs[i], dataset_demo_xyzs[j])
+                                                 for i in range(len(query_demo_xyzs)) for j in range(len(dataset_demo_xyzs)))
+    
     
     query_results = {}
     result_start_ind = 0
@@ -297,11 +397,9 @@ def tps_basic_dataset(demofiles, query_demofiles, dataset_demofiles, parallel, i
         if demo_name in query_demofiles:
             for seg_name in demofiles[demo_name]:
                 query_demo_keys.append((demo_name, seg_name))
-        elif demo_name in dataset_demofiles:
+        if demo_name in dataset_demofiles:
             for seg_name in demofiles[demo_name]:
                 dataset_demo_keys.append((demo_name, seg_name))
-        else:
-            pass
         
     if parallel:
         query_results = tps_basic_parallel(demofiles, query_demo_keys, dataset_demo_keys, init_tfm)
@@ -323,9 +421,31 @@ def compute_label_costs(labels1, labels2):
                 label_cost_matrix[i, j] = 1
                 
     return label_cost_matrix
+
+def compute_score_costs(scores1, scores2):
+    from scipy.stats import entropy
+    n_scores1 = len(scores1)
+    n_scores2 = len(scores2)
+    score_cost_matrix = np.zeros([n_scores1, n_scores2])
+    for i in range(n_scores1):
+        for j in range(n_scores2):
+            score_cost_matrix[i, j] = entropy(scipy.asarray(scores1[i]), scipy.asarray(scores2[j]))
+            
+    return score_cost_matrix
+
+def compute_feature_costs(feature1, feature2, feature_type):
+    
+    if feature_type == "label":
+        costs = compute_label_costs(feature1, feature2)
+    elif feature_type == "score":
+        costs = compute_score_costs(feature1, feature2)
+    
+    return costs
+    
+    
     
 
-def tps_label_basic_core(demofiles, demo_key1, demo_key2, init_tfm = None):
+def tps_label_basic_core(demofiles, demo_key1, demo_key2, deep_feature_types, init_tfm = None):
     demo1 = demofiles[demo_key1[0]][demo_key1[1]]
     demo2 = demofiles[demo_key2[0]][demo_key2[1]]
     demo_xyz1 = np.asarray(demo["downsampled_cloud_xyz"])
@@ -333,26 +453,35 @@ def tps_label_basic_core(demofiles, demo_key1, demo_key2, init_tfm = None):
     demo_rgb1 = demo1['rgb']
     demo_rgb2 = demo2['rgb']
     
-    learned_labels1 = np.asarray(demo1['learned_label'])
-    learned_labels2 = np.asarray(demo2['learned_label'])
-    
-    label_costs = compute_label_costs(learned_labels1, learned_labels2)
-    
+    query_features = {}
+    for feature_type in deep_feature_types:
+        learned_features = demo1["learned_features"]
+        query_features[feature_type] = np.asarray(learned_features[feature_type])
+
+
+    dataset_features = {}
+    for feature_type in deep_feature_types:
+        learned_features = demo2["learned_features"]
+        dataset_features[feature_type] = np.asarray(learned_features[feature_type])
+        
+        
+    feature_costs = [compute_feature_costs(query_features[feature_type], dataset_features[feature_type], feature_type) for feature_type in deep_feature_types]         
+        
     if init_tfm is not None:
         demo_xyz1 = demo_xyz1.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
         demo_xyz2 = demo_xyz2.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
         
-    result = registration_cost_and_tfm_and_corr_features(demo_xyz1, demo_xyz2, [label_costs])
+    result = registration_cost_and_tfm_and_corr_features(demo_xyz1, demo_xyz2, feature_costs)
     
     return result
 
 
-def tps_label_basic_sequential(demofiles, query_demo_keys, dataset_demo_keys, init_tfm = None):
+def tps_deep_basic_sequential(demofiles, query_demo_keys, dataset_demo_keys, deep_feature_types, init_tfm = None):
     query_results = {}
     for query_demo_key in query_demo_keys:
         query_result = []
         for dataset_demo_key in dataset_demo_keys:
-            tps_result = tps_label_basic_core(demofiles, query_demo_key, dataset_demo_key, init_tfm)
+            tps_result = tps_label_basic_core(demofiles, query_demo_key, dataset_demo_key, deep_feature_types, init_tfm)
             query_result.append(tps_result)
             
         costs, fs, corrs = zip(*query_result)
@@ -363,7 +492,7 @@ def tps_label_basic_sequential(demofiles, query_demo_keys, dataset_demo_keys, in
     return query_results
     
     
-def tps_label_basic_parallel(demofiles, query_demo_keys, dataset_demo_keys, init_tfm = None):
+def tps_deep_basic_parallel(demofiles, query_demo_keys, dataset_demo_keys, deep_feature_types, init_tfm = None):
     query_demo_xyzs = []
     for demo_key in query_demo_keys:
         demo = demofiles[demo_key[0]][demo_key[1]]
@@ -380,19 +509,26 @@ def tps_label_basic_parallel(demofiles, query_demo_keys, dataset_demo_keys, init
             demo_xyz = demo_xyz.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
         dataset_demo_xyzs.append(demo_xyz)
         
-    query_labels = []
-    for demo_key in query_demo_keys:
-        demo = demofiles[demo_key[0]][demo_key[1]]
-        demo_label = np.asarray(demo['learned_label'])
-        query_labels.append(demo_label)
+        
+    query_features = {}
+    for feature_type in deep_feature_types:
+        feature = []
+        for demo_key in query_demo_keys:
+            learned_features = demofiles[demo_key[0]][demo_key[1]]["learned_features"]
+            feature.append(np.asarray(learned_features[feature_type]))
+        query_features[feature_type] = feature
+
+
+    dataset_features = {}
+    for feature_type in deep_feature_types:
+        feature = []
+        for demo_key in dataset_demo_keys:
+            learned_features = demofiles[demo_key[0]][demo_key[1]]["learned_features"]
+            feature.append(np.asarray(learned_features[feature_type]))
+        dataset_features[feature_type] = feature       
+            
     
-    dataset_labels = []
-    for demo_key in dataset_demo_keys:
-        demo = demofiles[demo_key[0]][demo_key[1]]
-        demo_label = np.asarray(demo['learned_label'])
-        dataset_labels.append(demo_label)
-    
-    all_results = Parallel(n_jobs=4, verbose=51)(delayed(registration_cost_and_tfm_and_corr_features)(query_demo_xyzs[i], dataset_demo_xyzs[j], [compute_label_costs(query_labels[i], dataset_labels[j])]) 
+    all_results = Parallel(n_jobs=4, verbose=51)(delayed(registration_cost_and_tfm_and_corr_features)(query_demo_xyzs[i], dataset_demo_xyzs[j], [compute_feature_costs(query_features[feature_type][i], dataset_features[feature_type][j], feature_type) for feature_type in deep_feature_types])
                                                  for i in range(len(query_demo_xyzs)) for j in range(len(dataset_demo_xyzs)))
     
     query_results = {}
@@ -410,7 +546,7 @@ def tps_label_basic_parallel(demofiles, query_demo_keys, dataset_demo_keys, init
 
 
 
-def tps_label_basic_dataset(demofiles, query_demofiles, dataset_demofiles, net, parallel, recompute_label = False, init_tfm = None):
+def tps_deep_basic_dataset(demofiles, query_demofiles, dataset_demofiles, net, deep_feature_types, parallel, re_precompute = False, init_tfm = None):
     
     query_demo_keys= []
     dataset_demo_keys = []
@@ -419,119 +555,82 @@ def tps_label_basic_dataset(demofiles, query_demofiles, dataset_demofiles, net, 
         if demo_name in query_demofiles:
             for seg_name in demofiles[demo_name]:
                 query_demo_keys.append((demo_name, seg_name))
-        elif demo_name in dataset_demofiles:
+        if demo_name in dataset_demofiles:
             for seg_name in demofiles[demo_name]:
                 dataset_demo_keys.append((demo_name, seg_name))
-        else:
-            pass
 
-    if recompute_label:
-        for demo_key in query_demo_keys:
-            print "label", demo_key
-            demo = demofiles[demo_key[0]][demo_key[1]]
-            demo_xyz = clouds.downsample(np.asarray(demo["cloud_xyz"]), DS_LEAF_SIZE)
-            demo_rgb = demo['rgb']
-            demo_label, demo_score, demo_features, valid_mask = predictCrossing3D(demo_xyz, demo_rgb, net, demo_key[0] + "_" + demo_key[1])
-            
-            demo_xyz = demo_xyz[valid_mask]
-
-            
-            if "learned_label" in demo.keys():
-                demo["learned_label"][()] = np.expand_dims(demo_label, axis=1) 
-            else:
-                demo["learned_label"] = demo_label    
+    if re_precompute:
+        for demo_name in demofiles:
+            for seg_name in demofiles[demo_name]:
+                print "label", demo_name, seg_name
                 
-            if "downsampled_cloud_xyz" in demo.keys():
-                demo["downsampled_cloud_xyz"][()] = demo_xyz
-            else:
-                demo["downsampled_cloud_xyz"] = demo_xyz 
+                demo = demofiles[demo_name][seg_name]
+                demo_xyz = clouds.downsample(np.asarray(demo["cloud_xyz"]), DS_LEAF_SIZE)
+                demo_rgb = demo['rgb']
+                demo_label, demo_score, demo_features, valid_mask = predictCrossing3D(demo_xyz, demo_rgb, net, demo_name + "_" + seg_name)
                 
-            if "learned_score" in demo.keys():
-                demo["learned_score"][()] = demo_score      
-            else:
-                demo["learned_score"] = demo_score
+                demo_xyz = demo_xyz[valid_mask]
                 
-            if not "learned_features" in demo.keys():
-                demo.create_group("learned_features")
-                
-            features = demo["learned_features"]
-            for feature_name in demo_features:
-                if feature_name in features.keys():
-                    features[feature_name][()] = demo_features[feature_name]
+                if "downsampled_cloud_xyz" in demo.keys():
+                    demo["downsampled_cloud_xyz"][()] = demo_xyz
                 else:
-                    features[feature_name] = demo_features[feature_name]
+                    demo["downsampled_cloud_xyz"] = demo_xyz 
+    
+                
+                if not "learned_features" in demo.keys():
+                    demo.create_group("learned_features")
                     
-                
-        for demo_key in dataset_demo_keys:
-            print "label", demo_key
-            demo = demofiles[demo_key[0]][demo_key[1]]
-            demo_xyz = clouds.downsample(np.asarray(demo["cloud_xyz"]), DS_LEAF_SIZE)
-            demo_rgb = demo['rgb']
-            demo_label, demo_score, demo_features, valid_mask = predictCrossing3D(demo_xyz, demo_rgb, net, demo_key[0] + "_" + demo_key[1])
-            
-            if "learned_label" in demo.keys():
-                demo["learned_label"][()] = np.expand_dims(demo_label, axis=1) 
-            else:
-                demo["learned_label"] = demo_label    
-                
-            if "downsampled_cloud_xyz" in demo.keys():
-                demo["downsampled_cloud_xyz"][()] = demo_xyz
-            else:
-                demo["downsampled_cloud_xyz"] = demo_xyz 
-                
-            if "learned_score" in demo.keys():
-                demo["learned_score"][()] = demo_score      
-            else:
-                demo["learned_score"] = demo_score
-                
-            if not "learned_features" in demo.keys():
-                demo.create_group("learned_features")
-                
-            features = demo["learned_features"]
-            for feature_name in demo_features:
-                if feature_name in features.keys():
-                    features[feature_name][()] = demo_features[feature_name]
+                features_group = demo["learned_features"]
+                for feature_name in demo_features:
+                    if feature_name in features_group.keys():
+                        features_group[feature_name][()] = demo_features[feature_name]
+                    else:
+                        features_group[feature_name] = demo_features[feature_name]           
+                        
+                if "learned_label" in features_group.keys():
+                    features_group["label"][()] = np.expand_dims(demo_label, axis=1) 
                 else:
-                    features[feature_name] = demo_features[feature_name]      
-                
+                    features_group["label"] = demo_label    
+                    
+                if "score" in features_group.keys():
+                    features_group["score"][()] = demo_score      
+                else:
+                    features_group["score"] = demo_score     
                   
-    demofiles.flush()
+        demofiles.flush()
 
         
-#    if parallel:
-#        query_results = tps_label_basic_parallel(demofiles, query_demo_keys, dataset_demo_keys, init_tfm)
-#    else:
-#        query_results = tps_label_basic_sequential(demofiles, query_demo_keys, dataset_demo_keys, init_tfm)
-#
-#    return query_results
+    if parallel:
+        query_results = tps_deep_basic_parallel(demofiles, query_demo_keys, dataset_demo_keys, deep_feature_types, init_tfm)
+    else:
+        query_results = tps_deep_basic_sequential(demofiles, query_demo_keys, dataset_demo_keys, deep_feature_types, init_tfm)
 
-    return None
-        
+    return query_results        
             
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--demo_type", help="Type of demonstration")
 parser.add_argument("--parallel", action="store_true")
 parser.add_argument("--use_ar_init", action="store_true")
-parser.add_argument("--tps_type", type=str, help="basic, segment, label_basic, label_segment")
-parser.add_argument("--start_dataset", type=int, default=2)
+parser.add_argument("--tps_type", type=str, help="basic, segment, deep_basic")
+parser.add_argument("--end_query", type=int, default=2)
 
 parser.add_argument("--net_prototxt", help="File name for prototxt", type=str, default="")
 parser.add_argument("--net_model", help="File name for learned model", type=str, default="")
 parser.add_argument("--net_mean", help="File name for mean values", type=str, default="")
-parser.add_argument("--recompute_label", help="Re-learn the label for each demo", action="store_true")
-
+parser.add_argument("--re_precompute", help="Re-learn the features for each demo", action="store_true")
+parser.add_argument("--deep_feature_types", type=str, default="", help="combination of fc6, fc7, fc8, lp1, lp2, pool1, pool2, pool5, score, label")
 
 args = parser.parse_args()
 
 
 def main():
     task_dir = osp.join(demo_files_dir, args.demo_type)
-    demo_h5_file = osp.join(task_dir, args.demo_type + ".h5")
+    demo_h5_file = osp.join(task_dir, args.demo_type + ".h5") ## change back
     
     demofiles = h5py.File(demo_h5_file, "r+")    
     
-    if args.tps_type in ["label_basic", "label_segment"]:
+    if args.tps_type in ["deep_basic"]:
         is_lenet = False
         if "lenet" == args.net_prototxt.split("_")[0]:
             is_lenet = True
@@ -549,6 +648,13 @@ def main():
             net.set_mean('data', np.load(args.net_mean))
             net.set_raw_scale('data', 255)
             net.set_channel_swap('data', (2,1,0))
+            
+        deep_feature_types = args.deep_feature_types
+        deep_feature_types = deep_feature_types.replace(" ", "")
+        if deep_feature_types == "":
+            deep_feature_types = []
+        else:
+            deep_feature_types = deep_feature_types.split(',')
         
         
     init_tfm = None
@@ -573,32 +679,50 @@ def main():
         
     query_demofiles = []
     dataset_demofiles = []
+    
+#    demo_ind = 0
+#    for demo_name in demofiles:
+#        if demo_ind < args.start_dataset:
+#            query_demofiles.append(demo_name)
+#        else:
+#            dataset_demofiles.append(demo_name) 
+#            
+#        demo_ind += 1   
+                
+                
     demo_ind = 0
     for demo_name in demofiles:
-        if demo_ind < args.start_dataset:
+        if demo_ind <= args.end_query:
             query_demofiles.append(demo_name)
-        else:
-            dataset_demofiles.append(demo_name) 
+        
+        dataset_demofiles.append(demo_name) 
             
         demo_ind += 1   
-                
-                    
+
+                            
     if args.tps_type == "basic":     
         results = tps_basic_dataset(demofiles, query_demofiles, dataset_demofiles, args.parallel, init_tfm)
     elif args.tps_type == "segment":
-        results = tps_segment_dataset(demofiles, query_demofiles, dataset_demofiles, args.parallel, init_tfm)
-    elif args.tps_type == "label_basic":
-        results = tps_label_basic_dataset(demofiles, query_demofiles, dataset_demofiles, net, args.parallel, args.recompute_label, init_tfm)
+        results = tps_segment_dataset(demofiles, query_demofiles, dataset_demofiles, args.parallel, args.re_precompute, init_tfm)
+    elif args.tps_type == "deep_basic":
+        results = tps_deep_basic_dataset(demofiles, query_demofiles, dataset_demofiles, net, deep_feature_types, args.parallel, args.re_precompute, init_tfm)
 
     
-#    if args.use_ar_init:
-#        use_ar = "use_ar"
-#    else:
-#        use_ar = "no_use_ar"
-#        
-#    result_filename = osp.join(task_dir, "result_" + args.tps_type + "_" + use_ar + "_" + str(args.start_dataset) + ".cp")
-#    f = open(result_filename, 'wb')
-#    pickle.dump([results, query_demofiles, dataset_demofiles], f)
+    if args.use_ar_init:
+        use_ar = "use_ar"
+    else:
+        use_ar = "no_use_ar"
+        
+    if args.tps_type in["deep_basic"]:
+        deep_feature_types_name = ""
+        for feature_type in deep_feature_types:
+            deep_feature_types_name = deep_feature_types_name + "_" + feature_type
+
+        result_filename = osp.join(task_dir, "result_" + args.tps_type + "_" + use_ar + "_" + str(args.end_query) + deep_feature_types_name + ".cp")
+    else:
+        result_filename = osp.join(task_dir, "result_" + args.tps_type + "_" + use_ar + "_" + str(args.end_query) + ".cp")
+    f = open(result_filename, 'wb')
+    pickle.dump([results, query_demofiles, dataset_demofiles], f)
     
     
             
