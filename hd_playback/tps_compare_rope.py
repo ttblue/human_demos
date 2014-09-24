@@ -433,12 +433,67 @@ def compute_score_costs(scores1, scores2):
             
     return score_cost_matrix
 
+def compute_euclide_cost(features1, features2):
+    n_features1 = len(features1)
+    n_features2 = len(features2)
+    
+    euclide_cost_matrix = np.zeros([n_features1, n_features2])
+    for i in range(n_features1):
+        for j in range(n_features2):
+            euclide_cost_matrix[i, j] = np.linalg.norm(features1[i] - features2[j])
+    
+    return euclide_cost_matrix
+    
+    
+
+def compute_fc_costs(features1, features2, num_bins):
+    n_features1 = len(features1)
+    n_features2 = len(features2)
+    features1 = features1.reshape(n_features1, features1.size() / n_features1)
+    features2 = features2.reshape(n_features2, features2.size() / n_features2)
+    
+    features1_max = np.max(features1, axis=1)
+    features2_max = np.max(features2, axis=1)
+    
+    features_max = features1_max + features2_max
+    print np.max(features_max), np.median(features_max)
+    
+    cut_off = np.median(features_max)
+    
+    features1_histogram = np.zeros(n_features1, num_bins)
+    features2_histogram = np.zeros(n_features2, num_bins)
+    
+    for i in range(n_features1):
+        feature = features1[i, :]
+        feature = feature[feature > 0]
+        hist = np.histogram(feature, num_bins, [0, cut_off])
+        features1_histogram[i, :] = hist / sum(hist)
+    
+    for i in range(n_features2):
+        feature = features2[i, :]
+        feature = feature[feature > 0]
+        hist = np.histogram(feature, num_bins, [0, cut_off])
+        features2_histogram[i, :] = hist / sum(hist)   
+    
+    feature_cost_matrix = np.zeros([n_features1, n_features2])
+    for i in range(n_features1):
+        for j in range(n_features2):
+            h1 = features1_histogram[i, :]
+            h2 = features2_histogram[j, :]
+            feature_cost_matrix[i, j] = np.square(h1 - h2) / (h1 + h2)
+            
+    return feature_cost_matrix
+
 def compute_feature_costs(feature1, feature2, feature_type):
     
     if feature_type == "label":
         costs = compute_label_costs(feature1, feature2)
     elif feature_type == "score":
         costs = compute_score_costs(feature1, feature2)
+    elif feature_type in ["fc6", "fc7"]:
+        costs = compute_fc_costs(feature1, feature2, 100)
+    elif feature_type in ["fc8"]:
+        costs = compute_euclide_cost(feature1, feature2)
     
     return costs
     
@@ -538,7 +593,7 @@ def tps_deep_basic_parallel(demofiles, query_demo_keys, dataset_demo_keys, deep_
         results = all_results[result_start_ind:result_start_ind + num_dataset_demos]
         costs, fs, corrs = zip(*results)
         choice_ind = np.argmin(costs)
-        query_results[query_demo_key] = (dataset_demo_keys[choice_ind], costs[choice_ind], fs[choice_ind], corrs[choice_ind])
+        query_results[query_demo_key] = (choice_ind, costs, fs[choice_ind], corrs[choice_ind])
         print query_demo_key, query_results[query_demo_key][1]
         result_start_ind += num_dataset_demos
     
