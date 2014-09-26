@@ -377,9 +377,115 @@ def tps_rpm_bij_features(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .00
         f = fit_ThinPlateSpline(x_nd, xtarg_nd, bend_coef = regs[i], wt_n=wt_n, rot_coef = rot_reg)
         g = fit_ThinPlateSpline(y_md, ytarg_md, bend_coef = regs[i], wt_n=wt_m, rot_coef = rot_reg)
     
-    f._cost = tps_cost(f.lin_ag, f.trans_g, f.w_ng, f.x_na, xtarg_nd, regs[i], wt_n=wt_n)/wt_n.mean()
-    g._cost = tps_cost(g.lin_ag, g.trans_g, g.w_ng, g.x_na, ytarg_md, regs[i], wt_n=wt_m)/wt_m.mean()
+    #f._cost = tps_cost(f.lin_ag, f.trans_g, f.w_ng, f.x_na, xtarg_nd, regs[-1], wt_n=wt_n)/wt_n.mean()
+    #g._cost = tps_cost(g.lin_ag, g.trans_g, g.w_ng, g.x_na, ytarg_md, regs[-1], wt_n=wt_m)/wt_m.mean()
+    f._cost_tuple = tps_cost(f.lin_ag, f.trans_g, f.w_ng, f.x_na, xtarg_nd, regs[-1], wt_n=wt_n, return_tuple=True)/wt_n.mean()
+    g._cost_tuple = tps_cost(g.lin_ag, g.trans_g, g.w_ng, g.x_na, ytarg_md, regs[-1], wt_n=wt_m, return_tuple=True)/wt_m.mean()
+    f._cost = f._cost_tuple[2]
+    g._cost = g._cost_tuple[2]
+    
+    return f, g
+
+
+
+def tps_rpm_bij_features2(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_init = .1, rad_final = .005, rot_reg = 1e-3, 
+                plotting = False, plot_cb = None, block_lengths=None, Globals=None, feature_costs = None):
+    """
+    tps-rpm algorithm mostly as described by chui and rangaran
+    reg_init/reg_final: regularization on curvature
+    rad_init/rad_final: radius for correspondence calculation (meters)
+    plotting: 0 means don't plot. integer n means plot every n iterations
+    """
+
+    if block_lengths == None: block_lengths = [(len(x_nd), len(y_md))]
+
+    #adjust for duplicate points to prevent singular matrix errors
+    for pass_num in range(1):
+        for i in range(len(x_nd)):
+            for j in range(len(x_nd)):
+                if i!=j and np.all(x_nd[i]==x_nd[j]):
+                    x_nd[j][0] += 0.000001
+
+    _,d=x_nd.shape
+
+    regs = loglinspace(reg_init, reg_final, n_iter)
+    rads = loglinspace(rad_init, rad_final, n_iter)
+
+    # do a coarse search through rotations
+    # fit_rotation(f, x_nd, y_md)
+
+    f = ThinPlateSpline(d)
+    f.trans_g = np.median(y_md,axis=0) - np.median(x_nd,axis=0)
+    
+    g = ThinPlateSpline(d)
+    g.trans_g = -f.trans_g
+
+    # r_N = None
+
+    x_nd_full = np.array(x_nd)
+    y_md_full = np.array(y_md)
+
+    handles = []
+
+    for i in xrange(n_iter):
+        if i > -1:
+           x_nd = x_nd_full
+           y_md = y_md_full
+
+        r = rads[i]
+
+        prob_nm = block_prob_nm(f, g, x_nd, y_md, block_lengths, r, i) #np.eye(len(x_nd)) #
+        
+        if feature_costs != None and feature_costs != []:
+            sum_feature_cost = np.zeros(feature_costs[0].shape)
+            for feature_cost in feature_costs:
+                sum_feature_cost += feature_cost
+            
+            pi = np.exp(-sum_feature_cost)
+                
+            # rescale the maximum probability to be 1. 
+            # effectively, the outlier priors are multiplied by a visual prior of 1 
+            # (since the outlier points have a visual prior of 1 with any point)
+            pi /= pi.max()
+            prob_nm *= pi
+
+
+        corr_nm, r_N, _ =  balance_matrix3(prob_nm, 10, 1e-1, 2e-1)
+        corr_nm += 1e-9
+
+        wt_n = corr_nm.sum(axis=1)
+        wt_m = corr_nm.sum(axis=0)
+        
+        xtarg_nd = (corr_nm/wt_n[:,None]).dot(y_md)
+        ytarg_md = (corr_nm/wt_m[None,:]).T.dot(x_nd)
+
+        if i > -1 and len(block_lengths) > 1: #set weights for table point matching
+            wt_n, wt_m = adjust_weights(wt_n, wt_m, block_lengths)
+
+        try:
+            f = fit_ThinPlateSpline(x_nd, xtarg_nd, bend_coef = regs[i], wt_n=wt_n, rot_coef = rot_reg)
+            g = fit_ThinPlateSpline(y_md, ytarg_md, bend_coef = regs[i], wt_n=wt_m, rot_coef = rot_reg)
+        except Exception as err:
+            print "error in tps_rpm_bij"
+            print err
+            ipy.embed()
+
+#    f._cost = tps_cost(f.lin_ag, f.trans_g, f.w_ng, f.x_na, xtarg_nd, regs[-1], wt_n=wt_n)/wt_n.mean()
+#    g._cost = tps_cost(g.lin_ag, g.trans_g, g.w_ng, g.x_na, ytarg_md, regs[-1], wt_n=wt_m)/wt_m.mean()
+    
+    f._cost_tuple = tps_cost(f.lin_ag, f.trans_g, f.w_ng, f.x_na, xtarg_nd, regs[-1], wt_n=wt_n, return_tuple=True)/wt_n.mean()
+    g._cost_tuple = tps_cost(g.lin_ag, g.trans_g, g.w_ng, g.x_na, ytarg_md, regs[-1], wt_n=wt_m, return_tuple=True)/wt_m.mean()
+    f._cost = f._cost_tuple[2]
+    g._cost = g._cost_tuple[2]
+
+
+    f.corr_nm = corr_nm
+
+    # if len(block_lengths) > 1 and Globals:
+    #     ipy.embed()
+
     return f,g
+
     
 
 

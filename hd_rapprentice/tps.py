@@ -146,7 +146,7 @@ def tps_cost(lin_ag, trans_g, w_ng, x_na, y_ng, bend_coef, K_nn=None, return_tup
     res_cost = (wt_n[:,None] * (ypred_ng - y_ng)**2).sum()
     bend_cost = bend_coef * sum(np.dot(w_ng[:,g], np.dot(K_nn, w_ng[:,g])) for g in xrange(D))
     if return_tuple:
-        return res_cost, bend_cost, res_cost + bend_cost
+        return res_cost, bend_cost, res_cost + bend_cost, bend_cost / bend_coef * (1 if wt_n == None else wt_n.mean())
     else:
         return res_cost + bend_cost
 

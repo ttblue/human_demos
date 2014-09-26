@@ -137,8 +137,11 @@ def tps_segment_data(demofiles, demo_key, init_tfm):
     return crossing_infos
 
 def load_tps_segment_data(demofiles, demo_key, init_tfm):
-    
-    crossing_infos_group = demofiles[demo_key[0]][demo_key[1]]["crossing_infos"]
+    if init_tfm == None:
+        crossing_infos_group = demofiles[demo_key[0]][demo_key[1]]["crossing_infos"]
+    else:
+        crossing_infos_group = demofiles[demo_key[0]][demo_key[1]]["crossing_infos_ar_init"]
+        
     demo_xyz_list = np.asarray(crossing_infos_group["demo_xyz"])
     demo_pattern_list_ = np.asarray(crossing_infos_group["demo_pattern"])
     demo_pattern_list = []
@@ -177,35 +180,40 @@ def load_tps_segment_data(demofiles, demo_key, init_tfm):
     return crossing_infos
 
 
-def registration_cost_and_tfm_and_corr(xyz0, xyz1, num_iters=30, block_lengths=None):
+def registration_cost_and_tfm_and_corr(xyz0, xyz1, num_iters=10):
     scaled_xyz0, src_params = registration.unit_boxify(xyz0)
     scaled_xyz1, targ_params = registration.unit_boxify(xyz1)
+    
+    
     f, _ = registration.tps_rpm_bij(scaled_xyz0, scaled_xyz1, reg_init=10, reg_final = 0.01, 
-            rad_init = .1, rad_final = .0005, rot_reg=np.r_[1e-4,1e-4,1e-1], n_iter=num_iters, plotting=True, block_lengths=block_lengths)
+            rad_init = .1, rad_final = .0005, rot_reg=np.r_[1e-4,1e-4,1e-1], n_iter=num_iters, plotting=False)
     cost = registration.tps_reg_cost(f)
     #cost = registration.tps_reg_cost(f) + registration.tps_reg_cost(g)
     #g = registration.unscale_tps_3d(g, targ_params, src_params)
     f = registration.unscale_tps_3d(f, src_params, targ_params)
     return (cost, f, f.corr_nm) 
 
-def registration_cost_and_tfm_and_corr_features(xyz0, xyz1, feature_costs, num_iters=30):
+def registration_cost_and_tfm_and_corr_features(xyz0, xyz1, feature_costs, num_iters=10):
     scaled_xyz0, src_params = registration.unit_boxify(xyz0)
     scaled_xyz1, targ_params = registration.unit_boxify(xyz1)
-    f, _ = registration.tps_rpm_bij_features(scaled_xyz0, scaled_xyz1, rot_reg = np.r_[1e-4, 1e-4, 1e-1], n_iter=10,
-                                   reg_init=10, reg_final=0.4, rad_init=0.1, rad_final=0.005,
-                                   outlierfrac=1e-2, feature_costs=feature_costs)
-    
-    cost = registration.tps_reg_cost(f)
+
+#    f, _ = registration.tps_rpm_bij_features(scaled_xyz0, scaled_xyz1, rot_reg = np.r_[1e-4, 1e-4, 1e-1], n_iter=num_iters,
+#                                             reg_init=10, reg_final=0.01, rad_init = .1, rad_final = .0005,
+#                                             outlierfrac=1e-2, feature_costs=feature_costs)
+
+    f, _ = registration.tps_rpm_bij_features(scaled_xyz0, scaled_xyz1, reg_init=10, reg_final = 0.01, 
+            rad_init = .1, rad_final = .0005, rot_reg=np.r_[1e-4,1e-4,1e-1], n_iter=num_iters, plotting=False, feature_costs=feature_costs)
+
+    #cost = registration.tps_reg_cost(f)
+    res_cost = f._cost_tuple[0]
+    bend_cost = f._cost_tuple[3]
     f = registration.unscale_tps_3d(f, src_params, targ_params)
     
-    return (cost, f, f.corr_nm)
+    return (res_cost, bend_cost, f, f.corr_nm)
 
 
 
 def tps_segment_core(demofiles, demo_key1, demo_key2, parallel, init_tfm = None):
-#    tps_segment_crossing_infos1 = tps_segment_data(demofiles, demo_key1, init_tfm)
-#    tps_segment_crossing_infos2 = tps_segment_data(demofiles, demo_key2, init_tfm)
-
     tps_segment_crossing_infos1 = load_tps_segment_data(demofiles, demo_key1, init_tfm)
     tps_segment_crossing_infos2 = load_tps_segment_data(demofiles, demo_key2, init_tfm)
     
@@ -258,10 +266,14 @@ def tps_segment_dataset(demofiles, query_demofiles, dataset_demofiles, parallel,
                 demo_key = (demo_name, seg_name)
                 crossing_infos = tps_segment_data(demofiles, demo_key, init_tfm)
                 
-                if not "crossing_infos" in demo.keys():
-                    demo.create_group("crossing_infos")
-                    
-                crossing_infos_group = demo["crossing_infos"]
+                if init_tfm == None:
+                    if not "crossing_infos" in demo.keys():
+                        demo.create_group("crossing_infos")
+                    crossing_infos_group = demo["crossing_infos"]
+                else:
+                    if not "crossing_infos_ar_init" in demo.keys():
+                        demo.create_group("crossing_infos_ar_init")
+                    crossing_infos_group = demo["crossing_infos_ar_init"]                    
                 
                 demo_xyz_list, demo_pattern_list, demo_inds_list, demo_pairs_list, demo_rope_closed_list, x_weights_list, demo_cloud_list = zip(*crossing_infos)
                 
@@ -298,7 +310,7 @@ def tps_segment_dataset(demofiles, query_demofiles, dataset_demofiles, parallel,
                 if "demo_cloud" in crossing_infos_group.keys():
                     crossing_infos_group["demo_cloud"][()] = np.asarray(demo_cloud_list)
                 else:
-                    crossing_infos_group["demo_cloud"] = np.asarray(demo_cloud_list)   
+                    crossing_infos_group["demo_cloud"] = np.asarray(demo_cloud_list)  
                     
         demofiles.flush()
                       
@@ -313,12 +325,11 @@ def tps_segment_dataset(demofiles, query_demofiles, dataset_demofiles, parallel,
             results.append(result)
             
         costs, fs, corrs = zip(*results)
-        choice_ind = np.argmin(costs)
         
-        query_results[query_demo_key] = (choice_ind, costs, fs[choice_ind], corrs[choice_ind])
-        print query_demo_key, costs[choice_ind]
+        query_results[query_demo_key] = {"costs": costs, "fs": fs, "corrs": corrs}
+        print query_demo_key
     
-    return query_results
+    return {"results": query_results, "queries": query_demo_keys, "datasets": dataset_demo_keys, "feature_types": []}    
 
 
 
@@ -345,11 +356,10 @@ def tps_basic_sequential(demofiles, query_demo_keys, dataset_demo_keys, init_tfm
             query_result.append(tps_result)
             
         costs, fs, corrs = zip(*query_result)
-        choice_ind = np.argmin(costs)
-        query_results[query_demo_key] = (choice_ind, costs, fs[choice_ind], corrs[choice_ind])
-        print query_demo_key, costs[choice_ind]
+        query_results[query_demo_key] = {"costs": costs, "fs": fs, "corrs": corrs}
+        print query_demo_key
         
-    return query_results
+    return {"results": query_results, "queries": query_demo_keys, "datasets": dataset_demo_keys, "feature_types": []}    
     
     
 def tps_basic_parallel(demofiles, query_demo_keys, dataset_demo_keys, init_tfm = None):
@@ -380,12 +390,11 @@ def tps_basic_parallel(demofiles, query_demo_keys, dataset_demo_keys, init_tfm =
     for query_demo_key in query_demo_keys:
         results = all_results[result_start_ind:result_start_ind + num_dataset_demos]
         costs, fs, corrs = zip(*results)
-        choice_ind = np.argmin(costs)
-        query_results[query_demo_key] = (choice_ind, costs, fs[choice_ind], corrs[choice_ind])
-        print query_demo_key, costs[choice_ind]
+        query_results[query_demo_key] = {"costs": costs, "fs": fs, "corrs": corrs}
+        print query_demo_key
         result_start_ind += num_dataset_demos
     
-    return query_results    
+    return {"results": query_results, "queries": query_demo_keys, "datasets": dataset_demo_keys, "feature_types": []}    
  
 
 def tps_basic_dataset(demofiles, query_demofiles, dataset_demofiles, parallel, init_tfm = None):
@@ -409,16 +418,21 @@ def tps_basic_dataset(demofiles, query_demofiles, dataset_demofiles, parallel, i
     return query_results
 
 
+
+LABEL_COST_MATRIX_PARAM = np.array([[0, 1, 2, 3], [1, 0, 1, 2], [2, 1, 0, 1], [3, 2, 1, 0]])
+
+
 def compute_label_costs(labels1, labels2):
     n_labels1 = len(labels1)
     n_labels2 = len(labels2)
     label_cost_matrix = np.zeros([n_labels1, n_labels2])
     for i in range(n_labels1):
         for j in range(n_labels2):
-            if labels1[i] == labels2[j]:
-                label_cost_matrix[i, j] = 0
-            else:
-                label_cost_matrix[i, j] = 1
+#            if labels1[i] == labels2[j]:
+#                label_cost_matrix[i, j] = 0
+#            else:
+#                label_cost_matrix[i, j] = 1
+            label_cost_matrix[i, j] = LABEL_COST_MATRIX_PARAM[labels1[i], labels2[j]]
                 
     return label_cost_matrix
 
@@ -429,9 +443,9 @@ def compute_score_costs(scores1, scores2):
     score_cost_matrix = np.zeros([n_scores1, n_scores2])
     for i in range(n_scores1):
         for j in range(n_scores2):
-            score_cost_matrix[i, j] = entropy(scipy.asarray(scores1[i]), scipy.asarray(scores2[j]))
+            score_cost_matrix[i, j] = entropy(scipy.asarray(scores1[i]), scipy.asarray(scores2[j])) + entropy(scipy.asarray(scores2[j]), scipy.asarray(scores1[i]))
             
-    return score_cost_matrix
+    return score_cost_matrix 
 
 def compute_euclide_cost(features1, features2):
     n_features1 = len(features1)
@@ -443,7 +457,9 @@ def compute_euclide_cost(features1, features2):
             euclide_cost_matrix[i, j] = np.linalg.norm(features1[i] - features2[j])
     
     return euclide_cost_matrix
-    
+
+def compute_filter_cost(features1, features2):
+    pass
     
 
 def compute_fc_costs(features1, features2, num_bins):
@@ -500,7 +516,7 @@ def compute_feature_costs(feature1, feature2, feature_type):
     
     
 
-def tps_label_basic_core(demofiles, demo_key1, demo_key2, deep_feature_types, init_tfm = None):
+def tps_deep_basic_core(demofiles, demo_key1, demo_key2, deep_feature_types, init_tfm = None):
     demo1 = demofiles[demo_key1[0]][demo_key1[1]]
     demo2 = demofiles[demo_key2[0]][demo_key2[1]]
     demo_xyz1 = np.asarray(demo["downsampled_cloud_xyz"])
@@ -536,15 +552,14 @@ def tps_deep_basic_sequential(demofiles, query_demo_keys, dataset_demo_keys, dee
     for query_demo_key in query_demo_keys:
         query_result = []
         for dataset_demo_key in dataset_demo_keys:
-            tps_result = tps_label_basic_core(demofiles, query_demo_key, dataset_demo_key, deep_feature_types, init_tfm)
+            tps_result = tps_deep_basic_core(demofiles, query_demo_key, dataset_demo_key, deep_feature_types, init_tfm)
             query_result.append(tps_result)
             
-        costs, fs, corrs = zip(*query_result)
-        choice_ind = np.argmin(costs)
-        query_results[query_demo_key] = (choice_ind, costs, fs[choice_ind], corrs[choice_ind])
-        print query_demo_key, costs[choice_ind]
+        res_costs, bend_costs, fs, corrs = zip(*query_result)
+        query_results[query_demo_key] = {"costs": bend_costs, "res_costs": res_costs, "fs": fs, "corrs": corrs}
+        print query_demo_key
         
-    return query_results
+    return {"results": query_results, "queries": query_demo_keys, "datasets": dataset_demo_keys, "feature_types": deep_feature_types}    
     
     
 def tps_deep_basic_parallel(demofiles, query_demo_keys, dataset_demo_keys, deep_feature_types, init_tfm = None):
@@ -581,23 +596,44 @@ def tps_deep_basic_parallel(demofiles, query_demo_keys, dataset_demo_keys, deep_
             learned_features = demofiles[demo_key[0]][demo_key[1]]["learned_features"]
             feature.append(np.asarray(learned_features[feature_type]))
         dataset_features[feature_type] = feature       
+        
+        
+    n_queries = len(query_demo_keys)
+    n_datasets = len(dataset_demo_keys)
+    valid_tasks = []
+    for (i, query_key) in zip(range(n_queries), query_demo_keys):
+        query_labels = demofiles[query_key[0]][query_key[1]]["learned_features"]["label"]
+        for (j, dataset_key) in zip(range(n_datasets), dataset_demo_keys):
+            dataset_labels = demofiles[dataset_key[0]][dataset_key[1]]["learned_features"]["label"]
             
+            # check whether one has crossing and the other does not
+            crossing_consistent = ((3 in query_labels) and (3 in dataset_labels)) or (not (3 in query_labels) and not (3 in dataset_labels))
+            if not crossing_consistent:
+                print "filter out", query_key, dataset_key
+            else:
+                valid_tasks.append((i, j))      
+            
+            
+            
+ 
+    
+#    all_results = Parallel(n_jobs=4, verbose=51)(delayed(registration_cost_and_tfm_and_corr_features)(query_demo_xyzs[i], dataset_demo_xyzs[j], [compute_feature_costs(query_features[feature_type][i], dataset_features[feature_type][j], feature_type) for feature_type in deep_feature_types])
+#                                                 for i in range(len(query_demo_xyzs)) for j in range(len(dataset_demo_xyzs)))
     
     all_results = Parallel(n_jobs=4, verbose=51)(delayed(registration_cost_and_tfm_and_corr_features)(query_demo_xyzs[i], dataset_demo_xyzs[j], [compute_feature_costs(query_features[feature_type][i], dataset_features[feature_type][j], feature_type) for feature_type in deep_feature_types])
-                                                 for i in range(len(query_demo_xyzs)) for j in range(len(dataset_demo_xyzs)))
+                                                 for (i, j) in valid_tasks)
     
     query_results = {}
     result_start_ind = 0
     num_dataset_demos = len(dataset_demo_keys)
     for query_demo_key in query_demo_keys:
         results = all_results[result_start_ind:result_start_ind + num_dataset_demos]
-        costs, fs, corrs = zip(*results)
-        choice_ind = np.argmin(costs)
-        query_results[query_demo_key] = (choice_ind, costs, fs[choice_ind], corrs[choice_ind])
-        print query_demo_key, query_results[query_demo_key][1]
+        res_costs, bend_costs, fs, corrs = zip(*results)
+        query_results[query_demo_key] = {"costs": bend_costs, "res_costs": res_costs, "fs": fs, "corrs": corrs}
+        print query_demo_key
         result_start_ind += num_dataset_demos
     
-    return query_results    
+    return {"results": query_results, "queries": query_demo_keys, "datasets": dataset_demo_keys, "feature_types": deep_feature_types}    
 
 
 
@@ -642,7 +678,7 @@ def tps_deep_basic_dataset(demofiles, query_demofiles, dataset_demofiles, net, d
                     else:
                         features_group[feature_name] = demo_features[feature_name]           
                         
-                if "learned_label" in features_group.keys():
+                if "label" in features_group.keys():
                     features_group["label"][()] = np.expand_dims(demo_label, axis=1) 
                 else:
                     features_group["label"] = demo_label    
@@ -681,7 +717,7 @@ args = parser.parse_args()
 
 def main():
     task_dir = osp.join(demo_files_dir, args.demo_type)
-    demo_h5_file = osp.join(task_dir, args.demo_type + ".h5") ## change back
+    demo_h5_file = osp.join(task_dir, args.demo_type + ".h5")
     
     demofiles = h5py.File(demo_h5_file, "r+")    
     
@@ -747,7 +783,7 @@ def main():
                 
     demo_ind = 0
     for demo_name in demofiles:
-        if demo_ind <= args.end_query:
+        if demo_ind < args.end_query:
             query_demofiles.append(demo_name)
         
         dataset_demofiles.append(demo_name) 
@@ -777,7 +813,7 @@ def main():
     else:
         result_filename = osp.join(task_dir, "result_" + args.tps_type + "_" + use_ar + "_" + str(args.end_query) + ".cp")
     f = open(result_filename, 'wb')
-    pickle.dump([results, query_demofiles, dataset_demofiles], f)
+    pickle.dump(results, f)
     
     
             
