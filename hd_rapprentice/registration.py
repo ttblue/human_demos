@@ -292,7 +292,7 @@ def tps_rpm(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_init =
 
 def tps_rpm_bij_features(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_init = .1, rad_final = .005, rot_reg = 1e-3, 
                             plotting = False, plot_cb = None, x_weights = None, y_weights = None, outlierprior = .1, outlierfrac = 2e-1, 
-                            feature_costs = None):
+                            feature_costs = None, feature_weights_initial = None, feature_weights_final = None):
     """
     tps-rpm algorithm mostly as described by chui and rangaran
     reg_init/reg_final: regularization on curvature
@@ -307,6 +307,18 @@ def tps_rpm_bij_features(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .00
     _,d=x_nd.shape
     regs = loglinspace(reg_init, reg_final, n_iter)
     rads = loglinspace(rad_init, rad_final, n_iter)
+    
+    
+    feature_weights = []
+    if feature_weights_initial != None and feature_weights_final != None:
+        for i in range(len(feature_weights_initial)):
+            feature_weight = loglinspace(feature_weights_initial[i], feature_weights_final[i], n_iter)
+            feature_weights.append(feature_weight)
+            
+        print feature_weights
+    else:
+        feature_weights = None
+
 
     f = ThinPlateSpline(d)
     f.trans_g = np.median(y_md,axis=0) - np.median(x_nd,axis=0) # align the medians
@@ -346,8 +358,8 @@ def tps_rpm_bij_features(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .00
 
         if feature_costs != None and feature_costs != []:
             sum_feature_cost = np.zeros(feature_costs[0].shape)
-            for feature_cost in feature_costs:
-                sum_feature_cost += feature_cost
+            for (feature_id, feature_cost) in zip(range(len(feature_costs)), feature_costs):
+                sum_feature_cost += feature_cost * (1 if feature_weights == None else feature_weights[feature_id][i])
             
             pi = np.exp(-sum_feature_cost)
                 
@@ -356,6 +368,7 @@ def tps_rpm_bij_features(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .00
             # (since the outlier points have a visual prior of 1 with any point)
             pi /= pi.max()
             prob_nm *= pi
+
         
         corr_nm, r_N, _ =  balance_matrix3_prior(prob_nm, 10, x_priors, y_priors, outlierfrac) # edit final value to change outlier percentage
         corr_nm += 1e-9
@@ -389,7 +402,7 @@ def tps_rpm_bij_features(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .00
 
 
 def tps_rpm_bij_features2(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_init = .1, rad_final = .005, rot_reg = 1e-3, 
-                plotting = False, plot_cb = None, block_lengths=None, Globals=None, feature_costs = None):
+                plotting = False, plot_cb = None, block_lengths=None, Globals=None, feature_costs = None, feature_weights_initial = None, feature_weights_final = None):
     """
     tps-rpm algorithm mostly as described by chui and rangaran
     reg_init/reg_final: regularization on curvature
@@ -410,6 +423,16 @@ def tps_rpm_bij_features2(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .0
 
     regs = loglinspace(reg_init, reg_final, n_iter)
     rads = loglinspace(rad_init, rad_final, n_iter)
+    
+    feature_weights = []
+    if feature_weights_initial != None and feature_weights_final != None:
+        for i in range(len(feature_weights_initial)):
+            feature_weight = loglinspace(feature_weights_initial[i], feature_weights_final[i], n_iter)
+            feature_weights.append(feature_weight)
+        print feature_weights
+    else:
+        feature_weights = None
+    
 
     # do a coarse search through rotations
     # fit_rotation(f, x_nd, y_md)
@@ -438,8 +461,8 @@ def tps_rpm_bij_features2(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .0
         
         if feature_costs != None and feature_costs != []:
             sum_feature_cost = np.zeros(feature_costs[0].shape)
-            for feature_cost in feature_costs:
-                sum_feature_cost += feature_cost
+            for (feature_id, feature_cost) in zip(range(len(feature_costs)), feature_costs):
+                sum_feature_cost += feature_cost * (1 if feature_weights == None else feature_weights[feature_id][i])
             
             pi = np.exp(-sum_feature_cost)
                 
