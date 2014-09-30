@@ -24,9 +24,9 @@ from collections import defaultdict
 import IPython as ipy
 from pdb import pm
 # from svds import svds
-DISCRETIZATION_LEVEL = 40
+DISCRETIZATION_LEVEL = 8
 MAX_CP_DIST = .05
-rot_matrices = [np.matrix([[np.cos(theta), -1*np.sin(theta), 0], 
+rot_matrices = [np.array([[np.cos(theta), -1*np.sin(theta), 0], 
                            [np.sin(theta), np.cos(theta), 0], 
                            [0, 0, 1]]) 
                 for theta in np.linspace(-1*np.pi, np.pi, DISCRETIZATION_LEVEL)]
@@ -216,44 +216,6 @@ def unscale_tps(f, src_params, targ_params):
     aff_out = Affine(lin_out, trans_out)
 
     return Composition([aff_in, f, aff_out])
-    
-    
-def fit_rotation(tps_fn, src_pts, tgt_pts):
-    """
-    searches through several rotations of src
-
-    sets the linear transformation of tps_fn to be the 
-    one that minimizes icp between the two pt clouds
-
-    This works, but spends a lot of time querying. Not too sure
-    how we want to combat this. 
-    """
-    _, d = src_pts.shape
-    tps_local = ThinPlateSpline(d)
-    tps_local.trans_g = tps_fn.trans_g
-    src_median = np.median(src_pts, axis=0)
-    src_pts = src_pts - src_median # so we rotate around 0
-    tps_local.trans_g += src_median # this will translate the points back
-    tgt_kd = sp_spat.KDTree(tgt_pts)
-    results = []
-    for rot in rot_matrices:
-        tps_local.lin_ag = rot
-        rot_pts = tps_fn.transform_points(src_pts)
-        rot_kd = sp_spat.KDTree(rot_pts)
-        # compute bi_directional closest-point cost
-        dist_mat = rot_kd.sparse_distance_matrix(tgt_kd, MAX_CP_DIST)
-        min_tgt_dists = MAX_CP_DIST*np.ones(len(tgt_kd.data))
-        min_rot_dists = MAX_CP_DIST*np.ones(len(rot_kd.data))        
-        for (rot_pt, tgt_pt), dist in dist_mat.iteritems():
-            min_rot_dists[rot_pt] = min(min_rot_dists[rot_pt], dist)
-            min_tgt_dists[tgt_pt] = min(min_tgt_dists[tgt_pt], dist)
-        cost = np.linalg.norm(np.r_[min_tgt_dists, min_rot_dists])
-        results.append(cost)
-    tps_fn.lin_ag = rot_matrices[np.argmin(results)]
-    tps_fn.trans_g= np.dot(tps_fn.lin_ag, -1*src_median) \
-                             + tps_local.trans_g[None,:]
-    tps_fn.trans_g = np.asarray(tps_fn.trans_g)[0,:]
-
 
 def tps_rpm(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_init = .1, rad_final = .005, rot_reg=1e-4,
             plotting = False, f_init = None, plot_cb = None):
@@ -290,7 +252,7 @@ def tps_rpm(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_init =
     return f
 
 
-def tps_rpm_bij_features(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_init = .1, rad_final = .005, rot_reg = 1e-3, 
+def tps_rpm_bij_features2(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_init = .1, rad_final = .005, rot_reg = 1e-3, 
                             plotting = False, plot_cb = None, x_weights = None, y_weights = None, outlierprior = .1, outlierfrac = 2e-1, 
                             feature_costs = None, feature_weights_initial = None, feature_weights_final = None):
     """
@@ -400,8 +362,224 @@ def tps_rpm_bij_features(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .00
     return f, g
 
 
+from sklearn.neighbors import NearestNeighbors
+def icp2(a, b, init_pose=(0,0,0), no_iterations = 10):
+    '''
+    The Iterative Closest Point estimator.
+    Takes two cloudpoints a[x,y], b[x,y], an initial estimation of
+    their relative pose and the number of iterations
+    Returns the affine transform that transforms
+    the cloudpoint a to the cloudpoint b.
+    Note:
+        (1) This method works for cloudpoints with minor
+        transformations. Thus, the result depents greatly on
+        the initial pose estimation.
+        (2) A large number of iterations does not necessarily
+        ensure convergence. Contrarily, most of the time it
+        produces worse results.
+    '''
 
-def tps_rpm_bij_features2(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_init = .1, rad_final = .005, rot_reg = 1e-3, 
+    src = np.array(a, copy=True).astype(np.float32)
+    dst = np.array(b, copy=True).astype(np.float32)
+
+    #Initialise with the initial pose estimation
+    Tr = np.array([[np.cos(init_pose[2]),-np.sin(init_pose[2]),init_pose[0]],
+                   [np.sin(init_pose[2]), np.cos(init_pose[2]),init_pose[1]],
+                   [0,                    0,                   1          ]])
+
+    src = cv2.transform(src, Tr[0:2])
+
+    for i in range(no_iterations):
+        #Find the nearest neighbours between the current source and the
+        #destination cloudpoint
+        nbrs = NearestNeighbors(n_neighbors=1, algorithm='auto',
+                                warn_on_equidistant=False).fit(dst[0])
+        distances, indices = nbrs.kneighbors(src[0])
+
+        #Compute the transformation between the current source
+        #and destination cloudpoint
+        T = cv2.estimateRigidTransform(src, dst[0, indices.T], False)
+        #Transform the previous source and update the
+        #current source cloudpoint
+        src = cv2.transform(src, T)
+        #Save the transformation from the actual source cloudpoint
+        #to the destination
+        Tr = np.dot(Tr, np.vstack((T,[0,0,1])))
+    return Tr[0:2]
+
+
+
+import vtk
+from vtk import *
+
+def icp(source, target, num_iter):
+    sourcePoints = vtk.vtkPoints()
+    sourceVertices = vtk.vtkCellArray()
+    
+    for i in range(len(source)):
+        id = sourcePoints.InsertNextPoint(source[i])
+        sourceVertices.InsertNextCell(1)
+        sourceVertices.InsertCellPoint(id)
+        
+    sourceData = vtk.vtkPolyData()
+    sourceData.SetPoints(sourcePoints)
+    sourceData.SetVerts(sourceVertices)
+    
+    if vtk.VTK_MAJOR_VERSION <= 5:
+        sourceData.Update()
+        
+    targetPoints = vtk.vtkPoints()
+    targetVertices = vtk.vtkCellArray()
+    
+    for i in range(len(target)):
+        id = targetPoints.InsertNextPoint(target[i])
+        targetVertices.InsertNextCell(1)
+        targetVertices.InsertCellPoint(id)
+        
+    targetData = vtk.vtkPolyData()
+    targetData.SetPoints(targetPoints)
+    targetData.SetVerts(targetVertices)
+    
+    if vtk.VTK_MAJOR_VERSION <= 5:
+        targetData.Update()
+        
+    icp = vtk.vtkIterativeClosestPointTransform()
+    icp.SetSource(sourceData)
+    icp.SetTarget(targetData)
+    icp.GetLandmarkTransform().SetModeToRigidBody()
+    icp.SetMaximumNumberOfIterations(num_iter)
+    icp.StartByMatchingCentroidsOn()
+    icp.Modified()
+    icp.Update()
+
+    tfm = np.zeros([3, 4])
+    for i in range(3):
+        for j in range(4):
+            tfm[i, j] = icp.GetLandmarkTransform().GetMatrix().GetElement(i, j)
+            
+    return tfm[:, :3], tfm[:, 3]
+        
+    
+    
+
+from scipy.cluster.vq import kmeans2
+from hd_rapprentice.rope_initialization import points_to_graph
+import networkx as nx
+
+
+def graph_expansion_edges(G,sources):
+    visited=set(sources)
+    stack= []
+    for source in sources:
+        stack.append((source,iter(G[source])))
+    while stack:
+        parent,children = stack[0]
+        try:
+            child = next(children)
+            if child not in visited:
+                yield parent,child
+                visited.add(child)
+                stack.append((child,iter(G[child])))
+        except StopIteration:
+            stack.pop(0)
+            
+def graph_expansion(G, sources, n):
+    nodes = []
+    for (s, t) in graph_expansion_edges(G, sources):
+        nodes.append(t)
+        if len(nodes) == n:
+            break
+    return nodes
+
+def tps_rpm_bij_features_rough(x_nd, y_md, xlabel_nd = None, ylabel_md = None, n_iter = 20, reg_init = .1, reg_final = .001, rad_init = .1, rad_final = .005, rot_reg = 1e-3, 
+                                  plotting = False, plot_cb = None):
+    
+    if (not 3 in xlabel_nd) and (not 3 in ylabel_md):
+        x_endpoints_indices = np.where(xlabel_nd == 1)[0]
+        y_endpoints_indices = np.where(ylabel_md == 1)[0]
+        
+        x_endpoints = x_nd[x_endpoints_indices]
+        y_endpoints = y_md[y_endpoints_indices]
+        
+
+        centroid_x, x_class_labels = kmeans2(x_endpoints, 2)
+        centroid_y, y_class_labels = kmeans2(y_endpoints, 2)
+            
+        
+        x_endpoints_class_1_indices = x_endpoints_indices[np.where(x_class_labels == 0)[0]]
+        x_endpoints_class_2_indices = x_endpoints_indices[np.where(x_class_labels == 1)[0]]
+        y_endpoints_class_1_indices = y_endpoints_indices[np.where(y_class_labels == 0)[0]]
+        y_endpoints_class_2_indices = y_endpoints_indices[np.where(y_class_labels == 1)[0]]
+        
+        rx = 0.025
+        while True:
+            Gx = points_to_graph(x_nd, rx)
+            if len(nx.connected_components(Gx)) < 4:
+                break
+            else:
+                rx = 0.025 * 1.5
+                
+        ry = 0.025
+        while True:
+            Gy = points_to_graph(y_md, ry)
+            if len(nx.connected_components(Gy)) < 4:
+                break
+            else:
+                ry = 0.025 * 1.5
+        
+        num_x = np.round(len(x_nd) * 0.3).astype(int)
+        x_graph_indices_class_1 = graph_expansion(Gx, x_endpoints_class_1_indices, num_x)
+        x_graph_indices_class_2 = graph_expansion(Gx, x_endpoints_class_2_indices, num_x)
+        num_x_1 = len(x_graph_indices_class_1)
+        num_x_2 = len(x_graph_indices_class_2)
+
+        num_y = np.round(len(y_md) * 0.3).astype(int)
+        y_graph_indices_class_1 = graph_expansion(Gy, y_endpoints_class_1_indices, num_y)
+        y_graph_indices_class_2 = graph_expansion(Gy, y_endpoints_class_2_indices, num_y)
+        num_y_1 = len(y_graph_indices_class_1)
+        num_y_2 = len(y_graph_indices_class_2)
+        
+        # print num_x, num_x_1, num_x_2, num_y, num_y_1, num_y_2, len(nx.connected_components(Gx)), len(nx.connected_components(Gy))
+
+        
+        
+        # type a: class1-class1, class2-class2
+        x_new_a = np.concatenate([x_nd[x_graph_indices_class_1], x_nd[x_graph_indices_class_2]])
+        y_new_a = np.concatenate([y_md[y_graph_indices_class_1], y_md[y_graph_indices_class_2]])
+        
+        
+        # type b: class1-class2, class2-class1
+        x_new_b = np.concatenate([x_nd[x_graph_indices_class_2], x_nd[x_graph_indices_class_1]])
+        y_new_b = np.concatenate([y_md[y_graph_indices_class_1], y_md[y_graph_indices_class_2]])
+        
+        
+        f_a, g_a = tps_rpm_bij_features(x_new_a, y_new_a, None, None, False, n_iter, reg_init, reg_final, rad_init, rad_final, rot_reg, plotting, plot_cb, 
+                                    [(num_x_1, num_y_1), (num_x_2, num_y_2)])
+
+        
+        f_b, g_b = tps_rpm_bij_features(x_new_b, y_new_b, None, None, False, n_iter, reg_init, reg_final, rad_init, rad_final, rot_reg, plotting, plot_cb, 
+                                    [(num_x_2, num_y_1), (num_x_1, num_y_2)])
+        
+        
+        
+        f_cost_a = tps_reg_cost(f_a)
+        f_cost_b = tps_reg_cost(f_b)
+        
+        if f_cost_a > f_cost_b:
+            return f_b, g_b
+        else:
+            return f_a, g_a
+    else:
+        return None, None
+        
+        
+
+        
+        
+        
+
+
+def tps_rpm_bij_features(x_nd, y_md, xlabel_nd = None, ylabel_md = None, rough_init = False, n_iter = 20, reg_init = .1, reg_final = .001, rad_init = .1, rad_final = .005, rot_reg = 1e-3, 
                 plotting = False, plot_cb = None, block_lengths=None, Globals=None, feature_costs = None, feature_weights_initial = None, feature_weights_final = None):
     """
     tps-rpm algorithm mostly as described by chui and rangaran
@@ -429,19 +607,45 @@ def tps_rpm_bij_features2(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .0
         for i in range(len(feature_weights_initial)):
             feature_weight = loglinspace(feature_weights_initial[i], feature_weights_final[i], n_iter)
             feature_weights.append(feature_weight)
-        print feature_weights
     else:
         feature_weights = None
-    
+        
+    if rough_init:
+        f, g = tps_rpm_bij_features_rough(x_nd, y_md, xlabel_nd, ylabel_md, n_iter, reg_init, reg_final, rad_init, rad_final, rot_reg)
+        if f == None:
+            f = ThinPlateSpline(d)
+            f.trans_g = np.median(y_md,axis=0) - np.median(x_nd,axis=0)
+        
+            g = ThinPlateSpline(d)
+            g.trans_g = -f.trans_g            
+            
+    else:
+        f = ThinPlateSpline(d)
+        f.trans_g = np.median(y_md,axis=0) - np.median(x_nd,axis=0)
+        
+        g = ThinPlateSpline(d)
+        g.trans_g = -f.trans_g
 
-    # do a coarse search through rotations
-    # fit_rotation(f, x_nd, y_md)
 
-    f = ThinPlateSpline(d)
-    f.trans_g = np.median(y_md,axis=0) - np.median(x_nd,axis=0)
+#    R, T = icp(x_nd, y_md, 100)
+#        
+#    f = ThinPlateSpline(d)
+#    f.trans_g = T
+#    f.lin_ag = R.T
+#    
+#    g = ThinPlateSpline(d)
+#    g.lin_ag = R
+#    g.trans_g = - np.dot(R.T, T)
+
+
+
+
+#    f = ThinPlateSpline(d)
+#    f.trans_g = np.median(y_md,axis=0) - np.median(x_nd,axis=0)
+#        
+#    g = ThinPlateSpline(d)
+#    g.trans_g = -f.trans_g            
     
-    g = ThinPlateSpline(d)
-    g.trans_g = -f.trans_g
 
     # r_N = None
 
@@ -457,7 +661,7 @@ def tps_rpm_bij_features2(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .0
 
         r = rads[i]
 
-        prob_nm = block_prob_nm(f, g, x_nd, y_md, block_lengths, r, i) #np.eye(len(x_nd)) #
+        prob_nm = block_prob_nm(f, g, x_nd, y_md, block_lengths, r, i)
         
         if feature_costs != None and feature_costs != []:
             sum_feature_cost = np.zeros(feature_costs[0].shape)
@@ -591,8 +795,29 @@ def tps_rpm_bij(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_in
     return f,g
 
 
-
-def block_prob_nm(f, g, x_nd, y_md, block_lengths, r,i):
+def block_prob_nm(f, g, x_nd, y_md, block_lengths, r, i):
+    if block_lengths == None:
+        xwarped_nd = f.transform_points(x_nd)
+        ywarped_md = g.transform_points(y_md)
+        fwddist = ssd.cdist(xwarped_nd, y_md,'euclidean')
+        invdist = ssd.cdist(x_nd, ywarped_md,'euclidean')
+        prob_nm = np.exp( -(fwddist + invdist) / (2*r) )
+    else:
+        prob_nm = np.zeros((len(x_nd), len(y_md)))
+        startb = (0, 0)
+        for xb, yb in block_lengths:
+            x_bd = x_nd[startb[0]:startb[0]+xb]
+            y_bd = y_md[startb[1]:startb[1]+yb]
+            xwarped_bd = f.transform_points(x_bd)
+            ywarped_bd = g.transform_points(y_bd)
+            fwddist_bb = ssd.cdist(xwarped_bd, y_bd,'euclidean')
+            invdist_bb = ssd.cdist(x_bd, ywarped_bd,'euclidean')
+            prob_nm[startb[0]:startb[0]+xb,startb[1]:startb[1]+yb] = np.exp( -(fwddist_bb + invdist_bb) / (2*r) )
+            startb = startb[0] + xb, startb[1] + yb
+        
+    return prob_nm
+        
+def block_prob_nm2(f, g, x_nd, y_md, block_lengths, r,i):
     xwarped_nd = f.transform_points(x_nd)
     ywarped_md = g.transform_points(y_md)
     fwddist = ssd.cdist(xwarped_nd, y_md,'euclidean')

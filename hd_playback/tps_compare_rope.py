@@ -171,12 +171,8 @@ def load_tps_segment_data(demofiles, demo_key, init_tfm):
     crossing_infos = []
     n = len(demo_xyz_list)
     for i in range(n):
-        #import IPython
-        #IPython.embed()
-        #crossing_infos.append((demo_xyz_list[i], demo_pattern_list[i], demo_inds_list[i], demo_pairs_list[i], demo_rope_closed_list[i], x_weights_list[i], demo_cloud_list[i]))
         crossing_infos.append((demo_xyz_list[i], demo_pattern_list[i], demo_inds_list[i], demo_pairs_list[i], demo_rope_closed_list[i], x_weights_list[i], demo_cloud_list[i]))
  
-     
     return crossing_infos
 
 
@@ -193,21 +189,96 @@ def registration_cost_and_tfm_and_corr(xyz0, xyz1, num_iters=10):
     f = registration.unscale_tps_3d(f, src_params, targ_params)
     return (cost, f, f.corr_nm) 
 
-def registration_cost_and_tfm_and_corr_features(xyz0, xyz1, feature_costs, feature_weights_initial, feature_weights_final, num_iters=10):
-    scaled_xyz0, src_params = registration.unit_boxify(xyz0)
+
+def rotate_about_median(xyz, theta, median=None):
+    """
+    rotates xyz by theta around the median along the x, y dimensions
+    """
+    if median==None:
+        median = np.median(xyz, axis=0)
+    centered_xyz = xyz - median
+    if np.shape(theta):
+        r_mat = theta
+        rotated_xyz = centered_xyz.dot(r_mat)
+        rotated_xyz = rotated_xyz - np.median(rotated_xyz, axis=0) #recenter to avoid numerical issues - hacky
+    else:
+        r_mat = np.eye(3)
+        r_mat[0:2, 0:2] = np.array([[np.cos(theta), -np.sin(theta)],[np.sin(theta), np.cos(theta)]])
+        rotated_xyz = centered_xyz.dot(r_mat)
+    new_xyz = rotated_xyz + median
+    return new_xyz
+
+def registration_cost(xyz0, xyz1, num_iters=10, block_lengths=None):
+    scaled_xyz0, _ = registration.unit_boxify(xyz0)
+    scaled_xyz1, _ = registration.unit_boxify(xyz1)
+    f,g = registration.tps_rpm_bij(scaled_xyz0, scaled_xyz1, reg_init=10, reg_final = 0.01, 
+                                    rot_reg=np.r_[1e-4,1e-4,1e-1], n_iter=num_iters, block_lengths=block_lengths)
+    cost = registration.tps_reg_cost(f) + registration.tps_reg_cost(g)
+    return cost
+
+def rotations_from_ang(theta,median):
+    if not np.shape(theta):
+        rotation_matrix = np.eye(3)
+        rotation_matrix_inv = np.eye(3)
+        rotation_matrix[0:2, 0:2] = np.array([[np.cos(theta), -np.sin(theta)],[np.sin(theta), np.cos(theta)]])
+        rotation_matrix_inv[0:2, 0:2] = np.array([[np.cos(-theta), -np.sin(-theta)],[np.sin(-theta), np.cos(-theta)]])
+    else:
+        rotation_matrix = theta; rotation_matrix_inv = np.linalg.inv(rotation_matrix)
+    shift_from_origin = Affine(np.eye(3), median)
+    rotate = Affine(rotation_matrix, np.zeros((3,)))
+    unrotate = Affine(rotation_matrix_inv, np.zeros((3,)))
+    shift_to_origin = Affine(np.eye(3), -1*median)
+    rotate = Composition([shift_to_origin,rotate,shift_from_origin])
+    unrotate = Composition([shift_to_origin,unrotate,shift_from_origin])
+    return rotate, unrotate
+
+
+
+def registration_cost_and_tfm_and_corr_features(xyz0, xyz1, label0, label1, feature_costs, feature_weights_initial, feature_weights_final, rough_init, num_iters=10):
+    
+    rad_angs = np.linspace(-np.pi+np.pi*(float(90)/180), np.pi,4)
+    Rs = []
+    costs = np.zeros(len(rad_angs))
+    for i in range(len(rad_angs)):
+        rotated_demo = rotate_about_median(xyz0, rad_angs[i])
+        R, _ = registration.icp(rotated_demo, xyz1, 20)
+        Rs.append(R)
+        costs[i] = registration_cost(rotated_demo.dot(R.T), xyz1, 5)
+    theta = rad_angs[np.argmin(costs)]
+    R = Rs[np.argmin(costs)]
+    
+    theta_mat = np.eye(3)
+    theta_mat[0:2, 0:2] = np.array([[np.cos(theta), -np.sin(theta)],[np.sin(theta), np.cos(theta)]])
+
+    theta_mat = theta_mat.dot(R.T)
+    rotated_xyz0 = rotate_about_median(xyz0, theta_mat)
+    
+    
+    
+    scaled_xyz0, src_params = registration.unit_boxify(rotated_xyz0) # changed
     scaled_xyz1, targ_params = registration.unit_boxify(xyz1)
+    
+    
+#    f,g,corr_nm = registration.tps_rpm_bij(scaled_x_nd, scaled_y_md, rot_reg = np.r_[1e-4, 1e-4, 1e-1], n_iter=10,
+#                                   reg_init=10, reg_final=0.4, rad_init=0.1, rad_final=0.005,
+#                                   outlierfrac=1e-8, vis_cost_xy=vis_cost_xy, return_corrnm = True,
+#                                   plotting=0, plot_cb=None)
+#                                   #plotting=plotting, plot_cb=plot_cb_bij_gen(None, proj_2d, bgr_to_rgb(xyzrgb0[:,-3:]), bgr_to_rgb(xyzrgb1[:,-3:])))
 
-#    f, _ = registration.tps_rpm_bij_features(scaled_xyz0, scaled_xyz1, rot_reg = np.r_[1e-4, 1e-4, 1e-1], n_iter=num_iters,
-#                                             reg_init=10, reg_final=0.01, rad_init = .1, rad_final = .0005,
-#                                             outlierfrac=1e-2, feature_costs=feature_costs)
-
-    f, _ = registration.tps_rpm_bij_features2(scaled_xyz0, scaled_xyz1, reg_init=10, reg_final = 0.01, 
+    f, _ = registration.tps_rpm_bij_features(scaled_xyz0, scaled_xyz1, label0, label1, rough_init, reg_init=10, reg_final = 0.001, #0.01, 
             rad_init = .1, rad_final = .0005, rot_reg=np.r_[1e-4,1e-4,1e-1], n_iter=num_iters, plotting=False, feature_costs=feature_costs, feature_weights_initial = feature_weights_initial, feature_weights_final = feature_weights_final)
-    #cost = registration.tps_reg_cost(f)
+    
+
     res_cost = f._cost_tuple[0]
     bend_cost = f._cost_tuple[3]
     f = registration.unscale_tps_3d(f, src_params, targ_params)
-    return (res_cost, bend_cost, f, f.corr_nm)
+    corr_nm = f.corr_nm
+
+    
+    rotate, unrotate = rotations_from_ang(theta_mat,np.median(xyz0, axis=0))
+    f = Composition([rotate, f])
+    
+    return (res_cost, bend_cost, f, corr_nm)
 
 
 
@@ -441,7 +512,8 @@ def compute_score_costs(scores1, scores2):
     score_cost_matrix = np.zeros([n_scores1, n_scores2])
     for i in range(n_scores1):
         for j in range(n_scores2):
-            score_cost_matrix[i, j] = entropy(scipy.asarray(scores1[i]), scipy.asarray(scores2[j])) + entropy(scipy.asarray(scores2[j]), scipy.asarray(scores1[i]))
+            score_cost_matrix[i, j] = entropy(scores1[i], scores2[j]) + entropy(scores2[j], scores1[i])
+            #score_cost_matrix[i, j] = np.linalg.norm(scores1[i] - scores2[j])
             
     return score_cost_matrix 
 
@@ -514,11 +586,12 @@ def compute_feature_costs(feature1, feature2, feature_type):
     
     
 
-def tps_deep_basic_core(demofiles, demo_key1, demo_key2, deep_feature_types, deep_feature_weights_initial, deep_feature_weights_final, init_tfm = None):
+def tps_deep_basic_core(demofiles, demo_key1, demo_key2, deep_feature_types, deep_feature_weights_initial, deep_feature_weights_final, rough_init, init_tfm = None):
+    print demo_key1, demo_key2
     demo1 = demofiles[demo_key1[0]][demo_key1[1]]
     demo2 = demofiles[demo_key2[0]][demo_key2[1]]
-    demo_xyz1 = np.asarray(demo["downsampled_cloud_xyz"])
-    demo_xyz2 = np.asarray(demo["downsampled_cloud_xyz"])
+    demo_xyz1 = np.asarray(demo1["downsampled_cloud_xyz"])
+    demo_xyz2 = np.asarray(demo2["downsampled_cloud_xyz"])
     demo_rgb1 = demo1['rgb']
     demo_rgb2 = demo2['rgb']
     
@@ -526,12 +599,22 @@ def tps_deep_basic_core(demofiles, demo_key1, demo_key2, deep_feature_types, dee
     for feature_type in deep_feature_types:
         learned_features = demo1["learned_features"]
         query_features[feature_type] = np.asarray(learned_features[feature_type])
+        
 
 
     dataset_features = {}
     for feature_type in deep_feature_types:
         learned_features = demo2["learned_features"]
         dataset_features[feature_type] = np.asarray(learned_features[feature_type])
+        
+    if "label" in deep_feature_types:
+        query_labels = query_features["label"]
+        dataset_labels = dataset_features["label"]
+    else:
+        query_labels = np.asarray(demo1["learned_features"]["label"])
+        dataset_labels = np.asarray(demo2["learned_features"]["label"])
+
+        
         
         
     feature_costs = [compute_feature_costs(query_features[feature_type], dataset_features[feature_type], feature_type) for feature_type in deep_feature_types]         
@@ -540,27 +623,13 @@ def tps_deep_basic_core(demofiles, demo_key1, demo_key2, deep_feature_types, dee
         demo_xyz1 = demo_xyz1.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
         demo_xyz2 = demo_xyz2.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
         
-    result = registration_cost_and_tfm_and_corr_features(demo_xyz1, demo_xyz2, feature_costs, deep_feature_weights_initial, deep_feature_weights_final)
+    result = registration_cost_and_tfm_and_corr_features(demo_xyz1, demo_xyz2, query_labels, dataset_labels, feature_costs, deep_feature_weights_initial, deep_feature_weights_final, rough_init)
     
     return result
 
 
-def tps_deep_basic_sequential(demofiles, query_demo_keys, dataset_demo_keys, deep_feature_types, deep_feature_weights_initial, deep_feature_weights_final, init_tfm = None):
-    query_results = {}
-    for query_demo_key in query_demo_keys:
-        query_result = []
-        for dataset_demo_key in dataset_demo_keys:
-            tps_result = tps_deep_basic_core(demofiles, query_demo_key, dataset_demo_key, deep_feature_types, deep_feature_weights_initial, deep_feature_weights_final, init_tfm)
-            query_result.append(tps_result)
-            
-        res_costs, bend_costs, fs, corrs = zip(*query_result)
-        query_results[query_demo_key] = {"costs": bend_costs, "res_costs": res_costs, "fs": fs, "corrs": corrs}
-        print query_demo_key
-        
-    return {"results": query_results, "queries": query_demo_keys, "datasets": dataset_demo_keys, "feature_types": deep_feature_types}    
-    
-    
-def tps_deep_basic_parallel(demofiles, query_demo_keys, dataset_demo_keys, deep_feature_types, deep_feature_weights_initial, deep_feature_weights_final, init_tfm = None):
+def tps_deep_basic_sequential(demofiles, query_demo_keys, dataset_demo_keys, deep_feature_types, deep_feature_weights_initial, deep_feature_weights_final, rough_init, disable_label_consistent, init_tfm = None):
+
     query_demo_xyzs = []
     for demo_key in query_demo_keys:
         demo = demofiles[demo_key[0]][demo_key[1]]
@@ -593,33 +662,155 @@ def tps_deep_basic_parallel(demofiles, query_demo_keys, dataset_demo_keys, deep_
         for demo_key in dataset_demo_keys:
             learned_features = demofiles[demo_key[0]][demo_key[1]]["learned_features"]
             feature.append(np.asarray(learned_features[feature_type]))
-        dataset_features[feature_type] = feature       
+        dataset_features[feature_type] = feature
         
         
+    if "label" in deep_feature_types:
+        query_labels = query_features["label"]
+        dataset_labels = dataset_features["label"]
+    else:
+        query_labels = []
+        dataset_labels = []
+        for demo_key in query_demo_keys:
+            labels = demofiles[demo_key[0]][demo_key[1]]["learned_features"]["label"]
+            query_labels.append(np.asarray(labels))
+        for demo_key in dataset_demo_keys:
+            labels = demofiles[demo_key[0]][demo_key[1]]["learned_features"]["label"]
+            dataset_labels.append(np.asarray(labels))
+    
     n_queries = len(query_demo_keys)
     n_datasets = len(dataset_demo_keys)
     valid_tasks = []
     for (i, query_key) in zip(range(n_queries), query_demo_keys):
-        query_labels = demofiles[query_key[0]][query_key[1]]["learned_features"]["label"]
+        query_label = query_labels[i]
         query_valid_tasks = []
         for (j, dataset_key) in zip(range(n_datasets), dataset_demo_keys):
-            dataset_labels = demofiles[dataset_key[0]][dataset_key[1]]["learned_features"]["label"]
+            dataset_label = dataset_labels[j]
             
-            # check whether one has crossing and the other does not
-            crossing_consistent = ((3 in query_labels) and (3 in dataset_labels)) or (not (3 in query_labels) and not (3 in dataset_labels))
+            if disable_label_consistent:
+                crossing_consistent = True
+            else:
+                # check whether one has crossing and the other does not
+                crossing_consistent = ((3 in query_label) and (3 in dataset_label)) or (not (3 in query_label) and not (3 in dataset_label))
+            
             if not crossing_consistent:
                 print "filter out", query_key, dataset_key
             else:
                 query_valid_tasks.append((i, j))      
         valid_tasks = valid_tasks + query_valid_tasks
+        
+        
+        
+        
+    
+    all_results = []    
+    for (i, j) in valid_tasks:
+        print query_demo_keys[i], dataset_demo_keys[j]
+        result = registration_cost_and_tfm_and_corr_features(query_demo_xyzs[i], dataset_demo_xyzs[j], query_labels[i], dataset_labels[j], [compute_feature_costs(query_features[feature_type][i], dataset_features[feature_type][j], feature_type) for feature_type in deep_feature_types], deep_feature_weights_initial, deep_feature_weights_final, rough_init)
+        all_results.append(result)
+
+
+    
+    
+    query_results = {}
+    num_dataset_demos = len(dataset_demo_keys)
+    
+    for query_key in query_demo_keys:
+        costs = [np.inf] * num_dataset_demos
+        res_costs = [np.inf] * num_dataset_demos
+        fs = [None] * num_dataset_demos
+        corrs = [None] * num_dataset_demos
+                
+        query_results[query_key] = {"costs": costs, "res_costs": res_costs, "fs": fs, "corrs": corrs}
+        
+    for (id, (i, j)) in zip(range(len(valid_tasks)), valid_tasks):
+        query_key = query_demo_keys[i]
+        res_cost, bend_cost, f, corr = all_results[id]
+        query_results[query_key]["costs"][j] = bend_cost
+        query_results[query_key]["res_costs"][j] = res_cost
+        query_results[query_key]["fs"][j] = f
+        query_results[query_key]["corrs"][j] = corr
+        
+    
+    return {"results": query_results, "queries": query_demo_keys, "datasets": dataset_demo_keys, "feature_types": deep_feature_types}    
+    
+    
+def tps_deep_basic_parallel(demofiles, query_demo_keys, dataset_demo_keys, deep_feature_types, deep_feature_weights_initial, deep_feature_weights_final, rough_init, disable_label_consistent, init_tfm = None):
+    query_demo_xyzs = []
+    for demo_key in query_demo_keys:
+        demo = demofiles[demo_key[0]][demo_key[1]]
+        demo_xyz = np.asarray(demo["downsampled_cloud_xyz"])
+        if init_tfm is not None:
+            demo_xyz = demo_xyz.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
+        query_demo_xyzs.append(demo_xyz)
+        
+    dataset_demo_xyzs = []
+    for demo_key in dataset_demo_keys:
+        demo = demofiles[demo_key[0]][demo_key[1]]
+        demo_xyz = np.asarray(demo["downsampled_cloud_xyz"])
+        if init_tfm is not None:
+            demo_xyz = demo_xyz.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
+        dataset_demo_xyzs.append(demo_xyz)
+        
+        
+    query_features = {}
+    for feature_type in deep_feature_types:
+        feature = []
+        for demo_key in query_demo_keys:
+            learned_features = demofiles[demo_key[0]][demo_key[1]]["learned_features"]
+            feature.append(np.asarray(learned_features[feature_type]))
+        query_features[feature_type] = feature
+
+
+    dataset_features = {}
+    for feature_type in deep_feature_types:
+        feature = []
+        for demo_key in dataset_demo_keys:
+            learned_features = demofiles[demo_key[0]][demo_key[1]]["learned_features"]
+            feature.append(np.asarray(learned_features[feature_type]))
+        dataset_features[feature_type] = feature
+        
+        
+    if "label" in deep_feature_types:
+        query_labels = query_features["label"]
+        dataset_labels = dataset_features["label"]
+    else:
+        query_labels = []
+        dataset_labels = []
+        for demo_key in query_demo_keys:
+            labels = demofiles[demo_key[0]][demo_key[1]]["learned_features"]["label"]
+            query_labels.append(np.asarray(labels))
+        for demo_key in dataset_demo_keys:
+            labels = demofiles[demo_key[0]][demo_key[1]]["learned_features"]["label"]
+            dataset_labels.append(np.asarray(labels))
+    
+    n_queries = len(query_demo_keys)
+    n_datasets = len(dataset_demo_keys)
+    valid_tasks = []
+    for (i, query_key) in zip(range(n_queries), query_demo_keys):
+        query_label = query_labels[i]
+        query_valid_tasks = []
+        for (j, dataset_key) in zip(range(n_datasets), dataset_demo_keys):
+            dataset_label = dataset_labels[j]
             
- 
+            # check whether one has crossing and the other does not
+            
+            if disable_label_consistent:
+                crossing_consistent = True
+            else:
+                crossing_consistent = ((3 in query_label) and (3 in dataset_label)) or (not (3 in query_label) and not (3 in dataset_label))
+                
+            if not crossing_consistent:
+                print "filter out", query_key, dataset_key
+            else:
+                query_valid_tasks.append((i, j))      
+        valid_tasks = valid_tasks + query_valid_tasks
+        
+        
     
-#    all_results = Parallel(n_jobs=4, verbose=51)(delayed(registration_cost_and_tfm_and_corr_features)(query_demo_xyzs[i], dataset_demo_xyzs[j], [compute_feature_costs(query_features[feature_type][i], dataset_features[feature_type][j], feature_type) for feature_type in deep_feature_types])
-#                                                 for i in range(len(query_demo_xyzs)) for j in range(len(dataset_demo_xyzs)))
-    
-    all_results = Parallel(n_jobs=4, verbose=51)(delayed(registration_cost_and_tfm_and_corr_features)(query_demo_xyzs[i], dataset_demo_xyzs[j], [compute_feature_costs(query_features[feature_type][i], dataset_features[feature_type][j], feature_type) for feature_type in deep_feature_types], deep_feature_weights_initial, deep_feature_weights_final)
+    all_results = Parallel(n_jobs=4, verbose=51)(delayed(registration_cost_and_tfm_and_corr_features)(query_demo_xyzs[i], dataset_demo_xyzs[j], query_labels[i], dataset_labels[j], [compute_feature_costs(query_features[feature_type][i], dataset_features[feature_type][j], feature_type) for feature_type in deep_feature_types], deep_feature_weights_initial, deep_feature_weights_final, rough_init)
                                                  for (i, j) in valid_tasks)
+
     
     query_results = {}
     num_dataset_demos = len(dataset_demo_keys)
@@ -645,7 +836,7 @@ def tps_deep_basic_parallel(demofiles, query_demo_keys, dataset_demo_keys, deep_
 
 
 
-def tps_deep_basic_dataset(demofiles, query_demofiles, dataset_demofiles, net, deep_feature_types, deep_feature_weights_initial, deep_feature_weights_final, parallel, re_precompute = False, init_tfm = None):
+def tps_deep_basic_dataset(demofiles, query_demofiles, dataset_demofiles, net, deep_feature_types, deep_feature_weights_initial, deep_feature_weights_final, parallel, rough_init, disable_label_consistent, re_precompute = False, init_tfm = None):
     
     query_demo_keys= []
     dataset_demo_keys = []
@@ -700,9 +891,9 @@ def tps_deep_basic_dataset(demofiles, query_demofiles, dataset_demofiles, net, d
 
         
     if parallel:
-        query_results = tps_deep_basic_parallel(demofiles, query_demo_keys, dataset_demo_keys, deep_feature_types, deep_feature_weights_initial, deep_feature_weights_final, init_tfm)
+        query_results = tps_deep_basic_parallel(demofiles, query_demo_keys, dataset_demo_keys, deep_feature_types, deep_feature_weights_initial, deep_feature_weights_final, rough_init, disable_label_consistent, init_tfm)
     else:
-        query_results = tps_deep_basic_sequential(demofiles, query_demo_keys, dataset_demo_keys, deep_feature_types, deep_feature_weights_initial, deep_feature_weights_final, init_tfm)
+        query_results = tps_deep_basic_sequential(demofiles, query_demo_keys, dataset_demo_keys, deep_feature_types, deep_feature_weights_initial, deep_feature_weights_final, rough_init, disable_label_consistent, init_tfm)
 
     return query_results        
             
@@ -719,8 +910,10 @@ parser.add_argument("--net_model", help="File name for learned model", type=str,
 parser.add_argument("--net_mean", help="File name for mean values", type=str, default="")
 parser.add_argument("--re_precompute", help="Re-learn the features for each demo", action="store_true")
 parser.add_argument("--deep_feature_types", type=str, default="", help="combination of fc6, fc7, fc8, lp1, lp2, pool1, pool2, pool5, score, label")
-parser.add_argument("--deep_feature_weights_initial", type=int, nargs='+', default=[])
-parser.add_argument("--deep_feature_weights_final", type=int, nargs='+', default=[])
+parser.add_argument("--deep_feature_weights_initial", type=str, default="")
+parser.add_argument("--deep_feature_weights_final", type=str, default="")
+parser.add_argument("--rough_init", action="store_true")
+parser.add_argument("--disable_label_consistent", action="store_true")
 
 
 args = parser.parse_args()
@@ -758,19 +951,24 @@ def main():
         else:
             deep_feature_types = deep_feature_types.split(',')
             
-        if args.deep_feature_weights_initial == []:
+        if args.deep_feature_weights_initial == "":
             deep_feature_weights_initial = np.ones(len(deep_feature_types))
         else:
-            if len(args.deep_feature_weights_initial) != len(deep_feature_types):
+            deep_feature_weights_initial = args.deep_feature_weights_initial.split(',')
+            deep_feature_weights_initial = [float(x) for x in deep_feature_weights_initial]
+            if len(deep_feature_weights_initial) != len(deep_feature_types):
                 raise Exception("deep_feature_weights_initial should be of the same length as features")
-            deep_feature_weights_initial = args.deep_feature_weights_initial
             
-        if args.deep_feature_weights_final == []:
+        if args.deep_feature_weights_final == "":
             deep_feature_weights_final = np.ones(len(deep_feature_types))
         else:
-            if len(args.deep_feature_weights_final) != len(deep_feature_types):
-                raise Exception("deep_feature_weights_final should be of the same length as features")      
-            deep_feature_weights_final = args.deep_feature_weights_final
+            deep_feature_weights_final = args.deep_feature_weights_final.split(',')
+            deep_feature_weights_final = [float(x) for x in deep_feature_weights_final]
+            if len(deep_feature_weights_final) != len(deep_feature_types):
+                raise Exception("deep_feature_weights_final should be of the same length as features")
+            
+    print deep_feature_weights_initial
+    print deep_feature_weights_final
         
     init_tfm = None
     if args.use_ar_init:
@@ -793,16 +991,7 @@ def main():
         init_tfm = tfm_bf_head.dot(tfm_head_dof).dot(init_tfm)
         
     query_demofiles = []
-    dataset_demofiles = []
-    
-#    demo_ind = 0
-#    for demo_name in demofiles:
-#        if demo_ind < args.start_dataset:
-#            query_demofiles.append(demo_name)
-#        else:
-#            dataset_demofiles.append(demo_name) 
-#            
-#        demo_ind += 1   
+    dataset_demofiles = [] 
                 
                 
     demo_ind = 0
@@ -820,7 +1009,7 @@ def main():
     elif args.tps_type == "segment":
         results = tps_segment_dataset(demofiles, query_demofiles, dataset_demofiles, args.parallel, args.re_precompute, init_tfm)
     elif args.tps_type == "deep_basic":
-        results = tps_deep_basic_dataset(demofiles, query_demofiles, dataset_demofiles, net, deep_feature_types, deep_feature_weights_initial, deep_feature_weights_final, args.parallel, args.re_precompute, init_tfm)
+        results = tps_deep_basic_dataset(demofiles, query_demofiles, dataset_demofiles, net, deep_feature_types, deep_feature_weights_initial, deep_feature_weights_final, args.parallel, args.rough_init, args.disable_label_consistent, args.re_precompute, init_tfm)
 
     
     if args.use_ar_init:
@@ -828,14 +1017,19 @@ def main():
     else:
         use_ar = "no_use_ar"
         
+    if args.rough_init:
+        use_rough_init = "use_rough"
+    else:
+        use_rough_init = "not_use_rough"
+        
     if args.tps_type in["deep_basic"]:
         deep_feature_types_name = ""
         for feature_type in deep_feature_types:
             deep_feature_types_name = deep_feature_types_name + "_" + feature_type
 
-        result_filename = osp.join(task_dir, "result_" + args.tps_type + "_" + use_ar + "_" + str(args.end_query) + deep_feature_types_name + ".cp")
+        result_filename = osp.join(task_dir, "result_" + args.tps_type + "_" + use_ar + "_" + use_rough_init + "_" + str(args.end_query) + deep_feature_types_name + ".cp")
     else:
-        result_filename = osp.join(task_dir, "result_" + args.tps_type + "_" + use_ar + "_" + str(args.end_query) + ".cp")
+        result_filename = osp.join(task_dir, "result_" + args.tps_type + "_" + use_ar + "_" + use_rough_init + "_" + str(args.end_query) + ".cp")
     f = open(result_filename, 'wb')
     pickle.dump(results, f)
     

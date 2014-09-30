@@ -252,12 +252,12 @@ def plot_tps_registration_proj_2d(x_nd, y_md, x_labels, y_labels, f, res, x_colo
         for i in range(len(y_md)):
             label = y_labels[i]
             y_colors.append(label_colors[label])
-
+            
     plt.subplot(221, aspect='equal')
     if x_colors == None:
-        plt.scatter(x_nd[:,0], x_nd[:,1], c=x_color, edgecolors=x_color, marker=',', s=5)
+        plt.scatter(x_nd[:,0], x_nd[:,1], c=x_color, marker='+', s=50)
     else:
-        plt.scatter(x_nd[:,0], x_nd[:,1], c=x_colors, edgecolors=x_color, marker=',', s=5)
+        plt.scatter(x_nd[:,0], x_nd[:,1], c=x_colors, marker='+', s=50)
 
     grid_means = .5 * (x_nd.max(axis=0) + x_nd.min(axis=0))
     grid_mins = grid_means - (x_nd.max(axis=0) - x_nd.min(axis=0))
@@ -266,12 +266,13 @@ def plot_tps_registration_proj_2d(x_nd, y_md, x_labels, y_labels, f, res, x_colo
     plot_warped_grid_proj_2d(lambda xyz: xyz, grid_mins[:2], grid_maxs[:2], z=x_median[2], xres=res[0], yres=res[1], draw=False)
     
     plt.subplot(222, aspect='equal')
+    xwarped_nd = f.transform_points(x_nd)
+    plt.scatter(xwarped_nd[:,0], xwarped_nd[:,1], edgecolors=xwarped_color, facecolors='none', marker='o', s=50)
     if y_colors == None:
         plt.scatter(y_md[:,0], y_md[:,1], c=y_color, marker='+', s=50)
     else:
         plt.scatter(y_md[:,0], y_md[:,1], c=y_colors, marker='+', s=50)
-    xwarped_nd = f.transform_points(x_nd)
-    plt.scatter(xwarped_nd[:,0], xwarped_nd[:,1], edgecolors=xwarped_color, facecolors='none', marker='o', s=50)
+
     plot2_axis = plt.axis()
     
 

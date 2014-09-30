@@ -46,6 +46,8 @@ import matplotlib
 import matplotlib.pyplot as plt
 
 
+
+
 parser = argparse.ArgumentParser()
 parser.add_argument("--demo_type", help="Type of demonstration")
 parser.add_argument("--data_folder", help="folder of data to be analyzed")
@@ -53,6 +55,7 @@ parser.add_argument("--use_ar_init", action="store_true")
 
 
 args = parser.parse_args()
+
 
 def plot_cb_gen(output_prefix, y_color, label_colors, plot_color=1, proj_2d=1):
     def plot_cb(x_nd, y_md, x_labels, y_labels, x_color, f, s_cloud_id, tps_type):
@@ -186,7 +189,7 @@ def main():
 
     # save the registration image, for only the second best to top K
     
-    label_colors = {0: 'g', 1: 'c', 2: 'm', 3: 'y'}
+    label_colors = {0: 'g', 1: 'c', 2: 'b', 3: 'y'}
     query_clouds = {}
     dataset_clouds = {}
     query_labels = {}
@@ -203,25 +206,70 @@ def main():
             demo_xyz = demo_xyz.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
         dataset_clouds[dataset_key] = demo_xyz
         dataset_labels[dataset_key] = np.asarray(demofiles[dataset_key[0]][dataset_key[1]]["learned_features"]["label"])
+        
+        
+    for dataset_key in dataset_demo_keys:
+        
+        labeled_points = np.asarray(demofiles[dataset_key[0]][dataset_key[1]]["labeled_points"])
+        dataset_cloud = dataset_clouds[dataset_key]
+        depth_image = np.asarray(demofiles[dataset_key[0]][dataset_key[1]]["depth"])
+        depth_xyz = clouds.depth_to_xyz(depth_image)
+        labeled_rope = np.empty((len(labeled_points),3))
+        labels = []
+        for i in range(len(labeled_points)):
+            (x,y,c) = labeled_points[i,:]
+            if i == 0 or i == len(labeled_points) - 1:
+                labels.append(1)
+            elif c == -1 or 1:
+                labels.append(3)
+            else:
+                labels.append(2)
+                
+            labeled_rope[i,:3] = depth_xyz[y,x]
+                
+        colors = []
+        for i in range(len(labeled_rope)):
+            label = labels[i]
+            colors.append(label_colors[label])
+        
+        
+        plt.ion()
+    
+        fig = plt.figure('2d projection plot')
+        fig.clear()
+        plt.subplot(221, aspect='equal')
+        plt.scatter(dataset_cloud[:, 0], dataset_cloud[:, 1], c=[1,0,0,0], marker='o', s=10)
+        plt.scatter(labeled_rope[:,0], labeled_rope[:,1], c=colors, marker='+', s=50)
+        plt.draw()
+        
+        plt.savefig(osp.join(osp.join(task_dir, args.data_folder, "segment", dataset_key[0]+"_"+dataset_key[1]+'.png')))
+
+
+
+            
 
     
-#    for data_file in data_files:
-#        for query_key in query_demo_keys:
-#            for dataset_key_id in range(n_datasets):
-#                dataset_key = dataset_demo_keys[dataset_key_id]
-#                query_cloud = query_clouds[query_key]
-#                dataset_cloud = dataset_clouds[dataset_key]
-#                query_label = query_labels[query_key]
-#                dataset_label = dataset_labels[dataset_key]
-#                data_filename = os.path.splitext(data_file)[0]
-#                if not osp.exists(osp.join(task_dir, args.data_folder, data_filename, query_key[0]+"_"+query_key[1])):
-#                    os.makedirs(osp.join(task_dir, args.data_folder, data_filename, query_key[0]+"_"+query_key[1]))
-#                plot_fn = plot_cb_gen(osp.join(task_dir, args.data_folder, data_filename, query_key[0]+"_"+query_key[1]), (0,0,1,1), label_colors)
-#                 
-#                f = tps_results[data_file]["results"][query_key]["fs"][dataset_key_id]
-#                
-#                if f != None:
-#                    plot_fn(query_cloud, dataset_cloud, query_label, dataset_label, (1,0,0,1), f, dataset_key[0]+"_"+dataset_key[1], data_file)
+    for data_file in data_files:
+        # if data_file != "result_deep_basic_use_ar_2_label.cp": continue
+        # if data_file != "result_deep_basic_use_ar_2_label_new.cp": continue
+        #if data_file != "result_deep_basic_use_ar_not_use_rough_2_label_score.cp": continue
+        continue
+        for query_key in query_demo_keys:
+            for dataset_key_id in range(n_datasets):
+                dataset_key = dataset_demo_keys[dataset_key_id]
+                query_cloud = query_clouds[query_key]
+                dataset_cloud = dataset_clouds[dataset_key]
+                query_label = query_labels[query_key]
+                dataset_label = dataset_labels[dataset_key]
+                data_filename = os.path.splitext(data_file)[0]
+                if not osp.exists(osp.join(task_dir, args.data_folder, data_filename, query_key[0]+"_"+query_key[1])):
+                    os.makedirs(osp.join(task_dir, args.data_folder, data_filename, query_key[0]+"_"+query_key[1]))
+                plot_fn = plot_cb_gen(osp.join(task_dir, args.data_folder, data_filename, query_key[0]+"_"+query_key[1]), (0,0,1,1), label_colors)
+                 
+                f = tps_results[data_file]["results"][query_key]["fs"][dataset_key_id]
+                
+                if f != None:
+                    plot_fn(query_cloud, dataset_cloud, query_label, dataset_label, (1,0,0,1), f, dataset_key[0]+"_"+dataset_key[1], data_file)
                  
            
     color_set = ['r', 'g', 'b', 'c', 'm', 'y', 'k', 'w'] 
@@ -251,6 +299,9 @@ def main():
     plt.ylabel('precision')
     plt.title('tps compare result')
     plt.show()  
+    
+    import IPython
+    IPython.embed()
             
 
                     
