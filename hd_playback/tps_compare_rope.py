@@ -41,6 +41,7 @@ import argparse
 CROSS_SECTION_SIZE = 4
 DS_LEAF_SIZE = 0.01
 
+
 def get_labeled_rope_demo(seg_group, get_pattern=False):
     labeled_points = seg_group["labeled_points"][:]
     depth_image = seg_group["depth"][:]
@@ -512,8 +513,7 @@ def compute_score_costs(scores1, scores2):
     score_cost_matrix = np.zeros([n_scores1, n_scores2])
     for i in range(n_scores1):
         for j in range(n_scores2):
-            score_cost_matrix[i, j] = entropy(scores1[i], scores2[j]) + entropy(scores2[j], scores1[i])
-            #score_cost_matrix[i, j] = np.linalg.norm(scores1[i] - scores2[j])
+            score_cost_matrix[i, j] = entropy(scores1[i], scores2[j]) + entropy(scores2[j], scores1[i]) / 2.
             
     return score_cost_matrix 
 
@@ -525,6 +525,9 @@ def compute_euclide_cost(features1, features2):
     for i in range(n_features1):
         for j in range(n_features2):
             euclide_cost_matrix[i, j] = np.linalg.norm(features1[i] - features2[j])
+            
+    # normalize 
+    euclide_cost_matrix = euclide_cost_matrix / np.max(euclide_cost_matrix)
     
     return euclide_cost_matrix
 
@@ -535,39 +538,43 @@ def compute_filter_cost(features1, features2):
 def compute_fc_costs(features1, features2, num_bins):
     n_features1 = len(features1)
     n_features2 = len(features2)
-    features1 = features1.reshape(n_features1, features1.size() / n_features1)
-    features2 = features2.reshape(n_features2, features2.size() / n_features2)
+
+    features1 = features1.reshape(n_features1, features1.size / n_features1)
+    features2 = features2.reshape(n_features2, features2.size / n_features2)
     
     features1_max = np.max(features1, axis=1)
     features2_max = np.max(features2, axis=1)
     
     features_max = features1_max + features2_max
-    print np.max(features_max), np.median(features_max)
+    # print np.max(features_max), np.median(features_max)
     
     cut_off = np.median(features_max)
     
-    features1_histogram = np.zeros(n_features1, num_bins)
-    features2_histogram = np.zeros(n_features2, num_bins)
+    features1_histogram = np.zeros([n_features1, num_bins])
+    features2_histogram = np.zeros([n_features2, num_bins])
     
     for i in range(n_features1):
         feature = features1[i, :]
         feature = feature[feature > 0]
-        hist = np.histogram(feature, num_bins, [0, cut_off])
-        features1_histogram[i, :] = hist / sum(hist)
+        hist = np.histogram(feature, num_bins, [0, cut_off])[0]
+        features1_histogram[i, :] = hist / float(sum(hist))
     
     for i in range(n_features2):
         feature = features2[i, :]
         feature = feature[feature > 0]
-        hist = np.histogram(feature, num_bins, [0, cut_off])
-        features2_histogram[i, :] = hist / sum(hist)   
+        hist = np.histogram(feature, num_bins, [0, cut_off])[0]
+        features2_histogram[i, :] = hist / float(sum(hist))   
     
     feature_cost_matrix = np.zeros([n_features1, n_features2])
     for i in range(n_features1):
         for j in range(n_features2):
             h1 = features1_histogram[i, :]
             h2 = features2_histogram[j, :]
-            feature_cost_matrix[i, j] = np.square(h1 - h2) / (h1 + h2)
-            
+            feature_cost_matrix[i, j] = np.sum(np.square(h1 - h2) / (h1 + h2 + 0.0000001)) # avoid 0/0
+    
+    # normalize feature to [0, 1]
+    feature_cost_matrix = feature_cost_matrix / np.max(feature_cost_matrix)
+                
     return feature_cost_matrix
 
 def compute_feature_costs(feature1, feature2, feature_type):
@@ -1022,14 +1029,19 @@ def main():
     else:
         use_rough_init = "not_use_rough"
         
+    if args.disable_label_consistent:
+        label_consistent = "disable_lc"
+    else:
+        label_consistent = "enable_lc"
+        
     if args.tps_type in["deep_basic"]:
         deep_feature_types_name = ""
         for feature_type in deep_feature_types:
             deep_feature_types_name = deep_feature_types_name + "_" + feature_type
 
-        result_filename = osp.join(task_dir, "result_" + args.tps_type + "_" + use_ar + "_" + use_rough_init + "_" + str(args.end_query) + deep_feature_types_name + ".cp")
+        result_filename = osp.join(task_dir, "result_" + args.tps_type + "_" + use_ar + "_" + use_rough_init + "_" + label_consistent + "_" + str(args.end_query) + deep_feature_types_name + ".cp")
     else:
-        result_filename = osp.join(task_dir, "result_" + args.tps_type + "_" + use_ar + "_" + use_rough_init + "_" + str(args.end_query) + ".cp")
+        result_filename = osp.join(task_dir, "result_" + args.tps_type + "_" + use_ar + "_" + use_rough_init + "_" + label_consistent + "_" + str(args.end_query) + ".cp")
     f = open(result_filename, 'wb')
     pickle.dump(results, f)
     

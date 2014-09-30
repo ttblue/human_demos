@@ -114,6 +114,73 @@ def main():
     
     query_demo_keys = tps_results[tps_segment_name]["queries"]
     dataset_demo_keys = tps_results[tps_segment_name]["datasets"]
+    
+    
+    
+    
+    # save the registration image, for only the second best to top K
+    
+    label_colors = {0: 'g', 1: 'c', 2: 'b', 3: 'y'}
+    query_clouds = {}
+    dataset_clouds = {}
+    query_labels = {}
+    dataset_labels = {}
+    for query_key in query_demo_keys:
+        demo_xyz = np.asarray(demofiles[query_key[0]][query_key[1]]["downsampled_cloud_xyz"])
+        if init_tfm is not None:
+            demo_xyz = demo_xyz.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
+        query_clouds[query_key] = demo_xyz
+        query_labels[query_key] = np.asarray(demofiles[query_key[0]][query_key[1]]["learned_features"]["label"])
+    for dataset_key in dataset_demo_keys:
+        demo_xyz = np.asarray(demofiles[dataset_key[0]][dataset_key[1]]["downsampled_cloud_xyz"])
+        if init_tfm is not None:
+            demo_xyz = demo_xyz.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
+        dataset_clouds[dataset_key] = demo_xyz
+        dataset_labels[dataset_key] = np.asarray(demofiles[dataset_key[0]][dataset_key[1]]["learned_features"]["label"])
+        
+        
+#    for dataset_key in dataset_demo_keys:
+#        
+#        labeled_points = np.asarray(demofiles[dataset_key[0]][dataset_key[1]]["labeled_points"])
+#        dataset_cloud = dataset_clouds[dataset_key]
+#        depth_image = np.asarray(demofiles[dataset_key[0]][dataset_key[1]]["depth"])
+#        depth_xyz = clouds.depth_to_xyz(depth_image)
+#        labeled_rope = np.empty((len(labeled_points),3))
+#        
+#        labels = []
+#        for i in range(len(labeled_points)):
+#            (x,y,c) = labeled_points[i,:]
+#            if i == 0 or i == len(labeled_points) - 1:
+#                labels.append(1)
+#            elif c == -1 or c == 1:
+#                labels.append(3)
+#            else:
+#                labels.append(2)
+#                
+#            labeled_rope[i] = depth_xyz[y,x]
+#            
+#        if init_tfm is not None:
+#            labeled_rope = labeled_rope.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
+#                
+#        colors = []
+#        for i in range(len(labeled_rope)):
+#            label = labels[i]
+#            colors.append(label_colors[label])
+#        
+#        plt.ion()
+#        fig = plt.figure('2d projection plot')
+#        fig.clear()
+#        plt.subplot(111, aspect='equal')
+#        plt.axis('off')
+#        plt.scatter(dataset_cloud[:, 0], dataset_cloud[:, 1], edgecolors=(1,0,0,1), marker='o', facecolors='none', s=50)
+#        plt.scatter(labeled_rope[:,0], labeled_rope[:,1], c=colors, marker='+', s=70, linewidths=3)
+#        plt.draw()
+#        
+#        plt.savefig(osp.join(osp.join(task_dir, args.data_folder, "segment", dataset_key[0]+"_"+dataset_key[1]+'.png')))
+    
+    
+    
+    
         
     # get the order
     sorted_indices_costs = {}
@@ -187,73 +254,17 @@ def main():
             tps_compare_statistics[data_file] = (average_recall, average_precision, precision_matrix, recall_matrix)
 
 
-    # save the registration image, for only the second best to top K
-    
-    label_colors = {0: 'g', 1: 'c', 2: 'b', 3: 'y'}
-    query_clouds = {}
-    dataset_clouds = {}
-    query_labels = {}
-    dataset_labels = {}
-    for query_key in query_demo_keys:
-        demo_xyz = np.asarray(demofiles[query_key[0]][query_key[1]]["downsampled_cloud_xyz"])
-        if init_tfm is not None:
-            demo_xyz = demo_xyz.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
-        query_clouds[query_key] = demo_xyz
-        query_labels[query_key] = np.asarray(demofiles[query_key[0]][query_key[1]]["learned_features"]["label"])
-    for dataset_key in dataset_demo_keys:
-        demo_xyz = np.asarray(demofiles[dataset_key[0]][dataset_key[1]]["downsampled_cloud_xyz"])
-        if init_tfm is not None:
-            demo_xyz = demo_xyz.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
-        dataset_clouds[dataset_key] = demo_xyz
-        dataset_labels[dataset_key] = np.asarray(demofiles[dataset_key[0]][dataset_key[1]]["learned_features"]["label"])
-        
-        
-    for dataset_key in dataset_demo_keys:
-        
-        labeled_points = np.asarray(demofiles[dataset_key[0]][dataset_key[1]]["labeled_points"])
-        dataset_cloud = dataset_clouds[dataset_key]
-        depth_image = np.asarray(demofiles[dataset_key[0]][dataset_key[1]]["depth"])
-        depth_xyz = clouds.depth_to_xyz(depth_image)
-        labeled_rope = np.empty((len(labeled_points),3))
-        labels = []
-        for i in range(len(labeled_points)):
-            (x,y,c) = labeled_points[i,:]
-            if i == 0 or i == len(labeled_points) - 1:
-                labels.append(1)
-            elif c == -1 or 1:
-                labels.append(3)
-            else:
-                labels.append(2)
-                
-            labeled_rope[i,:3] = depth_xyz[y,x]
-                
-        colors = []
-        for i in range(len(labeled_rope)):
-            label = labels[i]
-            colors.append(label_colors[label])
-        
-        
-        plt.ion()
-    
-        fig = plt.figure('2d projection plot')
-        fig.clear()
-        plt.subplot(221, aspect='equal')
-        plt.scatter(dataset_cloud[:, 0], dataset_cloud[:, 1], c=[1,0,0,0], marker='o', s=10)
-        plt.scatter(labeled_rope[:,0], labeled_rope[:,1], c=colors, marker='+', s=50)
-        plt.draw()
-        
-        plt.savefig(osp.join(osp.join(task_dir, args.data_folder, "segment", dataset_key[0]+"_"+dataset_key[1]+'.png')))
-
-
-
-            
-
     
     for data_file in data_files:
         # if data_file != "result_deep_basic_use_ar_2_label.cp": continue
         # if data_file != "result_deep_basic_use_ar_2_label_new.cp": continue
-        #if data_file != "result_deep_basic_use_ar_not_use_rough_2_label_score.cp": continue
-        continue
+        # if data_file != "result_deep_basic_use_ar_not_use_rough_2_label_score.cp": continue
+        # if data_file != "result_deep_basic_use_ar_not_use_rough_2_label_fc8.cp": continue
+        # if data_file != "result_deep_basic_use_ar_not_use_rough_2_fc8.cp": continue
+        # if not (data_file == "result_basic_use_ar_2.cp" or data_file == "result_deep_basic_use_ar_2.cp"): continue
+        # if data_file != "result_deep_basic_use_ar_2.cp": continue
+        if not ("lc" in data_file): continue 
+        # continue
         for query_key in query_demo_keys:
             for dataset_key_id in range(n_datasets):
                 dataset_key = dataset_demo_keys[dataset_key_id]
