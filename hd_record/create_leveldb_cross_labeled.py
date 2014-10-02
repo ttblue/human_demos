@@ -14,6 +14,9 @@ import h5py
 from hd_utils.defaults import demo_files_dir, demo_names, master_name, verify_name
 import create_leveldb_utils
 
+import scipy.ndimage
+
+
 parser = argparse.ArgumentParser()
 parser.add_argument("--demo_type", help="Type of demonstration")
 parser.add_argument("--patch_size", default=64, type=int)
@@ -46,13 +49,37 @@ ldb_test = leveldb.LevelDB(ldbpath_test)
 if osp.exists(rawimage_path_train):
     shutil.rmtree(rawimage_path_train)
 os.makedirs(rawimage_path_train)
+os.makedirs(osp.join(rawimage_path_train, "background"))
+os.makedirs(osp.join(rawimage_path_train, "normal"))
+os.makedirs(osp.join(rawimage_path_train, "endpoint"))
+os.makedirs(osp.join(rawimage_path_train, "crossing"))
+
+
+
 
 if osp.exists(rawimage_path_test):
     shutil.rmtree(rawimage_path_test)
 os.makedirs(rawimage_path_test)
+os.makedirs(osp.join(rawimage_path_test, "background"))
+os.makedirs(osp.join(rawimage_path_test, "normal"))
+os.makedirs(osp.join(rawimage_path_test, "endpoint"))
+os.makedirs(osp.join(rawimage_path_test, "crossing"))
 
 h5_db = h5py.File(h5_filename)
 
+
+dict_label_to_folder = {0: "background", 1: "endpoint", 2: "normal", 3: "crossing"}
+
+
+def resize_image(image, size_threshold):    
+    h, w, c = image.shape
+    if h < size_threshold:
+        ratio = np.ceil(float(size_threshold) / h).astype(int)
+        image = scipy.ndimage.zoom(image, (ratio, ratio, 1))
+        
+    return image
+
+    
 
 for (demo_id, demo_name) in enumerate(h5_db.keys()):
     demo = h5_db[demo_name]
@@ -85,18 +112,47 @@ for (demo_id, demo_name) in enumerate(h5_db.keys()):
             if x_start >= 0 and x_end < rgb.shape[0]:
                 if y_start >= 0 and y_end < rgb.shape[1]:
                     sample = rgb[x_start:x_end, y_start:y_end, :]
+                    
+                    sample = resize_image(sample, 64)
+                    
                     samples.append((sample, label))
                     
-                    sample_rot1 = np.rot90(sample).copy()
-                    samples.append((sample_rot1, label))
-                    sample_rot2 = np.rot90(sample_rot1).copy()
-                    samples.append((sample_rot2, label))
-                    sample_rot3 = np.rot90(sample_rot2).copy()
-                    samples.append((sample_rot3, label))
-                    samples.append((np.fliplr(sample).copy(), label))
-                    samples.append((np.fliplr(sample_rot1).copy(), label))
-                    samples.append((np.fliplr(sample_rot2).copy(), label))
-                    samples.append((np.fliplr(sample_rot3).copy(), label))
+                    
+                    if label == 3:
+                        perturb_delta = patch_size / 4
+                        delta_x = perturb_delta
+                        delta_y = perturb_delta
+                        
+                        if x_start+delta_x >= 0 and x_end+delta_x < rgb.shape[0] and y_start+delta_y >= 0 and y_end+delta_y < rgb.shape[1]:
+                            sample = rgb[x_start+perturb_delta:x_end+perturb_delta, y_start+perturb_delta:y_end+perturb_delta, :]
+                            sample = resize_image(sample, 64)
+                            samples.append((sample, label))
+                            
+                        if x_start+delta_x >= 0 and x_end+delta_x < rgb.shape[0] and y_start-delta_y >= 0 and y_end-delta_y < rgb.shape[1]:
+                            sample = rgb[x_start+perturb_delta:x_end+perturb_delta, y_start-perturb_delta:y_end-perturb_delta, :]
+                            sample = resize_image(sample, 64)
+                            samples.append((sample, label))
+                    
+                        if x_start-delta_x >= 0 and x_end-delta_x < rgb.shape[0] and y_start+delta_y >= 0 and y_end+delta_y < rgb.shape[1]:
+                            sample = rgb[x_start-perturb_delta:x_end-perturb_delta, y_start+perturb_delta:y_end+perturb_delta, :]
+                            sample = resize_image(sample, 64)
+                            samples.append((sample, label))
+                            
+                        if x_start-delta_x >= 0 and x_end-delta_x < rgb.shape[0] and y_start-delta_y >= 0 and y_end-delta_y < rgb.shape[1]:
+                            sample = rgb[x_start-perturb_delta:x_end-perturb_delta, y_start-perturb_delta:y_end-perturb_delta, :]
+                            sample = resize_image(sample, 64)
+                            samples.append((sample, label))                    
+                    
+#                    sample_rot1 = np.rot90(sample).copy()
+#                    samples.append((sample_rot1, label))
+#                    sample_rot2 = np.rot90(sample_rot1).copy()
+#                    samples.append((sample_rot2, label))
+#                    sample_rot3 = np.rot90(sample_rot2).copy()
+#                    samples.append((sample_rot3, label))
+#                    samples.append((np.fliplr(sample).copy(), label))
+#                    samples.append((np.fliplr(sample_rot1).copy(), label))
+#                    samples.append((np.fliplr(sample_rot2).copy(), label))
+#                    samples.append((np.fliplr(sample_rot3).copy(), label))
             
         if labeled_points.shape[0] == 0:
             print demo_name, seg_name, labeled_points.shape
@@ -110,66 +166,70 @@ for (demo_id, demo_name) in enumerate(h5_db.keys()):
         if lower_bound[0] >= patch_size:
             bg_samples = create_leveldb_utils.sample_patches(rgb[:lower_bound[0], :, :], patch_size, args.num_bg_sample_per_region)
             for sample in bg_samples:
+                sample = resize_image(sample, 64)
                 samples.append((sample, 0))
                 
-                sample_rot1 = np.rot90(sample).copy()
-                samples.append((sample_rot1, 0))
-                sample_rot2 = np.rot90(sample_rot1).copy()
-                samples.append((sample_rot2, 0))
-                sample_rot3 = np.rot90(sample_rot2).copy()
-                samples.append((sample_rot3, 0))
-                samples.append((np.fliplr(sample).copy(), 0))
-                samples.append((np.fliplr(sample_rot1).copy(), 0))
-                samples.append((np.fliplr(sample_rot2).copy(), 0))
-                samples.append((np.fliplr(sample_rot3).copy(), 0))
+#                sample_rot1 = np.rot90(sample).copy()
+#                samples.append((sample_rot1, 0))
+#                sample_rot2 = np.rot90(sample_rot1).copy()
+#                samples.append((sample_rot2, 0))
+#                sample_rot3 = np.rot90(sample_rot2).copy()
+#                samples.append((sample_rot3, 0))
+#                samples.append((np.fliplr(sample).copy(), 0))
+#                samples.append((np.fliplr(sample_rot1).copy(), 0))
+#                samples.append((np.fliplr(sample_rot2).copy(), 0))
+#                samples.append((np.fliplr(sample_rot3).copy(), 0))
         
         if upper_bound[0] + 1 < rgb.shape[0] - patch_size:
             bg_samples = create_leveldb_utils.sample_patches(rgb[upper_bound[0] + 1:, :, :], patch_size, args.num_bg_sample_per_region)
             for sample in bg_samples:
+                sample = resize_image(sample, 64)
                 samples.append((sample, 0))
                 
-                sample_rot1 = np.rot90(sample).copy()
-                samples.append((sample_rot1, 0))
-                sample_rot2 = np.rot90(sample_rot1).copy()
-                samples.append((sample_rot2, 0))
-                sample_rot3 = np.rot90(sample_rot2).copy()
-                samples.append((sample_rot3, 0))
-                samples.append((np.fliplr(sample).copy(), 0))
-                samples.append((np.fliplr(sample_rot1).copy(), 0))
-                samples.append((np.fliplr(sample_rot2).copy(), 0))
-                samples.append((np.fliplr(sample_rot3).copy(), 0))
+#                sample_rot1 = np.rot90(sample).copy()
+#                samples.append((sample_rot1, 0))
+#                sample_rot2 = np.rot90(sample_rot1).copy()
+#                samples.append((sample_rot2, 0))
+#                sample_rot3 = np.rot90(sample_rot2).copy()
+#                samples.append((sample_rot3, 0))
+#                samples.append((np.fliplr(sample).copy(), 0))
+#                samples.append((np.fliplr(sample_rot1).copy(), 0))
+#                samples.append((np.fliplr(sample_rot2).copy(), 0))
+#                samples.append((np.fliplr(sample_rot3).copy(), 0))
         
         if lower_bound[1] >= patch_size:
             bg_samples = create_leveldb_utils.sample_patches(rgb[:, :lower_bound[1], :], patch_size, args.num_bg_sample_per_region)
             for sample in bg_samples:
+                sample = resize_image(sample, 64)
                 samples.append((sample, 0))
                 
-                sample_rot1 = np.rot90(sample).copy()
-                samples.append((sample_rot1, 0))
-                sample_rot2 = np.rot90(sample_rot1).copy()
-                samples.append((sample_rot2, 0))
-                sample_rot3 = np.rot90(sample_rot2).copy()
-                samples.append((sample_rot3, 0))
-                samples.append((np.fliplr(sample).copy(), 0))
-                samples.append((np.fliplr(sample_rot1).copy(), 0))
-                samples.append((np.fliplr(sample_rot2).copy(), 0))
-                samples.append((np.fliplr(sample_rot3).copy(), 0))
+#                sample_rot1 = np.rot90(sample).copy()
+#                samples.append((sample_rot1, 0))
+#                sample_rot2 = np.rot90(sample_rot1).copy()
+#                samples.append((sample_rot2, 0))
+#                sample_rot3 = np.rot90(sample_rot2).copy()
+#                samples.append((sample_rot3, 0))
+#                samples.append((np.fliplr(sample).copy(), 0))
+#                samples.append((np.fliplr(sample_rot1).copy(), 0))
+#                samples.append((np.fliplr(sample_rot2).copy(), 0))
+#                samples.append((np.fliplr(sample_rot3).copy(), 0))
                 
         if upper_bound[1] + 1 < rgb.shape[1] - patch_size:
             bg_samples = create_leveldb_utils.sample_patches(rgb[:, upper_bound[1] + 1:, :], patch_size, args.num_bg_sample_per_region)
             for sample in bg_samples:
+                sample = resize_image(sample, 64)
                 samples.append((sample, 0))
                 
-                sample_rot1 = np.rot90(sample).copy()
-                samples.append((sample_rot1, 0))
-                sample_rot2 = np.rot90(sample_rot1).copy()
-                samples.append((sample_rot2, 0))
-                sample_rot3 = np.rot90(sample_rot2).copy()
-                samples.append((sample_rot3, 0))
-                samples.append((np.fliplr(sample).copy(), 0))
-                samples.append((np.fliplr(sample_rot1).copy(), 0))
-                samples.append((np.fliplr(sample_rot2).copy(), 0))
-                samples.append((np.fliplr(sample_rot3).copy(), 0))
+#                sample_rot1 = np.rot90(sample).copy()
+#                samples.append((sample_rot1, 0))
+#                sample_rot2 = np.rot90(sample_rot1).copy()
+#                samples.append((sample_rot2, 0))
+#                sample_rot3 = np.rot90(sample_rot2).copy()
+#                samples.append((sample_rot3, 0))
+#                samples.append((np.fliplr(sample).copy(), 0))
+#                samples.append((np.fliplr(sample_rot1).copy(), 0))
+#                samples.append((np.fliplr(sample_rot2).copy(), 0))
+#                samples.append((np.fliplr(sample_rot3).copy(), 0))
                 
                 
         batch = leveldb.WriteBatch()        
@@ -178,11 +238,11 @@ for (demo_id, demo_name) in enumerate(h5_db.keys()):
             label = sample[1]
             
             patch_unique_id = demo_name + "_" + seg_name + "_" + str(i_sample)
-            
+                        
             if demo_id < args.test_demo_start:
-                cv2.imwrite(osp.join(rawimage_path_train, patch_unique_id + ".jpg"), patch)
+                cv2.imwrite(osp.join(rawimage_path_train, dict_label_to_folder[label], patch_unique_id + ".jpg"), patch)
             else:
-                cv2.imwrite(osp.join(rawimage_path_test, patch_unique_id + ".jpg"), patch)
+                cv2.imwrite(osp.join(rawimage_path_test, dict_label_to_folder[label], patch_unique_id + ".jpg"), patch)
             
             patch = create_leveldb_utils.cv2datum(patch) 
             datum = caffe.io.array_to_datum(patch, label)

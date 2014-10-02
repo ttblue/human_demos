@@ -281,6 +281,9 @@ def tps_rpm_bij(x_nd, y_md, n_iter = 20, reg_init = .1, reg_final = .001, rad_in
     g._cost = tps.tps_cost(g.lin_ag, g.trans_g, g.w_ng, g.x_na, ytarg_md, regs[i], wt_n=wt_m)/wt_m.mean()
     return f,g
 
+
+
+
 def tps_reg_cost(f):
     K_nn = tps.tps_kernel_matrix(f.x_na)
     cost = 0

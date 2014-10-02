@@ -58,7 +58,7 @@ def rope_detection_per_image(image, net, patch_size, step_size):
     for i in range(n_iterations):
         start_id = n_parallel * i
         end_id = min(n_parallel * (i + 1), n_patch_images)
-        scores = net.predict(patches_imgs[start_id:end_id])
+        scores = net.predict(patches_imgs[start_id:end_id], oversample=True)
         if end_id == n_patch_images:
             scores = scores[:end_id-start_id, :]
     

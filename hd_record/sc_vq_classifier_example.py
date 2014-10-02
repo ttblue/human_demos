@@ -23,7 +23,7 @@ import cPickle
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--demo_type", help="Type of demonstration")
-parser.add_argument("--vq_result", help="File name for kmeans vq")
+#parser.add_argument("--vq_result", help="File name for kmeans vq")
 parser.add_argument("--train_db", type=str)
 parser.add_argument("--test_db", type=str)
 args = parser.parse_args()
@@ -51,19 +51,15 @@ test_images = collect_images_from_leveldb(ldb_test)
 #sc_vq_test(test_images, test_labels, vq_result, svmLearner, trainXC_mean, trainXC_sd)
 
 
-
-svmLearner, trainXC_mean, trainXC_sd, vq_result = sc_vq_train2(train_images, train_labels, 6, 0.25, 200, 400000)
+#svmLearner, trainXC_mean, trainXC_sd, vq_result = sc_vq_train2(train_images, train_labels, 6, 0.25, 200, 400000)
+svmLearner, trainXC_mean, trainXC_sd, vq_result = sc_vq_train2(train_images, train_labels, 6, 0.25, 300, 4000000)
 training_result = {'svmLearner': svmLearner, 'trainXC_mean': trainXC_mean, 'trainXC_sd': trainXC_sd, 'vq_result': vq_result}
 
-import IPython
-IPython.embed()
 
 with open('training_result_type_b.cp', 'wb') as fp:
     cPickle.dump(training_result, fp)
 
 sc_vq_test2(test_images, test_labels, vq_result, svmLearner, trainXC_mean, trainXC_sd)
 
-import IPython
-IPython.embed()
 
 

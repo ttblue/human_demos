@@ -90,7 +90,7 @@ for image_class in test_image_classes:
     
     for image_name in image_names:
         image = caffe.io.load_image(osp.join(image_dir, image_name))
-        scores = net.predict([image])
+        scores = net.predict([image], oversample=True)
         score = scores[0]
         predict = score.argmax()
         print image_name, predict, label

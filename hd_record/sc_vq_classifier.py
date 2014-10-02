@@ -252,6 +252,7 @@ def sc_vq_train2(images, labels, rfSize, alpha, num_bases, num_patches):
     trainXCs = np.concatenate((trainXC, np.ones([trainXCs.shape[0], 1])), axis=1)
     
     svmLearner = LinearSVC(C=1/L)
+    
     svmLearner.fit(trainXCs, labels)
     print svmLearner.score(trainXCs, labels)
     
