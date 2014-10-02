@@ -138,30 +138,42 @@ def main():
         dataset_clouds[dataset_key] = demo_xyz
         dataset_labels[dataset_key] = np.asarray(demofiles[dataset_key[0]][dataset_key[1]]["learned_features"]["label"])
         
+    labeled_ropes = {}
+    manual_labels = {}
+    
+    for dataset_key in dataset_demo_keys:
+        labeled_points = np.asarray(demofiles[dataset_key[0]][dataset_key[1]]["labeled_points"])
+        dataset_cloud = dataset_clouds[dataset_key]
+        depth_image = np.asarray(demofiles[dataset_key[0]][dataset_key[1]]["depth"])
+        depth_xyz = clouds.depth_to_xyz(depth_image)
+        labeled_rope = np.empty((len(labeled_points),3))
         
-#    for dataset_key in dataset_demo_keys:
-#        
-#        labeled_points = np.asarray(demofiles[dataset_key[0]][dataset_key[1]]["labeled_points"])
+        labels = []
+        for i in range(len(labeled_points)):
+            (x,y,c) = labeled_points[i,:]
+            if i == 0 or i == len(labeled_points) - 1:
+                labels.append(1)
+            elif c == -1 or c == 1:
+                labels.append(3)
+            else:
+                labels.append(2)
+                
+            labeled_rope[i] = depth_xyz[y,x]
+            
+        if init_tfm is not None:
+            labeled_rope = labeled_rope.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
+            
+        labeled_ropes[dataset_key] = labeled_rope
+        manual_labels[dataset_key] = labels
+
+    
+        
+        
+#    for dataset_key in dataset_demo_keys:                
+#        labeled_rope = labeled_ropes[dataset_key]
+#        labels = manual_labels[dataset_key]
 #        dataset_cloud = dataset_clouds[dataset_key]
-#        depth_image = np.asarray(demofiles[dataset_key[0]][dataset_key[1]]["depth"])
-#        depth_xyz = clouds.depth_to_xyz(depth_image)
-#        labeled_rope = np.empty((len(labeled_points),3))
 #        
-#        labels = []
-#        for i in range(len(labeled_points)):
-#            (x,y,c) = labeled_points[i,:]
-#            if i == 0 or i == len(labeled_points) - 1:
-#                labels.append(1)
-#            elif c == -1 or c == 1:
-#                labels.append(3)
-#            else:
-#                labels.append(2)
-#                
-#            labeled_rope[i] = depth_xyz[y,x]
-#            
-#        if init_tfm is not None:
-#            labeled_rope = labeled_rope.dot(init_tfm[:3,:3].T) + init_tfm[:3,3][None,:]
-#                
 #        colors = []
 #        for i in range(len(labeled_rope)):
 #            label = labels[i]
@@ -207,12 +219,14 @@ def main():
     n_queries = len(query_demo_keys)
     n_datasets = len(dataset_demo_keys)
     
+
+
+    
         
     # compute precision/recall
     segment_sorted_indices_costs = sorted_indices_costs[tps_segment_name]
         
         
-
     
     tps_compare_statistics = {}
     for data_file in data_files:
@@ -223,7 +237,8 @@ def main():
             max_K = n_datasets
             precision_matrix = np.zeros([n_queries, max_K])
             recall_matrix = np.zeros([n_queries, max_K])
-            cost_ratio_matrix = np.zeros([n_queries, max_K])
+            
+           
             
             for i in range(n_queries):
                 indices = sorted_indices_costs[data_file][0][i]
@@ -248,10 +263,42 @@ def main():
                     precision_matrix[i, k] = precision
                     recall_matrix[i, k] = recall
                     
+            cost_sum = np.zeros([n_queries])
+            for i in range(n_queries):
+                segment_indices = segment_sorted_indices_costs[0][i]
+                indices = np.intersect1d(sorted_indices_costs[data_file][0][i], segment_indices)
+                costs = sorted_indices_costs[data_file][1][i][indices]
+                cost_sum[i] = np.sum(costs)
+                
+                
+            reg_error = np.zeros([n_queries])
+            for query_id in range(n_queries):
+                query_key = query_demo_keys[query_id]
+                fs = tps_results[data_file]["results"][query_key]["fs"]
+                fsegment = tps_results[tps_segment_name]["results"][query_key]["fs"]
+                segment_indices = segment_sorted_indices_costs[0][query_id]
+                query_rope = labeled_ropes[query_key]
+                
+                
+                for dataset_id in segment_indices:
+                    dataset_key = dataset_demo_keys[dataset_id]
+                    # dataset_rope = labeled_ropes[dataset_key]
+                    f_groundtruth = fsegment[dataset_id]
+                    f = fs[dataset_id]
+                    if f == None: continue
+                    warped_groundtruth = f_groundtruth.transform_points(query_rope)
+                    warped = f.transform_points(query_rope)
+                    diffs = np.sum(np.abs(warped_groundtruth-warped)**2, axis=-1)**(1./2)
+                    diff = np.sum(diffs)
+                    reg_error[query_id] += diff
+
+                    
             average_precision = np.mean(precision_matrix, axis=0)
             average_recall = np.mean(recall_matrix, axis=0)
             
-            tps_compare_statistics[data_file] = (average_recall, average_precision, precision_matrix, recall_matrix)
+                
+            
+            tps_compare_statistics[data_file] = (average_recall, average_precision, precision_matrix, recall_matrix, reg_error, cost_sum)
 
 
     
@@ -263,8 +310,8 @@ def main():
         # if data_file != "result_deep_basic_use_ar_not_use_rough_2_fc8.cp": continue
         # if not (data_file == "result_basic_use_ar_2.cp" or data_file == "result_deep_basic_use_ar_2.cp"): continue
         # if data_file != "result_deep_basic_use_ar_2.cp": continue
-        if not ("lc" in data_file): continue 
-        # continue
+        # if not ("lc" in data_file): continue 
+        continue
         for query_key in query_demo_keys:
             for dataset_key_id in range(n_datasets):
                 dataset_key = dataset_demo_keys[dataset_key_id]
@@ -282,34 +329,84 @@ def main():
                 if f != None:
                     plot_fn(query_cloud, dataset_cloud, query_label, dataset_label, (1,0,0,1), f, dataset_key[0]+"_"+dataset_key[1], data_file)
                  
-           
-    color_set = ['r', 'g', 'b', 'c', 'm', 'y', 'k', 'w'] 
-    plt.figure()
-    for index, compare_case in zip(range(len(tps_compare_statistics)), tps_compare_statistics.keys()):
+    #color_set = ['r', 'g', 'b', 'c', 'm', 'y', 'k', '#E5E5E5'] 
+    plot_setting_set = [('r', '-'), ('g', '-'), ('b', '-'), ('c', '-'), ('m', '-'), ('y', '-'), ('k', '-'), ('r', '--'), ('g', '--'), ('b', '--'), ('c', '--'), ('m', '--'), ('y', '--'), ('k', '-')]
+    
+    reordered_tps_compare_statistics_keys = [None] * len(tps_compare_statistics.keys())
+    reordered_end_id = 7
+    for key in tps_compare_statistics.keys():
+        if 'result_basic' in key:
+            reordered_tps_compare_statistics_keys[0] = (key, "original TPS-RPM")
+        elif 'score_fc8' in key:
+            reordered_tps_compare_statistics_keys[4] = (key, "label+fc8 TPS-RPM")
+        elif 'score_fc7' in key:
+            reordered_tps_compare_statistics_keys[5] = (key, "label+fc7 TPS-RPM")
+        elif 'fc8_fc7' in key:
+            reordered_tps_compare_statistics_keys[6] = (key, "fc7+fc8 TPS-RPM")
+        elif 'score' in key:
+            reordered_tps_compare_statistics_keys[1] = (key, "label TPS-RPM")
+        elif 'fc8' in key:
+            reordered_tps_compare_statistics_keys[2] = (key, "fc8 TPS-RPM")
+        elif 'fc7' in key:
+            reordered_tps_compare_statistics_keys[3] = (key, "fc7 TPS-RPM")
+        else:
+            reordered_tps_compare_statistics_keys[reordered_end_id] = (key, key)
+            reordered_end_id += 1
+
+
+            
+                            
+    plt.figure(figsize=(10,5))
+    #for index, compare_case in zip(range(len(tps_compare_statistics)), tps_compare_statistics.keys()):
+    for index in range(len(tps_compare_statistics)):
+        compare_case = reordered_tps_compare_statistics_keys[index][0]
+        compare_case_show_name = reordered_tps_compare_statistics_keys[index][1]
         average_recall = tps_compare_statistics[compare_case][0]
         average_precision = tps_compare_statistics[compare_case][1]
-        plt.plot(average_recall, average_precision, color_set[index], label=compare_case)
-        #plt.plot(range(len(average_precision)), average_precision, color_set[index], label=compare_case)
+        interpolated_precision = []
+        for i in range(len(average_precision)):
+            interpolated_precision.append(max(average_precision[i:]))
+        plt.plot(average_recall, interpolated_precision, plot_setting_set[index][0], linestyle=plot_setting_set[index][1], label=compare_case_show_name)
         plt.legend(loc='upper right')
     plt.xlabel('recall')
     plt.ylabel('precision')
-    plt.title('tps compare result')
     plt.show()       
+
     
     import IPython
     IPython.embed()
     
-    plt.figure()
-    for index, compare_case in zip(range(len(tps_compare_statistics)), tps_compare_statistics.keys()):
+    plt.figure(figsize=(10,5))
+    #for index, compare_case in zip(range(len(tps_compare_statistics)), tps_compare_statistics.keys()):
+    for index in range(len(tps_compare_statistics)):
+        compare_case = reordered_tps_compare_statistics_keys[index][0]
+        compare_case_show_name = reordered_tps_compare_statistics_keys[index][1]
         average_recall = tps_compare_statistics[compare_case][0]
         average_precision = tps_compare_statistics[compare_case][1]
-        #plt.plot(average_recall, average_precision, color_set[index], label=compare_case)
-        plt.plot(range(len(average_precision)), average_precision, color_set[index], label=compare_case)
+        interpolated_precision = []
+        for i in range(len(average_precision)):
+            interpolated_precision.append(max(average_precision[i:]))
+        plt.plot(range(len(interpolated_precision)), interpolated_precision, plot_setting_set[index][0], linestyle=plot_setting_set[index][1], label=compare_case_show_name)
         plt.legend(loc='upper right')
     plt.xlabel('retrieval number')
     plt.ylabel('precision')
-    plt.title('tps compare result')
     plt.show()  
+    
+    
+    for key in tps_compare_statistics.keys():
+        print key
+        print "   reg error"
+        reg1 = (tps_compare_statistics[key][4][0] + tps_compare_statistics[key][4][3]) / (2 * n_datasets)
+        reg2 = (tps_compare_statistics[key][4][1] + tps_compare_statistics[key][4][4]) / (2 * n_datasets)
+        reg3 = (tps_compare_statistics[key][4][2] + tps_compare_statistics[key][4][5]) / (2 * n_datasets)
+        print reg1, reg2, reg3
+        print "   bend cost"
+        cost1 = (tps_compare_statistics[key][5][0] + tps_compare_statistics[key][5][3]) / (2 * n_datasets)
+        cost2 = (tps_compare_statistics[key][5][1] + tps_compare_statistics[key][5][4]) / (2 * n_datasets)
+        cost3 = (tps_compare_statistics[key][5][2] + tps_compare_statistics[key][5][5]) / (2 * n_datasets)
+        print cost1, cost2, cost3
+
+        
     
     import IPython
     IPython.embed()

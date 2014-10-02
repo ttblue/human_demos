@@ -266,7 +266,7 @@ def registration_cost_and_tfm_and_corr_features(xyz0, xyz1, label0, label1, feat
 #                                   plotting=0, plot_cb=None)
 #                                   #plotting=plotting, plot_cb=plot_cb_bij_gen(None, proj_2d, bgr_to_rgb(xyzrgb0[:,-3:]), bgr_to_rgb(xyzrgb1[:,-3:])))
 
-    f, _ = registration.tps_rpm_bij_features(scaled_xyz0, scaled_xyz1, label0, label1, rough_init, reg_init=10, reg_final = 0.001, #0.01, 
+    f, _ = registration.tps_rpm_bij_features(scaled_xyz0, scaled_xyz1, label0, label1, rough_init, reg_init=10, reg_final = 0.01, 
             rad_init = .1, rad_final = .0005, rot_reg=np.r_[1e-4,1e-4,1e-1], n_iter=num_iters, plotting=False, feature_costs=feature_costs, feature_weights_initial = feature_weights_initial, feature_weights_final = feature_weights_final)
     
 
@@ -489,7 +489,7 @@ def tps_basic_dataset(demofiles, query_demofiles, dataset_demofiles, parallel, i
 
 
 
-LABEL_COST_MATRIX_PARAM = np.array([[0, 1, 2, 3], [1, 0, 1, 2], [2, 1, 0, 1], [3, 2, 1, 0]])
+LABEL_COST_MATRIX_PARAM = np.array([[0, 1, 1, 1], [1, 0, 1, 1], [1, 1, 0, 1], [1, 1, 1, 0]])
 
 
 def compute_label_costs(labels1, labels2):
@@ -498,11 +498,11 @@ def compute_label_costs(labels1, labels2):
     label_cost_matrix = np.zeros([n_labels1, n_labels2])
     for i in range(n_labels1):
         for j in range(n_labels2):
-#            if labels1[i] == labels2[j]:
-#                label_cost_matrix[i, j] = 0
-#            else:
-#                label_cost_matrix[i, j] = 1
-            label_cost_matrix[i, j] = LABEL_COST_MATRIX_PARAM[labels1[i], labels2[j]]
+            if labels1[i] == labels2[j]:
+                label_cost_matrix[i, j] = 0
+            else:
+                label_cost_matrix[i, j] = 1
+            #label_cost_matrix[i, j] = LABEL_COST_MATRIX_PARAM[labels1[i], labels2[j]]
                 
     return label_cost_matrix
 
@@ -545,7 +545,7 @@ def compute_fc_costs(features1, features2, num_bins):
     features1_max = np.max(features1, axis=1)
     features2_max = np.max(features2, axis=1)
     
-    features_max = features1_max + features2_max
+    features_max = list(features1_max) + list(features2_max)
     # print np.max(features_max), np.median(features_max)
     
     cut_off = np.median(features_max)
@@ -974,8 +974,8 @@ def main():
             if len(deep_feature_weights_final) != len(deep_feature_types):
                 raise Exception("deep_feature_weights_final should be of the same length as features")
             
-    print deep_feature_weights_initial
-    print deep_feature_weights_final
+        print deep_feature_weights_initial
+        print deep_feature_weights_final
         
     init_tfm = None
     if args.use_ar_init:
